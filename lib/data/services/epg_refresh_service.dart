@@ -100,14 +100,17 @@ class EpgRefreshService {
       (
         name: 'EPG.pw – English (Global)',
         url: 'https://epg.pw/xmltv/en.xml.gz',
+        enabled: true,
       ),
       (
         name: 'Open-EPG – US Channels',
         url: 'https://www.open-epg.com/files/unitedStates_all.xml',
+        enabled: true,
       ),
       (
         name: 'EPG.best (requires API key)',
         url: 'https://epg.best/xmltv/YOUR_KEY_HERE',
+        enabled: false,
       ),
     ];
 
@@ -116,6 +119,7 @@ class EpgRefreshService {
         id: _uuid.v4(),
         name: d.name,
         url: d.url,
+        enabled: Value(d.enabled),
       ));
     }
   }

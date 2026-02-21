@@ -8,6 +8,7 @@ import 'package:media_kit_video/media_kit_video.dart';
 
 import '../../core/fuzzy_match.dart';
 import '../../data/datasources/local/database.dart' as db;
+import '../../data/services/epg_refresh_service.dart';
 import '../player/player_service.dart';
 import '../providers/provider_manager.dart';
 import 'channel_debug_dialog.dart';
@@ -54,6 +55,15 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
   void initState() {
     super.initState();
     _loadChannels();
+    _ensureEpgSources();
+  }
+
+  /// Add default EPG sources on first run and kick off a background refresh.
+  Future<void> _ensureEpgSources() async {
+    final epgService = ref.read(epgRefreshServiceProvider);
+    await epgService.addDefaultSources();
+    // Refresh in background — don't block the UI
+    epgService.refreshAllSources().catchError((_) {});
   }
 
   @override
