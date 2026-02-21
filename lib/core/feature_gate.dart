@@ -28,7 +28,7 @@ enum AppTier { free, pro }
 /// so changing the logic later (e.g. adding trials, per-feature
 /// purchases) only requires editing this one file.
 class FeatureGate {
-  static AppTier _currentTier = AppTier.free;
+  static AppTier _currentTier = AppTier.pro;
 
   static AppTier get currentTier => _currentTier;
   static bool get isPro => _currentTier == AppTier.pro;
