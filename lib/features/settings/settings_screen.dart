@@ -1,13 +1,115 @@
 import 'package:drift/drift.dart' show Value;
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:share_plus/share_plus.dart';
 
 import '../../data/datasources/local/database.dart' as db;
+import '../../data/services/backup_service.dart';
 import '../../data/services/epg_refresh_service.dart';
 import '../providers/provider_manager.dart';
 import 'add_epg_source_dialog.dart';
 import '../shows/shows_providers.dart';
+
+Future<void> _exportBackup(BuildContext context) async {
+  try {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const Center(child: CircularProgressIndicator()),
+    );
+    final path = await BackupService.exportBackup();
+    if (context.mounted) Navigator.of(context).pop();
+    if (context.mounted) {
+      final action = await showDialog<String>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Backup Created'),
+          content: Text('Saved to:\n$path\n\nShare to transfer to another device?'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, 'close'),
+              child: const Text('Done'),
+            ),
+            FilledButton.icon(
+              onPressed: () => Navigator.pop(ctx, 'share'),
+              icon: const Icon(Icons.share_rounded, size: 18),
+              label: const Text('Share'),
+            ),
+          ],
+        ),
+      );
+      if (action == 'share') {
+        await SharePlus.instance.share(ShareParams(files: [XFile(path)]));
+      }
+    }
+  } catch (e) {
+    if (context.mounted) {
+      try { Navigator.of(context).pop(); } catch (_) {}
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Backup failed: $e'), backgroundColor: Colors.red),
+      );
+    }
+  }
+}
+
+Future<void> _importBackup(BuildContext context) async {
+  try {
+    final result = await FilePicker.platform.pickFiles(type: FileType.any);
+    if (result == null || result.files.isEmpty) return;
+    final filePath = result.files.single.path;
+    if (filePath == null) return;
+
+    if (!context.mounted) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Restore Backup?'),
+        content: const Text(
+          'This will replace all current data with the backup.\n\n'
+          'The app will need to restart after restoring.',
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: FilledButton.styleFrom(backgroundColor: Colors.amber),
+            child: const Text('Restore'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !context.mounted) return;
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const Center(child: CircularProgressIndicator()),
+    );
+    final summary = await BackupService.importBackup(filePath);
+    if (context.mounted) Navigator.of(context).pop();
+    if (context.mounted) {
+      await showDialog(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Backup Restored'),
+          content: Text('$summary\n\nPlease restart the app for changes to take effect.'),
+          actions: [
+            FilledButton(onPressed: () => Navigator.pop(ctx), child: const Text('OK')),
+          ],
+        ),
+      );
+    }
+  } catch (e) {
+    if (context.mounted) {
+      try { Navigator.of(context).pop(); } catch (_) {}
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Restore failed: $e'), backgroundColor: Colors.red),
+      );
+    }
+  }
+}
 
 class SettingsScreen extends ConsumerWidget {
   const SettingsScreen({super.key});
@@ -85,6 +187,25 @@ class SettingsScreen extends ConsumerWidget {
                 subtitle: const Text('Customize remote buttons'),
                 trailing: const Icon(Icons.chevron_right),
                 onTap: () {},
+              ),
+            ],
+          ),
+          _SettingsSection(
+            title: 'Backup & Restore',
+            children: [
+              ListTile(
+                leading: const Icon(Icons.upload_rounded),
+                title: const Text('Export Backup'),
+                subtitle: const Text('Save providers, EPG, favorites, API keys'),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () => _exportBackup(context),
+              ),
+              ListTile(
+                leading: const Icon(Icons.download_rounded),
+                title: const Text('Import Backup'),
+                subtitle: const Text('Restore from a .clubtivi file'),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () => _importBackup(context),
               ),
             ],
           ),
