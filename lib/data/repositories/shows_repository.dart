@@ -131,12 +131,13 @@ class ShowsRepository {
       final show = Show(
         traktId: tmdbId,
         tmdbId: tmdbId,
-        title: detail.overview != null ? '' : '', // will be filled below
+        title: detail.title,
         posterUrl: detail.posterUrl.isNotEmpty ? detail.posterUrl : null,
         backdropUrl: detail.backdropUrl.isNotEmpty ? detail.backdropUrl : null,
         overview: detail.overview,
         rating: detail.voteAverage,
         votes: detail.voteCount,
+        year: detail.year,
         genres: detail.genres,
         type: type,
       );
@@ -171,42 +172,46 @@ class ShowsRepository {
 
   /// Get episodes for a season
   Future<List<Episode>> getEpisodes(int traktId, int seasonNumber) async {
-    if (_trakt == null) return [];
-    final episodes = await _trakt.getEpisodes(traktId, seasonNumber);
-
-    // Enrich with TMDB stills
-    if (_tmdb != null) {
-      // We need the TMDB ID — look it up from the show
-      try {
-        final show = await _trakt.getShow(traktId);
-        if (show.tmdbId != null) {
-          final tmdbSeason = await _tmdb.getTvSeason(show.tmdbId!, seasonNumber);
-          final tmdbEpMap = {for (final e in tmdbSeason.episodes) e.episodeNumber: e};
-
-          return episodes.map((ep) {
-            final tmdbEp = tmdbEpMap[ep.number];
-            if (tmdbEp == null) return ep;
-            return Episode(
-              season: ep.season,
-              number: ep.number,
-              title: ep.title ?? tmdbEp.name,
-              overview: ep.overview ?? tmdbEp.overview,
-              rating: ep.rating,
-              votes: ep.votes,
-              runtime: ep.runtime,
-              firstAired: ep.firstAired,
-              stillUrl: tmdbEp.stillUrl.isNotEmpty ? tmdbEp.stillUrl : null,
-              traktId: ep.traktId,
-              tmdbId: ep.tmdbId,
-            );
-          }).toList();
-        }
-      } catch (_) {
-        // TMDB enrichment failed; return Trakt data
+    // Trakt-based
+    if (_trakt != null) {
+      final episodes = await _trakt.getEpisodes(traktId, seasonNumber);
+      if (_tmdb != null) {
+        try {
+          final show = await _trakt.getShow(traktId);
+          if (show.tmdbId != null) {
+            return _enrichEpisodesWithTmdb(episodes, show.tmdbId!, seasonNumber);
+          }
+        } catch (_) {}
       }
+      return episodes;
     }
 
-    return episodes;
+    // TMDB-only fallback — traktId is actually tmdbId
+    if (_tmdb != null) {
+      return _getEpisodesFromTmdb(traktId, seasonNumber);
+    }
+
+    return [];
+  }
+
+  /// Get episodes directly from TMDB
+  Future<List<Episode>> _getEpisodesFromTmdb(int tmdbId, int seasonNumber) async {
+    if (_tmdb == null) return [];
+    try {
+      final tmdbSeason = await _tmdb.getTvSeason(tmdbId, seasonNumber);
+      return tmdbSeason.episodes.map((e) => Episode(
+        season: seasonNumber,
+        number: e.episodeNumber,
+        title: e.name,
+        overview: e.overview,
+        rating: e.voteAverage,
+        stillUrl: e.stillUrl.isNotEmpty ? e.stillUrl : null,
+        tmdbId: e.episodeNumber,
+      )).toList();
+    } catch (e) {
+      _log.e('TMDB episodes failed for $tmdbId S$seasonNumber: $e');
+      return [];
+    }
   }
 
   /// Resolve a stream URL for a show/movie via debrid
@@ -286,6 +291,63 @@ class ShowsRepository {
       enriched.add(await _enrichSingle(show));
     }
     return enriched;
+  }
+
+  /// Enrich seasons with TMDB posters/overviews
+  Future<List<Season>> _enrichSeasons(int tmdbId, List<Season> seasons) async {
+    if (_tmdb == null) return seasons;
+    final result = <Season>[];
+    for (final season in seasons) {
+      try {
+        final tmdbSeason = await _tmdb.getTvSeason(tmdbId, season.number);
+        result.add(Season(
+          number: season.number,
+          title: season.title,
+          overview: tmdbSeason.overview ?? season.overview,
+          episodeCount: season.episodeCount,
+          airedEpisodes: season.airedEpisodes,
+          rating: season.rating,
+          posterUrl: tmdbSeason.posterPath != null
+              ? TmdbClient.posterUrl(tmdbSeason.posterPath)
+              : null,
+          firstAired: season.firstAired,
+          traktId: season.traktId,
+          tmdbId: season.tmdbId,
+        ));
+      } catch (_) {
+        result.add(season);
+      }
+    }
+    return result;
+  }
+
+  /// Enrich Trakt episodes with TMDB stills
+  Future<List<Episode>> _enrichEpisodesWithTmdb(
+      List<Episode> episodes, int tmdbId, int seasonNumber) async {
+    if (_tmdb == null) return episodes;
+    try {
+      final tmdbSeason = await _tmdb.getTvSeason(tmdbId, seasonNumber);
+      final tmdbEpMap = {for (final e in tmdbSeason.episodes) e.episodeNumber: e};
+      return episodes.map((ep) {
+        final tmdbEp = tmdbEpMap[ep.number];
+        if (tmdbEp == null) return ep;
+        return Episode(
+          season: ep.season,
+          number: ep.number,
+          title: ep.title ?? tmdbEp.name,
+          overview: ep.overview ?? tmdbEp.overview,
+          rating: ep.rating,
+          votes: ep.votes,
+          runtime: ep.runtime,
+          firstAired: ep.firstAired,
+          stillUrl: tmdbEp.stillUrl.isNotEmpty ? tmdbEp.stillUrl : null,
+          traktId: ep.traktId,
+          tmdbId: ep.tmdbId,
+        );
+      }).toList();
+    } catch (_) {
+      return episodes;
+    }
   }
 
   /// Enrich a single show with TMDB images
