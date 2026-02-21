@@ -4,6 +4,7 @@ import '../../data/datasources/local/database.dart' as db;
 import '../../data/datasources/parsers/m3u_parser.dart';
 import '../../data/datasources/remote/xtream_client.dart';
 import '../../data/models/channel.dart' hide Provider;
+import '../../data/services/logo_resolver_service.dart';
 import '../../core/feature_gate.dart';
 import 'package:dio/dio.dart';
 
@@ -86,6 +87,9 @@ class ProviderManager {
       streamType: Value(c.streamType.name),
     )).toList());
 
+    // Resolve missing logos in background
+    _resolveChannelLogos(channels).catchError((_) {});
+
     return channels.length;
   }
 
@@ -115,6 +119,44 @@ class ProviderManager {
 
   Future<void> deleteProvider(String id) async {
     await _db.deleteProvider(id);
+  }
+
+  /// Resolve missing logos in background after provider refresh.
+  Future<void> _resolveChannelLogos(List<Channel> channels) async {
+    final needsLogo = channels
+        .where((c) => c.tvgLogo == null || c.tvgLogo!.isEmpty)
+        .map((c) => (id: c.id, name: c.name, tvgLogo: c.tvgLogo))
+        .toList();
+
+    if (needsLogo.isEmpty) return;
+
+    // First try EPG icons for channels that have EPG mappings
+    try {
+      final epgChannels = await _db.select(_db.epgChannels).get();
+      final epgIconMap = <String, String>{};
+      for (final ec in epgChannels) {
+        if (ec.iconUrl != null && ec.iconUrl!.isNotEmpty) {
+          epgIconMap[ec.displayName.toLowerCase()] = ec.iconUrl!;
+          epgIconMap[ec.channelId.toLowerCase()] = ec.iconUrl!;
+        }
+      }
+      for (final ch in needsLogo.toList()) {
+        final stripped = ch.name.toLowerCase().replaceAll(RegExp(r'^[a-z]{2}[-:]?\s*\|?\s*'), '');
+        final icon = epgIconMap[ch.name.toLowerCase()] ?? epgIconMap[stripped];
+        if (icon != null) {
+          await _db.updateChannelLogo(ch.id, icon);
+          needsLogo.removeWhere((c) => c.id == ch.id);
+        }
+      }
+    } catch (_) {}
+
+    // Then resolve remaining from tv-logo/tv-logos GitHub repo
+    if (needsLogo.isNotEmpty) {
+      final resolved = await LogoResolverService.resolveLogosForChannels(needsLogo);
+      for (final entry in resolved.entries) {
+        await _db.updateChannelLogo(entry.key, entry.value);
+      }
+    }
   }
 }
 

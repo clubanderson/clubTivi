@@ -30,7 +30,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.e);
 
   @override
-  int get schemaVersion => 3;
+  int get schemaVersion => 4;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -43,6 +43,10 @@ class AppDatabase extends _$AppDatabase {
           if (from < 3) {
             await m.createTable(epgReminders);
             await m.createTable(scheduledRecordings);
+          }
+          if (from < 4) {
+            await m.addColumn(epgProgrammes, epgProgrammes.subtitle);
+            await m.addColumn(epgProgrammes, epgProgrammes.episodeNum);
           }
         },
       );
@@ -70,6 +74,10 @@ class AppDatabase extends _$AppDatabase {
       b.insertAllOnConflictUpdate(channels, entries);
     });
   }
+
+  Future<void> updateChannelLogo(String channelId, String logoUrl) =>
+      (update(channels)..where((t) => t.id.equals(channelId)))
+          .write(ChannelsCompanion(tvgLogo: Value(logoUrl)));
 
   Future<void> renameChannel(String channelId, String providerId, String newName) =>
       (update(channels)..where((t) => t.id.equals(channelId)))
