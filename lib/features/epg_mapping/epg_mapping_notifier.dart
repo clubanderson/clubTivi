@@ -4,6 +4,7 @@ import '../../data/models/epg.dart';
 import '../../data/models/channel.dart' hide Provider;
 import '../../data/services/epg_auto_mapper.dart';
 import '../providers/provider_manager.dart';
+import 'fuzzy_match.dart';
 
 /// State for the EPG mapping screen.
 class EpgMappingState {
@@ -52,14 +53,25 @@ class EpgMappingState {
         result = result.where((e) => e.isUnmapped).toList();
     }
 
-    // Apply search
+    // Apply fuzzy search and sort by relevance
     if (searchQuery.isNotEmpty) {
-      final q = searchQuery.toLowerCase();
-      result = result.where((e) {
-        return e.channel.name.toLowerCase().contains(q) ||
-            (e.channel.tvgId?.toLowerCase().contains(q) ?? false) ||
-            (e.mappedEpgName?.toLowerCase().contains(q) ?? false);
-      }).toList();
+      final scored = <(ChannelMappingEntry, double)>[];
+      for (final e in result) {
+        final fields = [
+          e.channel.name,
+          e.channel.tvgId,
+          e.channel.tvgName,
+          e.channel.groupTitle,
+          e.mappedEpgName,
+        ];
+        final score = fuzzyMatch(searchQuery, fields);
+        final tokens = tokenizeQuery(searchQuery);
+        if (tokens.isNotEmpty && score >= tokens.length * 0.5) {
+          scored.add((e, score));
+        }
+      }
+      scored.sort((a, b) => b.$2.compareTo(a.$2));
+      result = scored.map((s) => s.$1).toList();
     }
 
     return result;

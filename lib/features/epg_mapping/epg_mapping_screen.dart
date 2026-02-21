@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../data/models/epg.dart';
 import 'epg_mapping_notifier.dart';
+import 'fuzzy_match.dart';
 
 class EpgMappingScreen extends ConsumerStatefulWidget {
   const EpgMappingScreen({super.key});
@@ -217,8 +219,27 @@ class _ManualMappingDialog extends StatefulWidget {
 class _ManualMappingDialogState extends State<_ManualMappingDialog> {
   final _searchController = TextEditingController();
 
+  List<MappingCandidate> get _filteredSuggestions {
+    final query = _searchController.text;
+    final suggestions = widget.entry.suggestions;
+    if (query.isEmpty) return suggestions;
+
+    final scored = <(MappingCandidate, double)>[];
+    for (final s in suggestions) {
+      final fields = [s.epgDisplayName, s.epgChannelId];
+      final score = fuzzyMatch(query, fields);
+      final tokens = tokenizeQuery(query);
+      if (tokens.isNotEmpty && score >= tokens.length * 0.5) {
+        scored.add((s, score));
+      }
+    }
+    scored.sort((a, b) => b.$2.compareTo(a.$2));
+    return scored.map((s) => s.$1).toList();
+  }
+
   @override
   Widget build(BuildContext context) {
+    final filteredSuggestions = _filteredSuggestions;
     return AlertDialog(
       title: Text('Map: ${widget.entry.channel.name}'),
       content: SizedBox(
@@ -253,7 +274,7 @@ class _ManualMappingDialogState extends State<_ManualMappingDialog> {
             const SizedBox(height: 8),
 
             // Suggestions
-            if (widget.entry.suggestions.isNotEmpty) ...[
+            if (filteredSuggestions.isNotEmpty) ...[
               const Text(
                 'Suggestions:',
                 style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
@@ -262,7 +283,7 @@ class _ManualMappingDialogState extends State<_ManualMappingDialog> {
             ],
 
             Expanded(
-              child: widget.entry.suggestions.isEmpty
+              child: filteredSuggestions.isEmpty
                   ? const Center(
                       child: Text(
                         'No EPG channels available.\nAdd an EPG source first.',
@@ -271,9 +292,9 @@ class _ManualMappingDialogState extends State<_ManualMappingDialog> {
                       ),
                     )
                   : ListView.builder(
-                      itemCount: widget.entry.suggestions.length,
+                      itemCount: filteredSuggestions.length,
                       itemBuilder: (context, index) {
-                        final s = widget.entry.suggestions[index];
+                        final s = filteredSuggestions[index];
                         return ListTile(
                           dense: true,
                           title: Text(s.epgDisplayName),
