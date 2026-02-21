@@ -30,9 +30,11 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
   db.Channel? _previewChannel;
   List<db.EpgProgramme> _nowPlaying = [];
   bool _isLoading = true;
+  bool _showGuideView = false;
   final _searchController = TextEditingController();
   final _searchFocusNode = FocusNode();
   final _channelListController = ScrollController();
+  final _guideScrollController = ScrollController();
 
   // Overlay state
   bool _showOverlay = false;
@@ -58,6 +60,7 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
     _searchController.dispose();
     _searchFocusNode.dispose();
     _channelListController.dispose();
+    _guideScrollController.dispose();
     _overlayTimer?.cancel();
     _volumeOverlayTimer?.cancel();
     _focusNode.dispose();
@@ -111,7 +114,7 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
     }
     if (_searchQuery.isNotEmpty) {
       channels =
-          channels.where((c) => fuzzyMatchPasses(_searchQuery, [c.name, c.groupTitle])).toList();
+          channels.where((c) => fuzzyMatchPasses(_searchQuery, [c.name, c.groupTitle, _getChannelNowPlaying(c)])).toList();
     }
     _filteredChannels = channels;
     if (_selectedIndex >= _filteredChannels.length) {
@@ -186,6 +189,13 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
   // ---------------------------------------------------------------------------
   // EPG helpers
   // ---------------------------------------------------------------------------
+
+  String? _getChannelNowPlaying(db.Channel channel) {
+    if (channel.tvgId == null || channel.tvgId!.isEmpty) return null;
+    final match =
+        _nowPlaying.where((p) => p.epgChannelId == channel.tvgId).toList();
+    return match.isNotEmpty ? match.first.title : null;
+  }
 
   db.EpgProgramme? _getEpgProgramme(db.Channel channel) {
     if (channel.tvgId == null || channel.tvgId!.isEmpty) return null;
@@ -327,8 +337,8 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
                     _buildPreviewInfoBar(),
                     // Group filter
                     _buildGroupFilter(),
-                    // Channel list fills the rest
-                    Expanded(child: _buildChannelList()),
+                    // Channel list or guide view fills the rest
+                    Expanded(child: _showGuideView ? _buildGuideView() : _buildChannelList()),
                   ],
                 ),
               ),
@@ -481,9 +491,9 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
             },
           ),
           IconButton(
-            icon: const Icon(Icons.tv_rounded, color: Colors.white70),
-            tooltip: 'Guide',
-            onPressed: () => context.push('/guide'),
+            icon: Icon(_showGuideView ? Icons.list_rounded : Icons.calendar_view_week_rounded, color: Colors.white70),
+            tooltip: _showGuideView ? 'Channel List' : 'Program Guide',
+            onPressed: () => setState(() => _showGuideView = !_showGuideView),
           ),
           IconButton(
             icon: const Icon(Icons.dns_rounded, color: Colors.white70),
@@ -819,7 +829,7 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
                     ),
                   ),
                   const SizedBox(width: 10),
-                  // Channel name + group
+                  // Channel name + group + now-playing
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -845,6 +855,15 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
                             ),
                             overflow: TextOverflow.ellipsis,
                           ),
+                        if (_getChannelNowPlaying(channel) != null)
+                          Text(
+                            _getChannelNowPlaying(channel)!,
+                            style: const TextStyle(
+                              color: Color(0xFF6C5CE7),
+                              fontSize: 11,
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
                       ],
                     ),
                   ),
@@ -854,6 +873,203 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
                         color: Color(0xFF6C5CE7), size: 20),
                 ],
               ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Inline guide view
+  // ---------------------------------------------------------------------------
+
+  static const _pixelsPerMinute = 3.0;
+
+  Widget _buildGuideView() {
+    if (_filteredChannels.isEmpty) {
+      return const Center(
+        child: Text('No channels match your filter',
+            style: TextStyle(color: Colors.white38)),
+      );
+    }
+
+    // Auto-scroll to "now" when guide view opens
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_guideScrollController.hasClients &&
+          _guideScrollController.position.pixels == 0.0) {
+        final now = DateTime.now();
+        final nowMinutes = now.hour * 60 + now.minute;
+        final target = (nowMinutes * _pixelsPerMinute - 100)
+            .clamp(0.0, _guideScrollController.position.maxScrollExtent);
+        _guideScrollController.jumpTo(target);
+      }
+    });
+
+    final database = ref.read(databaseProvider);
+    final today = DateTime.now();
+    final dayStart = DateTime(today.year, today.month, today.day);
+    final dayEnd = dayStart.add(const Duration(days: 1));
+
+    return Column(
+      children: [
+        // Time ruler
+        SizedBox(
+          height: 28,
+          child: Row(
+            children: [
+              const SizedBox(width: 120),
+              Expanded(
+                child: SingleChildScrollView(
+                  controller: _guideScrollController,
+                  scrollDirection: Axis.horizontal,
+                  child: Row(
+                    children: List.generate(24, (hour) {
+                      final width = 60 * _pixelsPerMinute;
+                      return SizedBox(
+                        width: width,
+                        child: Padding(
+                          padding: const EdgeInsets.only(left: 4),
+                          child: Text(
+                            '${hour.toString().padLeft(2, '0')}:00',
+                            style: const TextStyle(
+                                fontSize: 10, color: Colors.white38),
+                          ),
+                        ),
+                      );
+                    }),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        const Divider(height: 1, color: Colors.white12),
+        // Channel rows
+        Expanded(
+          child: ListView.builder(
+            itemCount: _filteredChannels.length,
+            itemBuilder: (context, index) {
+              final channel = _filteredChannels[index];
+              return SizedBox(
+                height: 48,
+                child: Row(
+                  children: [
+                    // Channel label
+                    SizedBox(
+                      width: 120,
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 8),
+                        child: Text(
+                          channel.name,
+                          style: const TextStyle(
+                              fontSize: 11, color: Colors.white70),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ),
+                    // Programme blocks
+                    Expanded(
+                      child: _buildGuideRowProgrammes(
+                          channel, database, dayStart, dayEnd),
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildGuideRowProgrammes(db.Channel channel,
+      db.AppDatabase database, DateTime dayStart, DateTime dayEnd) {
+    if (channel.tvgId == null || channel.tvgId!.isEmpty) {
+      return Container(
+        margin: const EdgeInsets.symmetric(vertical: 2),
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.03),
+          borderRadius: BorderRadius.circular(4),
+        ),
+        child: const Center(
+          child:
+              Text('No EPG', style: TextStyle(fontSize: 10, color: Colors.white24)),
+        ),
+      );
+    }
+
+    return FutureBuilder<List<db.EpgProgramme>>(
+      // TODO: Consider a batch load for all channels to avoid per-row queries
+      future: database.getProgrammes(
+        epgChannelId: channel.tvgId!,
+        start: dayStart,
+        end: dayEnd,
+      ),
+      builder: (context, snapshot) {
+        if (!snapshot.hasData || snapshot.data!.isEmpty) {
+          return Container(
+            margin: const EdgeInsets.symmetric(vertical: 2),
+            color: Colors.white.withValues(alpha: 0.03),
+            child: const Center(
+              child: Text('No EPG data',
+                  style: TextStyle(fontSize: 10, color: Colors.white24)),
+            ),
+          );
+        }
+
+        final programmes = snapshot.data!;
+        final now = DateTime.now();
+
+        return NotificationListener<ScrollNotification>(
+          onNotification: (notification) {
+            // Sync scroll with the time ruler
+            if (notification is ScrollUpdateNotification &&
+                _guideScrollController.hasClients) {
+              _guideScrollController.jumpTo(notification.metrics.pixels);
+            }
+            return false;
+          },
+          child: SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            controller: ScrollController(
+              initialScrollOffset: _guideScrollController.hasClients
+                  ? _guideScrollController.offset
+                  : 0,
+            ),
+            child: Row(
+              children: programmes.map((prog) {
+                final durationMin =
+                    prog.stop.difference(prog.start).inMinutes.clamp(1, 1440);
+                final width = durationMin * _pixelsPerMinute;
+                final isCurrent =
+                    now.isAfter(prog.start) && now.isBefore(prog.stop);
+                return Container(
+                  width: width,
+                  height: 44,
+                  margin: const EdgeInsets.symmetric(vertical: 2, horizontal: 0.5),
+                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: isCurrent
+                        ? const Color(0xFF6C5CE7).withValues(alpha: 0.3)
+                        : const Color(0xFF16213E),
+                    borderRadius: BorderRadius.circular(3),
+                    border: isCurrent
+                        ? Border.all(color: const Color(0xFF6C5CE7), width: 1)
+                        : null,
+                  ),
+                  child: Text(
+                    prog.title,
+                    style: TextStyle(
+                      fontSize: 10,
+                      color: isCurrent ? Colors.white : Colors.white54,
+                    ),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                );
+              }).toList(),
             ),
           ),
         );
