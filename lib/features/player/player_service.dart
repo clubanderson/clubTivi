@@ -34,25 +34,18 @@ class PlayerService {
   Future<void> _initPlayer(Player p) async {
     final np = p.platform;
     if (np is native_player.NativePlayer) {
-      // Exclude AudioToolbox decoders which silently fail on eac3/ac3
-      // surround streams on macOS — force FFmpeg software decoders instead
-      await np.setProperty('ad', '-ac3_at,-eac3_at,-aac_at');
-      // Force audio through resampling filter to ensure compatible output
-      // Must use lavfi=[] wrapper for ffmpeg filters in mpv
-      await np.setProperty('af', 'lavfi=[aformat=channel_layouts=stereo]');
+      // Exclude only eac3/ac3 AudioToolbox decoders which silently fail
+      // on surround streams — keep aac_at since most streams use AAC fine
+      await np.setProperty('ad', '-ac3_at,-eac3_at');
       // Downmix surround to stereo for output compatibility
       await np.setProperty('audio-channels', 'stereo');
       // Normalize volume when downmixing surround to stereo
       await np.setProperty('audio-normalize-downmix', 'yes');
       // Disable SPDIF passthrough which can cause silent output
       await np.setProperty('audio-spdif', '');
-      // Ensure CoreAudio output is used
-      await np.setProperty('ao', 'coreaudio');
       // Volume
       await np.setProperty('volume', '100');
       await np.setProperty('mute', 'no');
-      // Verbose audio logging to debug remaining issues
-      await np.setProperty('msg-level', 'all=warn,ao=v,ad=v,af=v');
     }
     await p.setVolume(100);
     _playerReady = true;

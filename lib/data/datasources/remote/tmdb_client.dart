@@ -77,6 +77,54 @@ class TmdbClient {
         .toList();
   }
 
+  /// Get trending TV shows (day or week)
+  Future<List<TmdbSearchResult>> getTrendingTv({String window = 'day', int page = 1}) async {
+    final response = await _dio.get(
+      '/trending/tv/$window',
+      queryParameters: {'page': page},
+    );
+    final results = response.data['results'] as List;
+    return results
+        .map((e) => TmdbSearchResult.fromJson(e as Map<String, dynamic>))
+        .toList();
+  }
+
+  /// Get trending movies (day or week)
+  Future<List<TmdbSearchResult>> getTrendingMovie({String window = 'day', int page = 1}) async {
+    final response = await _dio.get(
+      '/trending/movie/$window',
+      queryParameters: {'page': page},
+    );
+    final results = response.data['results'] as List;
+    return results
+        .map((e) => TmdbSearchResult.fromJson(e as Map<String, dynamic>))
+        .toList();
+  }
+
+  /// Get popular TV shows
+  Future<List<TmdbSearchResult>> getPopularTv({int page = 1}) async {
+    final response = await _dio.get(
+      '/tv/popular',
+      queryParameters: {'page': page},
+    );
+    final results = response.data['results'] as List;
+    return results
+        .map((e) => TmdbSearchResult.fromJson(e as Map<String, dynamic>))
+        .toList();
+  }
+
+  /// Get popular movies
+  Future<List<TmdbSearchResult>> getPopularMovie({int page = 1}) async {
+    final response = await _dio.get(
+      '/movie/popular',
+      queryParameters: {'page': page},
+    );
+    final results = response.data['results'] as List;
+    return results
+        .map((e) => TmdbSearchResult.fromJson(e as Map<String, dynamic>))
+        .toList();
+  }
+
   /// Find by external ID (e.g., IMDB ID)
   Future<TmdbShowDetail?> findByImdbId(String imdbId, {bool isMovie = false}) async {
     final response = await _dio.get(
