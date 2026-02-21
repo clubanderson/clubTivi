@@ -22,7 +22,7 @@ class ProvidersScreen extends ConsumerWidget {
       appBar: AppBar(
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
-          onPressed: () => context.go('/'),
+          onPressed: () => context.pop(),
         ),
         title: const Text('IPTV Providers'),
       ),

@@ -63,7 +63,7 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
 
   // Sidebar state
   bool _sidebarExpanded = true;
-  Set<String> _expandedSections = {'providersList', 'favorites', 'groups'};
+  Set<String> _expandedSections = {'favorites'};
   final _sidebarSearchController = TextEditingController();
   String _sidebarSearchQuery = '';
 
@@ -74,6 +74,8 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
 
   // Failover suggestion
   StreamSubscription<bool>? _bufferingSub;
+  StreamSubscription<List<db.Provider>>? _providersSub;
+  StreamSubscription<List<db.Channel>>? _channelsSub;
   Timer? _failoverTimer;
   db.Channel? _failoverSuggestion;
   bool _showFailoverBanner = false;
@@ -101,6 +103,17 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
     _ensureEpgSources();
     _startTopBarFade();
     _initFailoverListener();
+    // Watch providers table — reload when providers or channels change
+    final database = ref.read(databaseProvider);
+    Timer? debounce;
+    void debouncedReload() {
+      debounce?.cancel();
+      debounce = Timer(const Duration(milliseconds: 500), () {
+        if (mounted) _loadChannels();
+      });
+    }
+    _providersSub = database.select(database.providers).watch().listen((_) => debouncedReload());
+    _channelsSub = database.select(database.channels).watch().listen((_) => debouncedReload());
     // Refresh now-playing every 60 seconds so the info panel stays current
     _nowPlayingTimer = Timer.periodic(const Duration(seconds: 60), (_) => _refreshNowPlaying());
   }
@@ -229,6 +242,8 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
     _topBarTimer?.cancel();
     _failoverTimer?.cancel();
     _bufferingSub?.cancel();
+    _providersSub?.cancel();
+    _channelsSub?.cancel();
     _focusNode.dispose();
     super.dispose();
   }
@@ -310,10 +325,6 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
       _favoriteLists = favLists;
       _favoritedChannelIds = favChannelIds;
       _isLoading = false;
-      // Auto-expand provider sections in sidebar
-      for (final p in providers) {
-        _expandedSections.add('prov_${p.id}');
-      }
       _applyFilters();
     });
 
@@ -505,6 +516,13 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
       return channel.tvgId;
     }
     return null;
+  }
+
+  String _getProviderName(String providerId) {
+    for (final p in _providers) {
+      if (p.id == providerId) return p.name;
+    }
+    return '';
   }
 
   String? _getChannelNowPlaying(db.Channel channel) {
@@ -1491,22 +1509,6 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
               ),
               child: Row(
                 children: [
-                  // Channel number
-                  SizedBox(
-                    width: 36,
-                    child: Text(
-                      '${index + 1}',
-                      style: TextStyle(
-                        color: isSelected
-                            ? Colors.white
-                            : Colors.white38,
-                        fontWeight: FontWeight.w600,
-                        fontSize: 13,
-                      ),
-                      textAlign: TextAlign.center,
-                    ),
-                  ),
-                  const SizedBox(width: 8),
                   // Channel logo
                   ClipRRect(
                     borderRadius: BorderRadius.circular(6),
@@ -1559,7 +1561,16 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
                         if (channel.groupTitle != null &&
                             channel.groupTitle!.isNotEmpty)
                           Text(
-                            channel.groupTitle!,
+                            '${channel.groupTitle!} · ${_getProviderName(channel.providerId)}',
+                            style: const TextStyle(
+                              color: Colors.white38,
+                              fontSize: 11,
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          )
+                        else if (_getProviderName(channel.providerId).isNotEmpty)
+                          Text(
+                            _getProviderName(channel.providerId),
                             style: const TextStyle(
                               color: Colors.white38,
                               fontSize: 11,
@@ -2181,8 +2192,18 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
                                       children: [
                                         Text(
                                           channel.name,
-                                          style: const TextStyle(fontSize: 11, color: Colors.white70),
-                                          maxLines: 2,
+                                          style: TextStyle(
+                                            fontSize: 11,
+                                            color: isSelected ? Colors.white : Colors.white70,
+                                            fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                                          ),
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                        Text(
+                                          _getProviderName(channel.providerId),
+                                          style: const TextStyle(fontSize: 9, color: Colors.white30),
+                                          maxLines: 1,
                                           overflow: TextOverflow.ellipsis,
                                         ),
                                         if (isFav)
