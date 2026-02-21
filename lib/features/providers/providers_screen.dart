@@ -298,7 +298,18 @@ class _FreeTvProviderTile extends ConsumerWidget {
           overflow: TextOverflow.ellipsis,
         ),
         trailing: isAdded
-            ? const Icon(Icons.check_circle, color: Colors.greenAccent, size: 28)
+            ? Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.check_circle, color: Colors.greenAccent, size: 22),
+                  const SizedBox(width: 4),
+                  IconButton(
+                    icon: const Icon(Icons.refresh_rounded, color: Colors.white38, size: 20),
+                    tooltip: 'Re-sync',
+                    onPressed: () => _addProvider(context, ref),
+                  ),
+                ],
+              )
             : IconButton(
                 icon: const Icon(Icons.add_circle_outline, color: accent, size: 28),
                 onPressed: () => _addProvider(context, ref),
@@ -317,7 +328,7 @@ class _FreeTvProviderTile extends ConsumerWidget {
       );
       if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('${freeProvider.name} added — loading channels...')),
+        SnackBar(content: Text('${freeProvider.name} ${isAdded ? "refreshed" : "added"} — loading channels...')),
       );
     } on ProviderLimitException catch (e) {
       if (!context.mounted) return;
