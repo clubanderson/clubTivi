@@ -112,9 +112,9 @@ class EpgRefreshService {
         enabled: true,
       ),
       (
-        name: 'EPG.best (requires API key)',
-        url: 'https://epg.best/xmltv/YOUR_KEY_HERE',
-        enabled: false,
+        name: 'EPG.best',
+        url: 'http://epg.best/16b5b-ypkixv.xml.gz',
+        enabled: true,
       ),
     ];
 
