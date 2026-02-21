@@ -10,6 +10,7 @@ import '../../core/fuzzy_match.dart';
 import '../../data/datasources/local/database.dart' as db;
 import '../player/player_service.dart';
 import '../providers/provider_manager.dart';
+import 'channel_debug_dialog.dart';
 import 'channel_info_overlay.dart';
 
 class ChannelsScreen extends ConsumerStatefulWidget {
@@ -692,7 +693,24 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
               );
             },
           ),
-          const SizedBox(width: 8),
+          const SizedBox(width: 4),
+          // Debug info button
+          SizedBox(
+            height: 28,
+            width: 28,
+            child: IconButton(
+              onPressed: () => ChannelDebugDialog.show(
+                context,
+                _previewChannel!,
+                playerService,
+              ),
+              icon: const Icon(Icons.info_outline, size: 16),
+              padding: EdgeInsets.zero,
+              color: Colors.white70,
+              tooltip: 'Channel debug info',
+            ),
+          ),
+          const SizedBox(width: 4),
           // Fullscreen button
           SizedBox(
             height: 28,
@@ -772,6 +790,10 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
           child: InkWell(
             onTap: () => _selectChannel(index),
             onDoubleTap: () => _goFullscreen(channel),
+            onLongPress: () {
+              final playerService = ref.read(playerServiceProvider);
+              ChannelDebugDialog.show(context, channel, playerService);
+            },
             borderRadius: BorderRadius.circular(8),
             child: Container(
               padding:
