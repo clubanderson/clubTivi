@@ -28,6 +28,11 @@ final router = GoRouter(
           channelLogo: extra['channelLogo'] as String?,
           alternativeUrls:
               (extra['alternativeUrls'] as List<String>?) ?? const [],
+          channels:
+              (extra['channels'] as List<dynamic>?)
+                  ?.cast<Map<String, dynamic>>() ??
+              const [],
+          currentIndex: extra['currentIndex'] as int? ?? 0,
         );
       },
     ),

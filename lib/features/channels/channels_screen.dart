@@ -38,6 +38,11 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
   Timer? _overlayTimer;
   final _focusNode = FocusNode();
 
+  // Volume state
+  double _volume = 100.0;
+  bool _showVolumeOverlay = false;
+  Timer? _volumeOverlayTimer;
+
   @override
   void initState() {
     super.initState();
@@ -49,6 +54,7 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
     _searchController.dispose();
     _channelListController.dispose();
     _overlayTimer?.cancel();
+    _volumeOverlayTimer?.cancel();
     _focusNode.dispose();
     super.dispose();
   }
@@ -131,11 +137,22 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
   }
 
   void _goFullscreen(db.Channel channel) {
+    final channelMaps = _filteredChannels
+        .map((c) => <String, dynamic>{
+              'name': c.name,
+              'streamUrl': c.streamUrl,
+              'tvgLogo': c.tvgLogo,
+              'groupTitle': c.groupTitle,
+              'alternativeUrls': <String>[],
+            })
+        .toList();
     context.push('/player', extra: {
       'streamUrl': channel.streamUrl,
       'channelName': channel.name,
       'channelLogo': channel.tvgLogo,
       'alternativeUrls': <String>[],
+      'channels': channelMaps,
+      'currentIndex': _selectedIndex >= 0 ? _selectedIndex : 0,
     });
   }
 
@@ -204,6 +221,16 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
       return KeyEventResult.handled;
     }
 
+    if (event.logicalKey == LogicalKeyboardKey.arrowLeft) {
+      _adjustVolume(-5);
+      return KeyEventResult.handled;
+    }
+
+    if (event.logicalKey == LogicalKeyboardKey.arrowRight) {
+      _adjustVolume(5);
+      return KeyEventResult.handled;
+    }
+
     return KeyEventResult.ignored;
   }
 
@@ -218,6 +245,18 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
       duration: const Duration(milliseconds: 200),
       curve: Curves.easeOut,
     );
+  }
+
+  void _adjustVolume(double delta) {
+    setState(() {
+      _volume = (_volume + delta).clamp(0.0, 100.0);
+      _showVolumeOverlay = true;
+    });
+    ref.read(playerServiceProvider).setVolume(_volume);
+    _volumeOverlayTimer?.cancel();
+    _volumeOverlayTimer = Timer(const Duration(milliseconds: 1500), () {
+      if (mounted) setState(() => _showVolumeOverlay = false);
+    });
   }
 
   // ---------------------------------------------------------------------------
@@ -447,6 +486,43 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
                             setState(() => _showOverlay = false);
                           }
                         },
+                      ),
+                    // Volume indicator overlay
+                    if (_showVolumeOverlay)
+                      Positioned(
+                        top: 12,
+                        right: 12,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 12, vertical: 8),
+                          decoration: BoxDecoration(
+                            color: Colors.black87,
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                _volume == 0
+                                    ? Icons.volume_off
+                                    : _volume < 50
+                                        ? Icons.volume_down
+                                        : Icons.volume_up,
+                                color: Colors.white,
+                                size: 20,
+                              ),
+                              const SizedBox(width: 6),
+                              Text(
+                                '${_volume.round()}%',
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
                       ),
                   ],
                 ),
