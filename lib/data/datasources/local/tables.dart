@@ -107,3 +107,26 @@ class ChannelGroups extends Table {
   @override
   Set<Column> get primaryKey => {id};
 }
+
+/// Named favorite lists (e.g., "Sports", "News", "Kids").
+class FavoriteLists extends Table {
+  TextColumn get id => text()();
+  TextColumn get name => text()();
+  TextColumn get icon => text().withDefault(const Constant('star'))();
+  IntColumn get sortOrder => integer().withDefault(const Constant(0))();
+  DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
+/// Join table: channels in a favorite list.
+class FavoriteListChannels extends Table {
+  TextColumn get listId => text().references(FavoriteLists, #id)();
+  TextColumn get channelId => text().references(Channels, #id)();
+  IntColumn get sortOrder => integer().withDefault(const Constant(0))();
+  DateTimeColumn get addedAt => dateTime().withDefault(currentDateAndTime)();
+
+  @override
+  Set<Column> get primaryKey => {listId, channelId};
+}

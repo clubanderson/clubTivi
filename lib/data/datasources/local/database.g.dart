@@ -3559,6 +3559,669 @@ class ChannelGroupsCompanion extends UpdateCompanion<ChannelGroup> {
   }
 }
 
+class $FavoriteListsTable extends FavoriteLists
+    with TableInfo<$FavoriteListsTable, FavoriteList> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $FavoriteListsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<String> id = GeneratedColumn<String>(
+    'id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _nameMeta = const VerificationMeta('name');
+  @override
+  late final GeneratedColumn<String> name = GeneratedColumn<String>(
+    'name',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _iconMeta = const VerificationMeta('icon');
+  @override
+  late final GeneratedColumn<String> icon = GeneratedColumn<String>(
+    'icon',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant('star'),
+  );
+  static const VerificationMeta _sortOrderMeta = const VerificationMeta(
+    'sortOrder',
+  );
+  @override
+  late final GeneratedColumn<int> sortOrder = GeneratedColumn<int>(
+    'sort_order',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
+  static const VerificationMeta _createdAtMeta = const VerificationMeta(
+    'createdAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> createdAt = GeneratedColumn<DateTime>(
+    'created_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+    defaultValue: currentDateAndTime,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [id, name, icon, sortOrder, createdAt];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'favorite_lists';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<FavoriteList> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    } else if (isInserting) {
+      context.missing(_idMeta);
+    }
+    if (data.containsKey('name')) {
+      context.handle(
+        _nameMeta,
+        name.isAcceptableOrUnknown(data['name']!, _nameMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_nameMeta);
+    }
+    if (data.containsKey('icon')) {
+      context.handle(
+        _iconMeta,
+        icon.isAcceptableOrUnknown(data['icon']!, _iconMeta),
+      );
+    }
+    if (data.containsKey('sort_order')) {
+      context.handle(
+        _sortOrderMeta,
+        sortOrder.isAcceptableOrUnknown(data['sort_order']!, _sortOrderMeta),
+      );
+    }
+    if (data.containsKey('created_at')) {
+      context.handle(
+        _createdAtMeta,
+        createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  FavoriteList map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return FavoriteList(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}id'],
+      )!,
+      name: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}name'],
+      )!,
+      icon: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}icon'],
+      )!,
+      sortOrder: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}sort_order'],
+      )!,
+      createdAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}created_at'],
+      )!,
+    );
+  }
+
+  @override
+  $FavoriteListsTable createAlias(String alias) {
+    return $FavoriteListsTable(attachedDatabase, alias);
+  }
+}
+
+class FavoriteList extends DataClass implements Insertable<FavoriteList> {
+  final String id;
+  final String name;
+  final String icon;
+  final int sortOrder;
+  final DateTime createdAt;
+  const FavoriteList({
+    required this.id,
+    required this.name,
+    required this.icon,
+    required this.sortOrder,
+    required this.createdAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<String>(id);
+    map['name'] = Variable<String>(name);
+    map['icon'] = Variable<String>(icon);
+    map['sort_order'] = Variable<int>(sortOrder);
+    map['created_at'] = Variable<DateTime>(createdAt);
+    return map;
+  }
+
+  FavoriteListsCompanion toCompanion(bool nullToAbsent) {
+    return FavoriteListsCompanion(
+      id: Value(id),
+      name: Value(name),
+      icon: Value(icon),
+      sortOrder: Value(sortOrder),
+      createdAt: Value(createdAt),
+    );
+  }
+
+  factory FavoriteList.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return FavoriteList(
+      id: serializer.fromJson<String>(json['id']),
+      name: serializer.fromJson<String>(json['name']),
+      icon: serializer.fromJson<String>(json['icon']),
+      sortOrder: serializer.fromJson<int>(json['sortOrder']),
+      createdAt: serializer.fromJson<DateTime>(json['createdAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<String>(id),
+      'name': serializer.toJson<String>(name),
+      'icon': serializer.toJson<String>(icon),
+      'sortOrder': serializer.toJson<int>(sortOrder),
+      'createdAt': serializer.toJson<DateTime>(createdAt),
+    };
+  }
+
+  FavoriteList copyWith({
+    String? id,
+    String? name,
+    String? icon,
+    int? sortOrder,
+    DateTime? createdAt,
+  }) => FavoriteList(
+    id: id ?? this.id,
+    name: name ?? this.name,
+    icon: icon ?? this.icon,
+    sortOrder: sortOrder ?? this.sortOrder,
+    createdAt: createdAt ?? this.createdAt,
+  );
+  FavoriteList copyWithCompanion(FavoriteListsCompanion data) {
+    return FavoriteList(
+      id: data.id.present ? data.id.value : this.id,
+      name: data.name.present ? data.name.value : this.name,
+      icon: data.icon.present ? data.icon.value : this.icon,
+      sortOrder: data.sortOrder.present ? data.sortOrder.value : this.sortOrder,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('FavoriteList(')
+          ..write('id: $id, ')
+          ..write('name: $name, ')
+          ..write('icon: $icon, ')
+          ..write('sortOrder: $sortOrder, ')
+          ..write('createdAt: $createdAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(id, name, icon, sortOrder, createdAt);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is FavoriteList &&
+          other.id == this.id &&
+          other.name == this.name &&
+          other.icon == this.icon &&
+          other.sortOrder == this.sortOrder &&
+          other.createdAt == this.createdAt);
+}
+
+class FavoriteListsCompanion extends UpdateCompanion<FavoriteList> {
+  final Value<String> id;
+  final Value<String> name;
+  final Value<String> icon;
+  final Value<int> sortOrder;
+  final Value<DateTime> createdAt;
+  final Value<int> rowid;
+  const FavoriteListsCompanion({
+    this.id = const Value.absent(),
+    this.name = const Value.absent(),
+    this.icon = const Value.absent(),
+    this.sortOrder = const Value.absent(),
+    this.createdAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  FavoriteListsCompanion.insert({
+    required String id,
+    required String name,
+    this.icon = const Value.absent(),
+    this.sortOrder = const Value.absent(),
+    this.createdAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  }) : id = Value(id),
+       name = Value(name);
+  static Insertable<FavoriteList> custom({
+    Expression<String>? id,
+    Expression<String>? name,
+    Expression<String>? icon,
+    Expression<int>? sortOrder,
+    Expression<DateTime>? createdAt,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (name != null) 'name': name,
+      if (icon != null) 'icon': icon,
+      if (sortOrder != null) 'sort_order': sortOrder,
+      if (createdAt != null) 'created_at': createdAt,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  FavoriteListsCompanion copyWith({
+    Value<String>? id,
+    Value<String>? name,
+    Value<String>? icon,
+    Value<int>? sortOrder,
+    Value<DateTime>? createdAt,
+    Value<int>? rowid,
+  }) {
+    return FavoriteListsCompanion(
+      id: id ?? this.id,
+      name: name ?? this.name,
+      icon: icon ?? this.icon,
+      sortOrder: sortOrder ?? this.sortOrder,
+      createdAt: createdAt ?? this.createdAt,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<String>(id.value);
+    }
+    if (name.present) {
+      map['name'] = Variable<String>(name.value);
+    }
+    if (icon.present) {
+      map['icon'] = Variable<String>(icon.value);
+    }
+    if (sortOrder.present) {
+      map['sort_order'] = Variable<int>(sortOrder.value);
+    }
+    if (createdAt.present) {
+      map['created_at'] = Variable<DateTime>(createdAt.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('FavoriteListsCompanion(')
+          ..write('id: $id, ')
+          ..write('name: $name, ')
+          ..write('icon: $icon, ')
+          ..write('sortOrder: $sortOrder, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $FavoriteListChannelsTable extends FavoriteListChannels
+    with TableInfo<$FavoriteListChannelsTable, FavoriteListChannel> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $FavoriteListChannelsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _listIdMeta = const VerificationMeta('listId');
+  @override
+  late final GeneratedColumn<String> listId = GeneratedColumn<String>(
+    'list_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES favorite_lists (id)',
+    ),
+  );
+  static const VerificationMeta _channelIdMeta = const VerificationMeta(
+    'channelId',
+  );
+  @override
+  late final GeneratedColumn<String> channelId = GeneratedColumn<String>(
+    'channel_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES channels (id)',
+    ),
+  );
+  static const VerificationMeta _sortOrderMeta = const VerificationMeta(
+    'sortOrder',
+  );
+  @override
+  late final GeneratedColumn<int> sortOrder = GeneratedColumn<int>(
+    'sort_order',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
+  static const VerificationMeta _addedAtMeta = const VerificationMeta(
+    'addedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> addedAt = GeneratedColumn<DateTime>(
+    'added_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+    defaultValue: currentDateAndTime,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [listId, channelId, sortOrder, addedAt];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'favorite_list_channels';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<FavoriteListChannel> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('list_id')) {
+      context.handle(
+        _listIdMeta,
+        listId.isAcceptableOrUnknown(data['list_id']!, _listIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_listIdMeta);
+    }
+    if (data.containsKey('channel_id')) {
+      context.handle(
+        _channelIdMeta,
+        channelId.isAcceptableOrUnknown(data['channel_id']!, _channelIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_channelIdMeta);
+    }
+    if (data.containsKey('sort_order')) {
+      context.handle(
+        _sortOrderMeta,
+        sortOrder.isAcceptableOrUnknown(data['sort_order']!, _sortOrderMeta),
+      );
+    }
+    if (data.containsKey('added_at')) {
+      context.handle(
+        _addedAtMeta,
+        addedAt.isAcceptableOrUnknown(data['added_at']!, _addedAtMeta),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {listId, channelId};
+  @override
+  FavoriteListChannel map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return FavoriteListChannel(
+      listId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}list_id'],
+      )!,
+      channelId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}channel_id'],
+      )!,
+      sortOrder: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}sort_order'],
+      )!,
+      addedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}added_at'],
+      )!,
+    );
+  }
+
+  @override
+  $FavoriteListChannelsTable createAlias(String alias) {
+    return $FavoriteListChannelsTable(attachedDatabase, alias);
+  }
+}
+
+class FavoriteListChannel extends DataClass
+    implements Insertable<FavoriteListChannel> {
+  final String listId;
+  final String channelId;
+  final int sortOrder;
+  final DateTime addedAt;
+  const FavoriteListChannel({
+    required this.listId,
+    required this.channelId,
+    required this.sortOrder,
+    required this.addedAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['list_id'] = Variable<String>(listId);
+    map['channel_id'] = Variable<String>(channelId);
+    map['sort_order'] = Variable<int>(sortOrder);
+    map['added_at'] = Variable<DateTime>(addedAt);
+    return map;
+  }
+
+  FavoriteListChannelsCompanion toCompanion(bool nullToAbsent) {
+    return FavoriteListChannelsCompanion(
+      listId: Value(listId),
+      channelId: Value(channelId),
+      sortOrder: Value(sortOrder),
+      addedAt: Value(addedAt),
+    );
+  }
+
+  factory FavoriteListChannel.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return FavoriteListChannel(
+      listId: serializer.fromJson<String>(json['listId']),
+      channelId: serializer.fromJson<String>(json['channelId']),
+      sortOrder: serializer.fromJson<int>(json['sortOrder']),
+      addedAt: serializer.fromJson<DateTime>(json['addedAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'listId': serializer.toJson<String>(listId),
+      'channelId': serializer.toJson<String>(channelId),
+      'sortOrder': serializer.toJson<int>(sortOrder),
+      'addedAt': serializer.toJson<DateTime>(addedAt),
+    };
+  }
+
+  FavoriteListChannel copyWith({
+    String? listId,
+    String? channelId,
+    int? sortOrder,
+    DateTime? addedAt,
+  }) => FavoriteListChannel(
+    listId: listId ?? this.listId,
+    channelId: channelId ?? this.channelId,
+    sortOrder: sortOrder ?? this.sortOrder,
+    addedAt: addedAt ?? this.addedAt,
+  );
+  FavoriteListChannel copyWithCompanion(FavoriteListChannelsCompanion data) {
+    return FavoriteListChannel(
+      listId: data.listId.present ? data.listId.value : this.listId,
+      channelId: data.channelId.present ? data.channelId.value : this.channelId,
+      sortOrder: data.sortOrder.present ? data.sortOrder.value : this.sortOrder,
+      addedAt: data.addedAt.present ? data.addedAt.value : this.addedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('FavoriteListChannel(')
+          ..write('listId: $listId, ')
+          ..write('channelId: $channelId, ')
+          ..write('sortOrder: $sortOrder, ')
+          ..write('addedAt: $addedAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(listId, channelId, sortOrder, addedAt);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is FavoriteListChannel &&
+          other.listId == this.listId &&
+          other.channelId == this.channelId &&
+          other.sortOrder == this.sortOrder &&
+          other.addedAt == this.addedAt);
+}
+
+class FavoriteListChannelsCompanion
+    extends UpdateCompanion<FavoriteListChannel> {
+  final Value<String> listId;
+  final Value<String> channelId;
+  final Value<int> sortOrder;
+  final Value<DateTime> addedAt;
+  final Value<int> rowid;
+  const FavoriteListChannelsCompanion({
+    this.listId = const Value.absent(),
+    this.channelId = const Value.absent(),
+    this.sortOrder = const Value.absent(),
+    this.addedAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  FavoriteListChannelsCompanion.insert({
+    required String listId,
+    required String channelId,
+    this.sortOrder = const Value.absent(),
+    this.addedAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  }) : listId = Value(listId),
+       channelId = Value(channelId);
+  static Insertable<FavoriteListChannel> custom({
+    Expression<String>? listId,
+    Expression<String>? channelId,
+    Expression<int>? sortOrder,
+    Expression<DateTime>? addedAt,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (listId != null) 'list_id': listId,
+      if (channelId != null) 'channel_id': channelId,
+      if (sortOrder != null) 'sort_order': sortOrder,
+      if (addedAt != null) 'added_at': addedAt,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  FavoriteListChannelsCompanion copyWith({
+    Value<String>? listId,
+    Value<String>? channelId,
+    Value<int>? sortOrder,
+    Value<DateTime>? addedAt,
+    Value<int>? rowid,
+  }) {
+    return FavoriteListChannelsCompanion(
+      listId: listId ?? this.listId,
+      channelId: channelId ?? this.channelId,
+      sortOrder: sortOrder ?? this.sortOrder,
+      addedAt: addedAt ?? this.addedAt,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (listId.present) {
+      map['list_id'] = Variable<String>(listId.value);
+    }
+    if (channelId.present) {
+      map['channel_id'] = Variable<String>(channelId.value);
+    }
+    if (sortOrder.present) {
+      map['sort_order'] = Variable<int>(sortOrder.value);
+    }
+    if (addedAt.present) {
+      map['added_at'] = Variable<DateTime>(addedAt.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('FavoriteListChannelsCompanion(')
+          ..write('listId: $listId, ')
+          ..write('channelId: $channelId, ')
+          ..write('sortOrder: $sortOrder, ')
+          ..write('addedAt: $addedAt, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$AppDatabase extends GeneratedDatabase {
   _$AppDatabase(QueryExecutor e) : super(e);
   $AppDatabaseManager get managers => $AppDatabaseManager(this);
@@ -3569,6 +4232,9 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   late final $EpgProgrammesTable epgProgrammes = $EpgProgrammesTable(this);
   late final $EpgMappingsTable epgMappings = $EpgMappingsTable(this);
   late final $ChannelGroupsTable channelGroups = $ChannelGroupsTable(this);
+  late final $FavoriteListsTable favoriteLists = $FavoriteListsTable(this);
+  late final $FavoriteListChannelsTable favoriteListChannels =
+      $FavoriteListChannelsTable(this);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -3581,6 +4247,8 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     epgProgrammes,
     epgMappings,
     channelGroups,
+    favoriteLists,
+    favoriteListChannels,
   ];
 }
 
@@ -4058,6 +4726,34 @@ final class $$ChannelsTableReferences
       manager.$state.copyWith(prefetchedData: cache),
     );
   }
+
+  static MultiTypedResultKey<
+    $FavoriteListChannelsTable,
+    List<FavoriteListChannel>
+  >
+  _favoriteListChannelsRefsTable(_$AppDatabase db) =>
+      MultiTypedResultKey.fromTable(
+        db.favoriteListChannels,
+        aliasName: $_aliasNameGenerator(
+          db.channels.id,
+          db.favoriteListChannels.channelId,
+        ),
+      );
+
+  $$FavoriteListChannelsTableProcessedTableManager
+  get favoriteListChannelsRefs {
+    final manager = $$FavoriteListChannelsTableTableManager(
+      $_db,
+      $_db.favoriteListChannels,
+    ).filter((f) => f.channelId.id.sqlEquals($_itemColumn<String>('id')!));
+
+    final cache = $_typedResult.readTableOrNull(
+      _favoriteListChannelsRefsTable($_db),
+    );
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
 }
 
 class $$ChannelsTableFilterComposer
@@ -4168,6 +4864,31 @@ class $$ChannelsTableFilterComposer
           }) => $$EpgMappingsTableFilterComposer(
             $db: $db,
             $table: $db.epgMappings,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+
+  Expression<bool> favoriteListChannelsRefs(
+    Expression<bool> Function($$FavoriteListChannelsTableFilterComposer f) f,
+  ) {
+    final $$FavoriteListChannelsTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.favoriteListChannels,
+      getReferencedColumn: (t) => t.channelId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$FavoriteListChannelsTableFilterComposer(
+            $db: $db,
+            $table: $db.favoriteListChannels,
             $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
             joinBuilder: joinBuilder,
             $removeJoinBuilderFromRootComposer:
@@ -4369,6 +5090,32 @@ class $$ChannelsTableAnnotationComposer
     );
     return f(composer);
   }
+
+  Expression<T> favoriteListChannelsRefs<T extends Object>(
+    Expression<T> Function($$FavoriteListChannelsTableAnnotationComposer a) f,
+  ) {
+    final $$FavoriteListChannelsTableAnnotationComposer composer =
+        $composerBuilder(
+          composer: this,
+          getCurrentColumn: (t) => t.id,
+          referencedTable: $db.favoriteListChannels,
+          getReferencedColumn: (t) => t.channelId,
+          builder:
+              (
+                joinBuilder, {
+                $addJoinBuilderToRootComposer,
+                $removeJoinBuilderFromRootComposer,
+              }) => $$FavoriteListChannelsTableAnnotationComposer(
+                $db: $db,
+                $table: $db.favoriteListChannels,
+                $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+                joinBuilder: joinBuilder,
+                $removeJoinBuilderFromRootComposer:
+                    $removeJoinBuilderFromRootComposer,
+              ),
+        );
+    return f(composer);
+  }
 }
 
 class $$ChannelsTableTableManager
@@ -4384,7 +5131,11 @@ class $$ChannelsTableTableManager
           $$ChannelsTableUpdateCompanionBuilder,
           (Channel, $$ChannelsTableReferences),
           Channel,
-          PrefetchHooks Function({bool providerId, bool epgMappingsRefs})
+          PrefetchHooks Function({
+            bool providerId,
+            bool epgMappingsRefs,
+            bool favoriteListChannelsRefs,
+          })
         > {
   $$ChannelsTableTableManager(_$AppDatabase db, $ChannelsTable table)
     : super(
@@ -4470,11 +5221,16 @@ class $$ChannelsTableTableManager
               )
               .toList(),
           prefetchHooksCallback:
-              ({providerId = false, epgMappingsRefs = false}) {
+              ({
+                providerId = false,
+                epgMappingsRefs = false,
+                favoriteListChannelsRefs = false,
+              }) {
                 return PrefetchHooks(
                   db: db,
                   explicitlyWatchedTables: [
                     if (epgMappingsRefs) db.epgMappings,
+                    if (favoriteListChannelsRefs) db.favoriteListChannels,
                   ],
                   addJoins:
                       <
@@ -4531,6 +5287,27 @@ class $$ChannelsTableTableManager
                               ),
                           typedResults: items,
                         ),
+                      if (favoriteListChannelsRefs)
+                        await $_getPrefetchedData<
+                          Channel,
+                          $ChannelsTable,
+                          FavoriteListChannel
+                        >(
+                          currentTable: table,
+                          referencedTable: $$ChannelsTableReferences
+                              ._favoriteListChannelsRefsTable(db),
+                          managerFromTypedResult: (p0) =>
+                              $$ChannelsTableReferences(
+                                db,
+                                table,
+                                p0,
+                              ).favoriteListChannelsRefs,
+                          referencedItemsForCurrentItem:
+                              (item, referencedItems) => referencedItems.where(
+                                (e) => e.channelId == item.id,
+                              ),
+                          typedResults: items,
+                        ),
                     ];
                   },
                 );
@@ -4551,7 +5328,11 @@ typedef $$ChannelsTableProcessedTableManager =
       $$ChannelsTableUpdateCompanionBuilder,
       (Channel, $$ChannelsTableReferences),
       Channel,
-      PrefetchHooks Function({bool providerId, bool epgMappingsRefs})
+      PrefetchHooks Function({
+        bool providerId,
+        bool epgMappingsRefs,
+        bool favoriteListChannelsRefs,
+      })
     >;
 typedef $$EpgSourcesTableCreateCompanionBuilder =
     EpgSourcesCompanion Function({
@@ -6449,6 +7230,736 @@ typedef $$ChannelGroupsTableProcessedTableManager =
       ChannelGroup,
       PrefetchHooks Function()
     >;
+typedef $$FavoriteListsTableCreateCompanionBuilder =
+    FavoriteListsCompanion Function({
+      required String id,
+      required String name,
+      Value<String> icon,
+      Value<int> sortOrder,
+      Value<DateTime> createdAt,
+      Value<int> rowid,
+    });
+typedef $$FavoriteListsTableUpdateCompanionBuilder =
+    FavoriteListsCompanion Function({
+      Value<String> id,
+      Value<String> name,
+      Value<String> icon,
+      Value<int> sortOrder,
+      Value<DateTime> createdAt,
+      Value<int> rowid,
+    });
+
+final class $$FavoriteListsTableReferences
+    extends BaseReferences<_$AppDatabase, $FavoriteListsTable, FavoriteList> {
+  $$FavoriteListsTableReferences(
+    super.$_db,
+    super.$_table,
+    super.$_typedResult,
+  );
+
+  static MultiTypedResultKey<
+    $FavoriteListChannelsTable,
+    List<FavoriteListChannel>
+  >
+  _favoriteListChannelsRefsTable(_$AppDatabase db) =>
+      MultiTypedResultKey.fromTable(
+        db.favoriteListChannels,
+        aliasName: $_aliasNameGenerator(
+          db.favoriteLists.id,
+          db.favoriteListChannels.listId,
+        ),
+      );
+
+  $$FavoriteListChannelsTableProcessedTableManager
+  get favoriteListChannelsRefs {
+    final manager = $$FavoriteListChannelsTableTableManager(
+      $_db,
+      $_db.favoriteListChannels,
+    ).filter((f) => f.listId.id.sqlEquals($_itemColumn<String>('id')!));
+
+    final cache = $_typedResult.readTableOrNull(
+      _favoriteListChannelsRefsTable($_db),
+    );
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
+}
+
+class $$FavoriteListsTableFilterComposer
+    extends Composer<_$AppDatabase, $FavoriteListsTable> {
+  $$FavoriteListsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get name => $composableBuilder(
+    column: $table.name,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get icon => $composableBuilder(
+    column: $table.icon,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get sortOrder => $composableBuilder(
+    column: $table.sortOrder,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  Expression<bool> favoriteListChannelsRefs(
+    Expression<bool> Function($$FavoriteListChannelsTableFilterComposer f) f,
+  ) {
+    final $$FavoriteListChannelsTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.favoriteListChannels,
+      getReferencedColumn: (t) => t.listId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$FavoriteListChannelsTableFilterComposer(
+            $db: $db,
+            $table: $db.favoriteListChannels,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+}
+
+class $$FavoriteListsTableOrderingComposer
+    extends Composer<_$AppDatabase, $FavoriteListsTable> {
+  $$FavoriteListsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get name => $composableBuilder(
+    column: $table.name,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get icon => $composableBuilder(
+    column: $table.icon,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get sortOrder => $composableBuilder(
+    column: $table.sortOrder,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$FavoriteListsTableAnnotationComposer
+    extends Composer<_$AppDatabase, $FavoriteListsTable> {
+  $$FavoriteListsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get name =>
+      $composableBuilder(column: $table.name, builder: (column) => column);
+
+  GeneratedColumn<String> get icon =>
+      $composableBuilder(column: $table.icon, builder: (column) => column);
+
+  GeneratedColumn<int> get sortOrder =>
+      $composableBuilder(column: $table.sortOrder, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get createdAt =>
+      $composableBuilder(column: $table.createdAt, builder: (column) => column);
+
+  Expression<T> favoriteListChannelsRefs<T extends Object>(
+    Expression<T> Function($$FavoriteListChannelsTableAnnotationComposer a) f,
+  ) {
+    final $$FavoriteListChannelsTableAnnotationComposer composer =
+        $composerBuilder(
+          composer: this,
+          getCurrentColumn: (t) => t.id,
+          referencedTable: $db.favoriteListChannels,
+          getReferencedColumn: (t) => t.listId,
+          builder:
+              (
+                joinBuilder, {
+                $addJoinBuilderToRootComposer,
+                $removeJoinBuilderFromRootComposer,
+              }) => $$FavoriteListChannelsTableAnnotationComposer(
+                $db: $db,
+                $table: $db.favoriteListChannels,
+                $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+                joinBuilder: joinBuilder,
+                $removeJoinBuilderFromRootComposer:
+                    $removeJoinBuilderFromRootComposer,
+              ),
+        );
+    return f(composer);
+  }
+}
+
+class $$FavoriteListsTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $FavoriteListsTable,
+          FavoriteList,
+          $$FavoriteListsTableFilterComposer,
+          $$FavoriteListsTableOrderingComposer,
+          $$FavoriteListsTableAnnotationComposer,
+          $$FavoriteListsTableCreateCompanionBuilder,
+          $$FavoriteListsTableUpdateCompanionBuilder,
+          (FavoriteList, $$FavoriteListsTableReferences),
+          FavoriteList,
+          PrefetchHooks Function({bool favoriteListChannelsRefs})
+        > {
+  $$FavoriteListsTableTableManager(_$AppDatabase db, $FavoriteListsTable table)
+    : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$FavoriteListsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$FavoriteListsTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$FavoriteListsTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<String> id = const Value.absent(),
+                Value<String> name = const Value.absent(),
+                Value<String> icon = const Value.absent(),
+                Value<int> sortOrder = const Value.absent(),
+                Value<DateTime> createdAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => FavoriteListsCompanion(
+                id: id,
+                name: name,
+                icon: icon,
+                sortOrder: sortOrder,
+                createdAt: createdAt,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String id,
+                required String name,
+                Value<String> icon = const Value.absent(),
+                Value<int> sortOrder = const Value.absent(),
+                Value<DateTime> createdAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => FavoriteListsCompanion.insert(
+                id: id,
+                name: name,
+                icon: icon,
+                sortOrder: sortOrder,
+                createdAt: createdAt,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable(table),
+                  $$FavoriteListsTableReferences(db, table, e),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback: ({favoriteListChannelsRefs = false}) {
+            return PrefetchHooks(
+              db: db,
+              explicitlyWatchedTables: [
+                if (favoriteListChannelsRefs) db.favoriteListChannels,
+              ],
+              addJoins: null,
+              getPrefetchedDataCallback: (items) async {
+                return [
+                  if (favoriteListChannelsRefs)
+                    await $_getPrefetchedData<
+                      FavoriteList,
+                      $FavoriteListsTable,
+                      FavoriteListChannel
+                    >(
+                      currentTable: table,
+                      referencedTable: $$FavoriteListsTableReferences
+                          ._favoriteListChannelsRefsTable(db),
+                      managerFromTypedResult: (p0) =>
+                          $$FavoriteListsTableReferences(
+                            db,
+                            table,
+                            p0,
+                          ).favoriteListChannelsRefs,
+                      referencedItemsForCurrentItem: (item, referencedItems) =>
+                          referencedItems.where((e) => e.listId == item.id),
+                      typedResults: items,
+                    ),
+                ];
+              },
+            );
+          },
+        ),
+      );
+}
+
+typedef $$FavoriteListsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $FavoriteListsTable,
+      FavoriteList,
+      $$FavoriteListsTableFilterComposer,
+      $$FavoriteListsTableOrderingComposer,
+      $$FavoriteListsTableAnnotationComposer,
+      $$FavoriteListsTableCreateCompanionBuilder,
+      $$FavoriteListsTableUpdateCompanionBuilder,
+      (FavoriteList, $$FavoriteListsTableReferences),
+      FavoriteList,
+      PrefetchHooks Function({bool favoriteListChannelsRefs})
+    >;
+typedef $$FavoriteListChannelsTableCreateCompanionBuilder =
+    FavoriteListChannelsCompanion Function({
+      required String listId,
+      required String channelId,
+      Value<int> sortOrder,
+      Value<DateTime> addedAt,
+      Value<int> rowid,
+    });
+typedef $$FavoriteListChannelsTableUpdateCompanionBuilder =
+    FavoriteListChannelsCompanion Function({
+      Value<String> listId,
+      Value<String> channelId,
+      Value<int> sortOrder,
+      Value<DateTime> addedAt,
+      Value<int> rowid,
+    });
+
+final class $$FavoriteListChannelsTableReferences
+    extends
+        BaseReferences<
+          _$AppDatabase,
+          $FavoriteListChannelsTable,
+          FavoriteListChannel
+        > {
+  $$FavoriteListChannelsTableReferences(
+    super.$_db,
+    super.$_table,
+    super.$_typedResult,
+  );
+
+  static $FavoriteListsTable _listIdTable(_$AppDatabase db) =>
+      db.favoriteLists.createAlias(
+        $_aliasNameGenerator(
+          db.favoriteListChannels.listId,
+          db.favoriteLists.id,
+        ),
+      );
+
+  $$FavoriteListsTableProcessedTableManager get listId {
+    final $_column = $_itemColumn<String>('list_id')!;
+
+    final manager = $$FavoriteListsTableTableManager(
+      $_db,
+      $_db.favoriteLists,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_listIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+
+  static $ChannelsTable _channelIdTable(_$AppDatabase db) =>
+      db.channels.createAlias(
+        $_aliasNameGenerator(db.favoriteListChannels.channelId, db.channels.id),
+      );
+
+  $$ChannelsTableProcessedTableManager get channelId {
+    final $_column = $_itemColumn<String>('channel_id')!;
+
+    final manager = $$ChannelsTableTableManager(
+      $_db,
+      $_db.channels,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_channelIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+}
+
+class $$FavoriteListChannelsTableFilterComposer
+    extends Composer<_$AppDatabase, $FavoriteListChannelsTable> {
+  $$FavoriteListChannelsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get sortOrder => $composableBuilder(
+    column: $table.sortOrder,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get addedAt => $composableBuilder(
+    column: $table.addedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  $$FavoriteListsTableFilterComposer get listId {
+    final $$FavoriteListsTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.listId,
+      referencedTable: $db.favoriteLists,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$FavoriteListsTableFilterComposer(
+            $db: $db,
+            $table: $db.favoriteLists,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+
+  $$ChannelsTableFilterComposer get channelId {
+    final $$ChannelsTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.channelId,
+      referencedTable: $db.channels,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$ChannelsTableFilterComposer(
+            $db: $db,
+            $table: $db.channels,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$FavoriteListChannelsTableOrderingComposer
+    extends Composer<_$AppDatabase, $FavoriteListChannelsTable> {
+  $$FavoriteListChannelsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get sortOrder => $composableBuilder(
+    column: $table.sortOrder,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get addedAt => $composableBuilder(
+    column: $table.addedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  $$FavoriteListsTableOrderingComposer get listId {
+    final $$FavoriteListsTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.listId,
+      referencedTable: $db.favoriteLists,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$FavoriteListsTableOrderingComposer(
+            $db: $db,
+            $table: $db.favoriteLists,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+
+  $$ChannelsTableOrderingComposer get channelId {
+    final $$ChannelsTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.channelId,
+      referencedTable: $db.channels,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$ChannelsTableOrderingComposer(
+            $db: $db,
+            $table: $db.channels,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$FavoriteListChannelsTableAnnotationComposer
+    extends Composer<_$AppDatabase, $FavoriteListChannelsTable> {
+  $$FavoriteListChannelsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get sortOrder =>
+      $composableBuilder(column: $table.sortOrder, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get addedAt =>
+      $composableBuilder(column: $table.addedAt, builder: (column) => column);
+
+  $$FavoriteListsTableAnnotationComposer get listId {
+    final $$FavoriteListsTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.listId,
+      referencedTable: $db.favoriteLists,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$FavoriteListsTableAnnotationComposer(
+            $db: $db,
+            $table: $db.favoriteLists,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+
+  $$ChannelsTableAnnotationComposer get channelId {
+    final $$ChannelsTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.channelId,
+      referencedTable: $db.channels,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$ChannelsTableAnnotationComposer(
+            $db: $db,
+            $table: $db.channels,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$FavoriteListChannelsTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $FavoriteListChannelsTable,
+          FavoriteListChannel,
+          $$FavoriteListChannelsTableFilterComposer,
+          $$FavoriteListChannelsTableOrderingComposer,
+          $$FavoriteListChannelsTableAnnotationComposer,
+          $$FavoriteListChannelsTableCreateCompanionBuilder,
+          $$FavoriteListChannelsTableUpdateCompanionBuilder,
+          (FavoriteListChannel, $$FavoriteListChannelsTableReferences),
+          FavoriteListChannel,
+          PrefetchHooks Function({bool listId, bool channelId})
+        > {
+  $$FavoriteListChannelsTableTableManager(
+    _$AppDatabase db,
+    $FavoriteListChannelsTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$FavoriteListChannelsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$FavoriteListChannelsTableOrderingComposer(
+                $db: db,
+                $table: table,
+              ),
+          createComputedFieldComposer: () =>
+              $$FavoriteListChannelsTableAnnotationComposer(
+                $db: db,
+                $table: table,
+              ),
+          updateCompanionCallback:
+              ({
+                Value<String> listId = const Value.absent(),
+                Value<String> channelId = const Value.absent(),
+                Value<int> sortOrder = const Value.absent(),
+                Value<DateTime> addedAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => FavoriteListChannelsCompanion(
+                listId: listId,
+                channelId: channelId,
+                sortOrder: sortOrder,
+                addedAt: addedAt,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String listId,
+                required String channelId,
+                Value<int> sortOrder = const Value.absent(),
+                Value<DateTime> addedAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => FavoriteListChannelsCompanion.insert(
+                listId: listId,
+                channelId: channelId,
+                sortOrder: sortOrder,
+                addedAt: addedAt,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable(table),
+                  $$FavoriteListChannelsTableReferences(db, table, e),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback: ({listId = false, channelId = false}) {
+            return PrefetchHooks(
+              db: db,
+              explicitlyWatchedTables: [],
+              addJoins:
+                  <
+                    T extends TableManagerState<
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic
+                    >
+                  >(state) {
+                    if (listId) {
+                      state =
+                          state.withJoin(
+                                currentTable: table,
+                                currentColumn: table.listId,
+                                referencedTable:
+                                    $$FavoriteListChannelsTableReferences
+                                        ._listIdTable(db),
+                                referencedColumn:
+                                    $$FavoriteListChannelsTableReferences
+                                        ._listIdTable(db)
+                                        .id,
+                              )
+                              as T;
+                    }
+                    if (channelId) {
+                      state =
+                          state.withJoin(
+                                currentTable: table,
+                                currentColumn: table.channelId,
+                                referencedTable:
+                                    $$FavoriteListChannelsTableReferences
+                                        ._channelIdTable(db),
+                                referencedColumn:
+                                    $$FavoriteListChannelsTableReferences
+                                        ._channelIdTable(db)
+                                        .id,
+                              )
+                              as T;
+                    }
+
+                    return state;
+                  },
+              getPrefetchedDataCallback: (items) async {
+                return [];
+              },
+            );
+          },
+        ),
+      );
+}
+
+typedef $$FavoriteListChannelsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $FavoriteListChannelsTable,
+      FavoriteListChannel,
+      $$FavoriteListChannelsTableFilterComposer,
+      $$FavoriteListChannelsTableOrderingComposer,
+      $$FavoriteListChannelsTableAnnotationComposer,
+      $$FavoriteListChannelsTableCreateCompanionBuilder,
+      $$FavoriteListChannelsTableUpdateCompanionBuilder,
+      (FavoriteListChannel, $$FavoriteListChannelsTableReferences),
+      FavoriteListChannel,
+      PrefetchHooks Function({bool listId, bool channelId})
+    >;
 
 class $AppDatabaseManager {
   final _$AppDatabase _db;
@@ -6467,4 +7978,8 @@ class $AppDatabaseManager {
       $$EpgMappingsTableTableManager(_db, _db.epgMappings);
   $$ChannelGroupsTableTableManager get channelGroups =>
       $$ChannelGroupsTableTableManager(_db, _db.channelGroups);
+  $$FavoriteListsTableTableManager get favoriteLists =>
+      $$FavoriteListsTableTableManager(_db, _db.favoriteLists);
+  $$FavoriteListChannelsTableTableManager get favoriteListChannels =>
+      $$FavoriteListChannelsTableTableManager(_db, _db.favoriteListChannels);
 }

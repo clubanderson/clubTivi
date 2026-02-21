@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:drift/drift.dart' show Value;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -50,6 +51,10 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
 
   // Last channel for back/forth toggle (not a full history stack)
   int _previousIndex = -1;
+
+  // Favorite lists state
+  List<db.FavoriteList> _favoriteLists = [];
+  Set<String> _favoritedChannelIds = {};
 
   @override
   void initState() {
@@ -111,11 +116,17 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
       nowPlaying = await database.getNowPlaying(epgChannelIds);
     }
 
+    // Load favorite lists
+    final favLists = await database.getAllFavoriteLists();
+    final favChannelIds = await database.getAllFavoritedChannelIds();
+
     if (!mounted) return;
     setState(() {
       _allChannels = allChannels;
       _groups = groups;
       _nowPlaying = nowPlaying;
+      _favoriteLists = favLists;
+      _favoritedChannelIds = favChannelIds;
       _isLoading = false;
       _applyFilters();
     });
@@ -123,18 +134,49 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
 
   void _applyFilters() {
     var channels = _allChannels;
-    if (_selectedGroup != 'All') {
+
+    // Favorite list filters
+    if (_selectedGroup == 'Favorites') {
+      channels =
+          channels.where((c) => _favoritedChannelIds.contains(c.id)).toList();
+    } else if (_selectedGroup.startsWith('fav:')) {
+      final listId = _selectedGroup.substring(4);
+      // We'll need the channel IDs for this list — loaded async below
+      _applyFavoriteListFilter(listId);
+      return;
+    } else if (_selectedGroup != 'All') {
       channels =
           channels.where((c) => c.groupTitle == _selectedGroup).toList();
     }
+
     if (_searchQuery.isNotEmpty) {
-      channels =
-          channels.where((c) => fuzzyMatchPasses(_searchQuery, [c.name, c.groupTitle, _getChannelNowPlaying(c)])).toList();
+      channels = channels
+          .where((c) => fuzzyMatchPasses(
+              _searchQuery, [c.name, c.groupTitle, _getChannelNowPlaying(c)]))
+          .toList();
     }
     _filteredChannels = channels;
     if (_selectedIndex >= _filteredChannels.length) {
       _selectedIndex = _filteredChannels.isEmpty ? -1 : 0;
     }
+  }
+
+  Future<void> _applyFavoriteListFilter(String listId) async {
+    final database = ref.read(databaseProvider);
+    var channels = await database.getChannelsInList(listId);
+    if (_searchQuery.isNotEmpty) {
+      channels = channels
+          .where((c) => fuzzyMatchPasses(
+              _searchQuery, [c.name, c.groupTitle, _getChannelNowPlaying(c)]))
+          .toList();
+    }
+    if (!mounted) return;
+    setState(() {
+      _filteredChannels = channels;
+      if (_selectedIndex >= _filteredChannels.length) {
+        _selectedIndex = _filteredChannels.isEmpty ? -1 : 0;
+      }
+    });
   }
 
   void _selectChannel(int index) {
@@ -239,12 +281,7 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
   // Keyboard navigation
   // ---------------------------------------------------------------------------
 
-  KeyEventResult _handleKeyEvent(FocusNode node, KeyEvent event) {
-    if (event is! KeyDownEvent) return KeyEventResult.ignored;
-
-    // Don't intercept keys when the search field has focus
-    if (_searchFocusNode.hasFocus) return KeyEventResult.ignored;
-
+  void _handleKeyEvent(KeyEvent event) {
     if (event.logicalKey == LogicalKeyboardKey.arrowUp ||
         event.logicalKey == LogicalKeyboardKey.channelUp) {
       final newIndex = (_selectedIndex - 1).clamp(0, _filteredChannels.length - 1);
@@ -252,7 +289,7 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
         _selectChannel(newIndex);
         _scrollToIndex(newIndex);
       }
-      return KeyEventResult.handled;
+      return;
     }
 
     if (event.logicalKey == LogicalKeyboardKey.arrowDown ||
@@ -262,7 +299,7 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
         _selectChannel(newIndex);
         _scrollToIndex(newIndex);
       }
-      return KeyEventResult.handled;
+      return;
     }
 
     if (event.logicalKey == LogicalKeyboardKey.enter ||
@@ -270,26 +307,24 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
       if (_previewChannel != null) {
         _goFullscreen(_previewChannel!);
       }
-      return KeyEventResult.handled;
+      return;
     }
 
     if (event.logicalKey == LogicalKeyboardKey.arrowLeft) {
       _adjustVolume(-5);
-      return KeyEventResult.handled;
+      return;
     }
 
     if (event.logicalKey == LogicalKeyboardKey.arrowRight) {
       _adjustVolume(5);
-      return KeyEventResult.handled;
+      return;
     }
 
     // Backspace → go back in channel history
     if (event.logicalKey == LogicalKeyboardKey.backspace) {
       _goBackChannel();
-      return KeyEventResult.handled;
+      return;
     }
-
-    return KeyEventResult.ignored;
   }
 
   void _scrollToIndex(int index) {
@@ -333,10 +368,14 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
       return _buildEmptyState(context);
     }
 
-    return Focus(
+    return KeyboardListener(
       focusNode: _focusNode,
       autofocus: true,
-      onKeyEvent: _handleKeyEvent,
+      onKeyEvent: (event) {
+        if (event is! KeyDownEvent) return;
+        if (_searchFocusNode.hasFocus) return;
+        _handleKeyEvent(event);
+      },
       child: Scaffold(
         backgroundColor: const Color(0xFF1A1A2E),
         body: SafeArea(
@@ -346,10 +385,8 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
               Expanded(
                 child: Column(
                   children: [
-                    // Video preview
-                    _buildVideoPreview(),
-                    // Persistent info bar with channel name, buffering status, fullscreen
-                    _buildPreviewInfoBar(),
+                    // Video preview (left) + programme info (right)
+                    _buildPreviewRow(),
                     // Group filter
                     _buildGroupFilter(),
                     // Channel list or guide view fills the rest
@@ -501,269 +538,306 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
     );
   }
 
-  Widget _buildVideoPreview() {
+  /// Top section: video preview on left, programme + status info on right.
+  Widget _buildPreviewRow() {
     final playerService = ref.watch(playerServiceProvider);
+    final programme = _previewChannel != null ? _getEpgProgramme(_previewChannel!) : null;
+    final nextProg = _previewChannel != null ? _getNextProgramme(_previewChannel!) : null;
 
     return SizedBox(
-      height: 240,
-      child: Container(
-        margin: const EdgeInsets.only(left: 16, right: 16, top: 4),
-        decoration: BoxDecoration(
-          color: Colors.black,
-          borderRadius: BorderRadius.circular(12),
-        ),
-        clipBehavior: Clip.antiAlias,
-        child: _previewChannel == null
-            ? const Center(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(Icons.tv_rounded,
-                        size: 48, color: Colors.white24),
-                    SizedBox(height: 8),
-                    Text(
-                      'Select a channel to preview',
-                      style:
-                          TextStyle(color: Colors.white38, fontSize: 13),
-                    ),
-                  ],
+      height: 200,
+      child: Padding(
+        padding: const EdgeInsets.only(left: 16, right: 16, top: 4),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            // Video preview (left, 16:9 aspect in 200px height ≈ 356px wide)
+            SizedBox(
+              width: 356,
+              child: Container(
+                decoration: BoxDecoration(
+                  color: Colors.black,
+                  borderRadius: BorderRadius.circular(12),
                 ),
-              )
-            : GestureDetector(
-                onTap: () => _goFullscreen(_previewChannel!),
-                child: Stack(
-                  fit: StackFit.expand,
-                  children: [
-                    Video(
-                      controller: playerService.videoController,
-                      controls: NoVideoControls,
-                    ),
-                    // Cable TV-style channel info overlay (temporary on channel change)
-                    if (_showOverlay && _previewChannel != null)
-                      ChannelInfoOverlay(
-                        channelNumber: _selectedIndex + 1,
-                        channelName: _previewChannel!.name,
-                        channelLogo: _previewChannel!.tvgLogo,
-                        groupTitle: _previewChannel!.groupTitle,
-                        currentProgramme:
-                            _getEpgProgramme(_previewChannel!)?.title,
-                        currentProgrammeTime: _programmeTimeRange(
-                            _getEpgProgramme(_previewChannel!)),
-                        nextProgramme:
-                            _getNextProgramme(_previewChannel!)?.title,
-                        nextProgrammeTime: _programmeTimeRange(
-                            _getNextProgramme(_previewChannel!)),
-                        playerService: playerService,
-                        onDismissed: () {
-                          if (mounted) {
-                            setState(() => _showOverlay = false);
-                          }
-                        },
-                      ),
-                    // Volume indicator overlay
-                    if (_showVolumeOverlay)
-                      Positioned(
-                        top: 12,
-                        right: 12,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 12, vertical: 8),
-                          decoration: BoxDecoration(
-                            color: Colors.black87,
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(
-                                _volume == 0
-                                    ? Icons.volume_off
-                                    : _volume < 50
-                                        ? Icons.volume_down
-                                        : Icons.volume_up,
-                                color: Colors.white,
-                                size: 20,
+                clipBehavior: Clip.antiAlias,
+                child: _previewChannel == null
+                    ? const Center(
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.tv_rounded, size: 48, color: Colors.white24),
+                            SizedBox(height: 8),
+                            Text('Select a channel', style: TextStyle(color: Colors.white38, fontSize: 13)),
+                          ],
+                        ),
+                      )
+                    : GestureDetector(
+                        onTap: () => _goFullscreen(_previewChannel!),
+                        child: Stack(
+                          fit: StackFit.expand,
+                          children: [
+                            Video(
+                              controller: playerService.videoController,
+                              controls: NoVideoControls,
+                            ),
+                            if (_showOverlay && _previewChannel != null)
+                              ChannelInfoOverlay(
+                                channelNumber: _selectedIndex + 1,
+                                channelName: _previewChannel!.name,
+                                channelLogo: _previewChannel!.tvgLogo,
+                                groupTitle: _previewChannel!.groupTitle,
+                                currentProgramme: programme?.title,
+                                currentProgrammeTime: _programmeTimeRange(programme),
+                                nextProgramme: nextProg?.title,
+                                nextProgrammeTime: _programmeTimeRange(nextProg),
+                                playerService: playerService,
+                                onDismissed: () {
+                                  if (mounted) setState(() => _showOverlay = false);
+                                },
                               ),
-                              const SizedBox(width: 6),
-                              Text(
-                                '${_volume.round()}%',
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.bold,
+                            if (_showVolumeOverlay)
+                              Positioned(
+                                top: 8,
+                                right: 8,
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                  decoration: BoxDecoration(
+                                    color: Colors.black87,
+                                    borderRadius: BorderRadius.circular(6),
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(
+                                        _volume == 0 ? Icons.volume_off : _volume < 50 ? Icons.volume_down : Icons.volume_up,
+                                        color: Colors.white, size: 16,
+                                      ),
+                                      const SizedBox(width: 4),
+                                      Text('${_volume.round()}%', style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold)),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                          ],
+                        ),
+                      ),
+              ),
+            ),
+            const SizedBox(width: 12),
+            // Programme info + controls (right side)
+            Expanded(
+              child: _previewChannel == null
+                  ? const SizedBox.shrink()
+                  : Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF16213E),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          // Channel name + group
+                          Text(
+                            _previewChannel!.name,
+                            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 15),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          if (_previewChannel!.groupTitle != null && _previewChannel!.groupTitle!.isNotEmpty)
+                            Text(
+                              _previewChannel!.groupTitle!,
+                              style: const TextStyle(color: Colors.white38, fontSize: 11),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          const SizedBox(height: 8),
+                          // Now playing
+                          if (programme != null) ...[
+                            Row(
+                              children: [
+                                const Icon(Icons.play_circle_outline, size: 14, color: Colors.cyanAccent),
+                                const SizedBox(width: 4),
+                                Expanded(
+                                  child: Text(
+                                    programme.title,
+                                    style: const TextStyle(color: Colors.white, fontSize: 13),
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            Text(
+                              _programmeTimeRange(programme) ?? '',
+                              style: const TextStyle(color: Colors.white38, fontSize: 11),
+                            ),
+                          ],
+                          if (programme != null && programme.description != null && programme.description!.isNotEmpty)
+                            Padding(
+                              padding: const EdgeInsets.only(top: 4),
+                              child: Text(
+                                programme.description!,
+                                style: const TextStyle(color: Colors.white54, fontSize: 11),
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          // Next up
+                          if (nextProg != null)
+                            Padding(
+                              padding: const EdgeInsets.only(top: 6),
+                              child: Row(
+                                children: [
+                                  const Text('Next: ', style: TextStyle(color: Colors.white38, fontSize: 11)),
+                                  Expanded(
+                                    child: Text(
+                                      '${nextProg.title}  ${_programmeTimeRange(nextProg) ?? ''}',
+                                      style: const TextStyle(color: Colors.white54, fontSize: 11),
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          const Spacer(),
+                          // Bottom row: status + controls
+                          Row(
+                            children: [
+                              // Buffering status
+                              StreamBuilder<bool>(
+                                stream: playerService.bufferingStream,
+                                builder: (context, snapshot) {
+                                  final buffering = snapshot.data ?? false;
+                                  return Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      if (buffering)
+                                        const SizedBox(
+                                          width: 12, height: 12,
+                                          child: CircularProgressIndicator(strokeWidth: 1.5, color: Colors.orangeAccent),
+                                        )
+                                      else
+                                        const Icon(Icons.signal_cellular_alt, size: 14, color: Colors.green),
+                                      const SizedBox(width: 4),
+                                      Text(
+                                        buffering ? 'Buffering' : 'OK',
+                                        style: TextStyle(color: buffering ? Colors.orangeAccent : Colors.green, fontSize: 11),
+                                      ),
+                                    ],
+                                  );
+                                },
+                              ),
+                              const SizedBox(width: 4),
+                              // Audio indicator
+                              StreamBuilder<bool>(
+                                stream: playerService.hasAudioStream,
+                                builder: (context, snapshot) {
+                                  final hasAudio = snapshot.data ?? true;
+                                  if (hasAudio) return const SizedBox.shrink();
+                                  return const Tooltip(
+                                    message: 'No audio track detected',
+                                    child: Icon(Icons.volume_off_rounded, size: 14, color: Colors.redAccent),
+                                  );
+                                },
+                              ),
+                              const Spacer(),
+                              // Debug info
+                              SizedBox(
+                                height: 28, width: 28,
+                                child: IconButton(
+                                  onPressed: () => ChannelDebugDialog.show(context, _previewChannel!, playerService),
+                                  icon: const Icon(Icons.info_outline, size: 16),
+                                  padding: EdgeInsets.zero,
+                                  color: Colors.white70,
+                                  tooltip: 'Channel debug info',
+                                ),
+                              ),
+                              // Fullscreen
+                              SizedBox(
+                                height: 28,
+                                child: TextButton.icon(
+                                  onPressed: () => _goFullscreen(_previewChannel!),
+                                  icon: const Icon(Icons.fullscreen_rounded, size: 16),
+                                  label: const Text('Fullscreen', style: TextStyle(fontSize: 11)),
+                                  style: TextButton.styleFrom(
+                                    foregroundColor: Colors.white70,
+                                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                                  ),
                                 ),
                               ),
                             ],
                           ),
-                        ),
+                        ],
                       ),
-                  ],
-                ),
-              ),
-      ),
-    );
-  }
-
-  /// Persistent info bar below the video: channel name, sparkline, fullscreen.
-  Widget _buildPreviewInfoBar() {
-    if (_previewChannel == null) return const SizedBox.shrink();
-
-    final playerService = ref.watch(playerServiceProvider);
-
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-      decoration: BoxDecoration(
-        color: const Color(0xFF16213E),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Row(
-        children: [
-          // Channel name
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  _previewChannel!.name,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 13,
-                  ),
-                  overflow: TextOverflow.ellipsis,
-                ),
-                if (_previewChannel!.groupTitle != null &&
-                    _previewChannel!.groupTitle!.isNotEmpty)
-                  Text(
-                    _previewChannel!.groupTitle!,
-                    style:
-                        const TextStyle(color: Colors.white38, fontSize: 11),
-                    overflow: TextOverflow.ellipsis,
-                  ),
-              ],
-            ),
-          ),
-          const SizedBox(width: 8),
-          // Buffering sparkline (always visible)
-          StreamBuilder<bool>(
-            stream: playerService.bufferingStream,
-            builder: (context, snapshot) {
-              final buffering = snapshot.data ?? false;
-              return Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  if (buffering)
-                    const SizedBox(
-                      width: 12,
-                      height: 12,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 1.5,
-                        color: Colors.orangeAccent,
-                      ),
-                    )
-                  else
-                    const Icon(Icons.signal_cellular_alt,
-                        size: 14, color: Colors.green),
-                  const SizedBox(width: 4),
-                  Text(
-                    buffering ? 'Buffering' : 'OK',
-                    style: TextStyle(
-                      color: buffering ? Colors.orangeAccent : Colors.green,
-                      fontSize: 11,
                     ),
-                  ),
-                ],
-              );
-            },
-          ),
-          const SizedBox(width: 4),
-          // Audio track indicator
-          StreamBuilder<bool>(
-            stream: playerService.hasAudioStream,
-            builder: (context, snapshot) {
-              final hasAudio = snapshot.data ?? true;
-              if (hasAudio) return const SizedBox.shrink();
-              return const Padding(
-                padding: EdgeInsets.only(right: 4),
-                child: Tooltip(
-                  message: 'No audio track detected',
-                  child: Icon(Icons.volume_off_rounded,
-                      size: 14, color: Colors.redAccent),
-                ),
-              );
-            },
-          ),
-          // Debug info button
-          SizedBox(
-            height: 28,
-            width: 28,
-            child: IconButton(
-              onPressed: () => ChannelDebugDialog.show(
-                context,
-                _previewChannel!,
-                playerService,
-              ),
-              icon: const Icon(Icons.info_outline, size: 16),
-              padding: EdgeInsets.zero,
-              color: Colors.white70,
-              tooltip: 'Channel debug info',
             ),
-          ),
-          const SizedBox(width: 4),
-          // Fullscreen button
-          SizedBox(
-            height: 28,
-            child: TextButton.icon(
-              onPressed: () => _goFullscreen(_previewChannel!),
-              icon: const Icon(Icons.fullscreen_rounded, size: 16),
-              label: const Text('Fullscreen', style: TextStyle(fontSize: 11)),
-              style: TextButton.styleFrom(
-                foregroundColor: Colors.white70,
-                padding: const EdgeInsets.symmetric(horizontal: 8),
-              ),
-            ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
 
   Widget _buildGroupFilter() {
-    final items = ['All', ..._groups];
+    // Build chip items: All | ★ Favorites | ★ <list names> | [group chips...] | Manage ★
+    final List<_FilterChip> items = [
+      _FilterChip('All', 'All', null),
+      _FilterChip('★ Favorites', 'Favorites', Icons.star_rounded),
+    ];
+    for (final list in _favoriteLists) {
+      items.add(_FilterChip('★ ${list.name}', 'fav:${list.id}', Icons.star_outline_rounded));
+    }
+    for (final group in _groups) {
+      items.add(_FilterChip(group, group, null));
+    }
+
     return SizedBox(
       height: 40,
-      child: ListView.builder(
-        scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: 8),
-        itemCount: items.length,
-        itemBuilder: (context, index) {
-          final group = items[index];
-          final isSelected = group == _selectedGroup;
-          return Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 3),
-            child: ChoiceChip(
-              label: Text(
-                group,
-                style: TextStyle(
-                  fontSize: 12,
-                  color: isSelected ? Colors.white : Colors.white60,
-                ),
-              ),
-              selected: isSelected,
-              selectedColor: const Color(0xFF6C5CE7),
-              backgroundColor: const Color(0xFF16213E),
-              side: BorderSide.none,
-              onSelected: (_) {
-                setState(() {
-                  _selectedGroup = group;
-                  _applyFilters();
-                });
+      child: Row(
+        children: [
+          Expanded(
+            child: ListView.builder(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              itemCount: items.length,
+              itemBuilder: (context, index) {
+                final item = items[index];
+                final isSelected = item.filterKey == _selectedGroup;
+                return Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 3),
+                  child: ChoiceChip(
+                    avatar: item.icon != null
+                        ? Icon(item.icon, size: 14,
+                            color: isSelected ? Colors.amber : Colors.amber.withValues(alpha: 0.6))
+                        : null,
+                    label: Text(
+                      item.label,
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: isSelected ? Colors.white : Colors.white60,
+                      ),
+                    ),
+                    selected: isSelected,
+                    selectedColor: item.filterKey == 'Favorites' || item.filterKey.startsWith('fav:')
+                        ? const Color(0xFFE17055)
+                        : const Color(0xFF6C5CE7),
+                    backgroundColor: const Color(0xFF16213E),
+                    side: BorderSide.none,
+                    onSelected: (_) {
+                      setState(() {
+                        _selectedGroup = item.filterKey;
+                        _applyFilters();
+                      });
+                    },
+                  ),
+                );
               },
             ),
-          );
-        },
+          ),
+          // Manage favorites button
+          IconButton(
+            icon: const Icon(Icons.playlist_add_rounded, size: 20, color: Colors.white54),
+            tooltip: 'Manage Favorite Lists',
+            onPressed: () => _showManageFavoritesDialog(),
+          ),
+        ],
       ),
     );
   }
@@ -785,16 +859,14 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
       itemBuilder: (context, index) {
         final channel = _filteredChannels[index];
         final isSelected = index == _selectedIndex;
+        final isFavorited = _favoritedChannelIds.contains(channel.id);
 
         return Material(
           color: Colors.transparent,
           child: InkWell(
             onTap: () => _selectChannel(index),
             onDoubleTap: () => _goFullscreen(channel),
-            onLongPress: () {
-              final playerService = ref.read(playerServiceProvider);
-              ChannelDebugDialog.show(context, channel, playerService);
-            },
+            onLongPress: () => _showFavoriteListSheet(channel),
             borderRadius: BorderRadius.circular(8),
             child: Container(
               padding:
@@ -890,6 +962,12 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
                       ],
                     ),
                   ),
+                  // Favorite indicator
+                  if (isFavorited)
+                    const Padding(
+                      padding: EdgeInsets.only(right: 4),
+                      child: Icon(Icons.star_rounded, color: Colors.amber, size: 16),
+                    ),
                   // Now-playing indicator
                   if (isSelected)
                     const Icon(Icons.play_arrow_rounded,
@@ -900,6 +978,325 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
           ),
         );
       },
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Favorite list interactions
+  // ---------------------------------------------------------------------------
+
+  /// Bottom sheet to add/remove a channel from favorite lists.
+  Future<void> _showFavoriteListSheet(db.Channel channel) async {
+    final database = ref.read(databaseProvider);
+    final listsForChannel = await database.getListsForChannel(channel.id);
+    final checkedIds = listsForChannel.map((l) => l.id).toSet();
+
+    if (!mounted) return;
+    await showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: const Color(0xFF1A1A2E),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (ctx, setSheetState) {
+            return Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      const Icon(Icons.star_rounded, color: Colors.amber, size: 20),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'Add "${channel.name}" to list',
+                          style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.bold),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  if (_favoriteLists.isEmpty)
+                    const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 16),
+                      child: Center(
+                        child: Text('No favorite lists yet', style: TextStyle(color: Colors.white38)),
+                      ),
+                    ),
+                  ..._favoriteLists.map((list) {
+                    final isInList = checkedIds.contains(list.id);
+                    return CheckboxListTile(
+                      dense: true,
+                      value: isInList,
+                      activeColor: const Color(0xFFE17055),
+                      title: Text('★ ${list.name}',
+                          style: const TextStyle(color: Colors.white70, fontSize: 13)),
+                      onChanged: (val) async {
+                        if (val == true) {
+                          await database.addChannelToList(list.id, channel.id);
+                          checkedIds.add(list.id);
+                        } else {
+                          await database.removeChannelFromList(list.id, channel.id);
+                          checkedIds.remove(list.id);
+                        }
+                        setSheetState(() {});
+                      },
+                    );
+                  }),
+                  const Divider(color: Colors.white12),
+                  TextButton.icon(
+                    onPressed: () async {
+                      final name = await _showCreateListDialog();
+                      if (name != null && name.isNotEmpty) {
+                        final newList = await database.createFavoriteList(name);
+                        await database.addChannelToList(newList.id, channel.id);
+                        checkedIds.add(newList.id);
+                        // Reload lists
+                        final updated = await database.getAllFavoriteLists();
+                        setState(() => _favoriteLists = updated);
+                        setSheetState(() {});
+                      }
+                    },
+                    icon: const Icon(Icons.add_rounded, size: 18),
+                    label: const Text('Create new list'),
+                    style: TextButton.styleFrom(foregroundColor: Colors.cyanAccent),
+                  ),
+                  const SizedBox(height: 8),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+    // Refresh favorited state after sheet closes
+    final favIds = await database.getAllFavoritedChannelIds();
+    if (mounted) {
+      setState(() {
+        _favoritedChannelIds = favIds;
+        _applyFilters();
+      });
+    }
+  }
+
+  /// Dialog to create a new favorite list — returns the name or null.
+  Future<String?> _showCreateListDialog() async {
+    final controller = TextEditingController();
+    return showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF16213E),
+        title: const Text('New Favorite List', style: TextStyle(color: Colors.white)),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          style: const TextStyle(color: Colors.white),
+          decoration: InputDecoration(
+            hintText: 'e.g. Sports, News, Kids',
+            hintStyle: const TextStyle(color: Colors.white38),
+            filled: true,
+            fillColor: Colors.white12,
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(8),
+              borderSide: BorderSide.none,
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel', style: TextStyle(color: Colors.white54)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, controller.text.trim()),
+            child: const Text('Create', style: TextStyle(color: Colors.cyanAccent)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Dialog to manage (create/rename/delete) favorite lists.
+  Future<void> _showManageFavoritesDialog() async {
+    final database = ref.read(databaseProvider);
+    var lists = List<db.FavoriteList>.from(_favoriteLists);
+
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (ctx, setDialogState) {
+            return AlertDialog(
+              backgroundColor: const Color(0xFF16213E),
+              title: Row(
+                children: [
+                  const Icon(Icons.star_rounded, color: Colors.amber, size: 22),
+                  const SizedBox(width: 8),
+                  const Expanded(
+                    child: Text('Manage Favorite Lists', style: TextStyle(color: Colors.white, fontSize: 16)),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.add_rounded, color: Colors.cyanAccent, size: 20),
+                    tooltip: 'Create new list',
+                    onPressed: () async {
+                      final name = await _showCreateListDialog();
+                      if (name != null && name.isNotEmpty) {
+                        await database.createFavoriteList(name);
+                        lists = await database.getAllFavoriteLists();
+                        setDialogState(() {});
+                      }
+                    },
+                  ),
+                ],
+              ),
+              content: SizedBox(
+                width: 340,
+                child: lists.isEmpty
+                    ? const Padding(
+                        padding: EdgeInsets.symmetric(vertical: 24),
+                        child: Center(
+                          child: Text('No favorite lists yet.\nTap + to create one.',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(color: Colors.white38)),
+                        ),
+                      )
+                    : ReorderableListView.builder(
+                        shrinkWrap: true,
+                        itemCount: lists.length,
+                        onReorder: (oldIdx, newIdx) async {
+                          if (newIdx > oldIdx) newIdx--;
+                          final item = lists.removeAt(oldIdx);
+                          lists.insert(newIdx, item);
+                          setDialogState(() {});
+                          // Persist new sort order
+                          for (var i = 0; i < lists.length; i++) {
+                            await (database.update(database.favoriteLists)
+                                  ..where((t) => t.id.equals(lists[i].id)))
+                                .write(db.FavoriteListsCompanion(sortOrder: Value(i)));
+                          }
+                        },
+                        itemBuilder: (ctx, index) {
+                          final list = lists[index];
+                          return ListTile(
+                            key: ValueKey(list.id),
+                            leading: const Icon(Icons.drag_handle_rounded, color: Colors.white38, size: 18),
+                            title: Text('★ ${list.name}', style: const TextStyle(color: Colors.white70, fontSize: 13)),
+                            trailing: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                IconButton(
+                                  icon: const Icon(Icons.edit_rounded, size: 16, color: Colors.white38),
+                                  tooltip: 'Rename',
+                                  onPressed: () async {
+                                    final newName = await _showRenameDialog(list.name);
+                                    if (newName != null && newName.isNotEmpty) {
+                                      await database.renameFavoriteList(list.id, newName);
+                                      lists = await database.getAllFavoriteLists();
+                                      setDialogState(() {});
+                                    }
+                                  },
+                                ),
+                                IconButton(
+                                  icon: const Icon(Icons.delete_outline_rounded, size: 16, color: Colors.redAccent),
+                                  tooltip: 'Delete',
+                                  onPressed: () async {
+                                    final confirmed = await _showDeleteConfirmation(list.name);
+                                    if (confirmed == true) {
+                                      await database.deleteFavoriteList(list.id);
+                                      lists = await database.getAllFavoriteLists();
+                                      setDialogState(() {});
+                                    }
+                                  },
+                                ),
+                              ],
+                            ),
+                          );
+                        },
+                      ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  child: const Text('Done', style: TextStyle(color: Colors.cyanAccent)),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+    // Refresh lists after dialog closes
+    final updated = await database.getAllFavoriteLists();
+    final favIds = await database.getAllFavoritedChannelIds();
+    if (mounted) {
+      setState(() {
+        _favoriteLists = updated;
+        _favoritedChannelIds = favIds;
+        _applyFilters();
+      });
+    }
+  }
+
+  Future<String?> _showRenameDialog(String currentName) {
+    final controller = TextEditingController(text: currentName);
+    return showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF16213E),
+        title: const Text('Rename List', style: TextStyle(color: Colors.white)),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          style: const TextStyle(color: Colors.white),
+          decoration: InputDecoration(
+            filled: true,
+            fillColor: Colors.white12,
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(8),
+              borderSide: BorderSide.none,
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel', style: TextStyle(color: Colors.white54)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, controller.text.trim()),
+            child: const Text('Rename', style: TextStyle(color: Colors.cyanAccent)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<bool?> _showDeleteConfirmation(String listName) {
+    return showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF16213E),
+        title: const Text('Delete List?', style: TextStyle(color: Colors.white)),
+        content: Text(
+          'Are you sure you want to delete "$listName"?\nChannels will not be deleted.',
+          style: const TextStyle(color: Colors.white70),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel', style: TextStyle(color: Colors.white54)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Delete', style: TextStyle(color: Colors.redAccent)),
+          ),
+        ],
+      ),
     );
   }
 
@@ -1099,4 +1496,12 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
       },
     );
   }
+}
+
+/// Helper model for filter chip items.
+class _FilterChip {
+  final String label;
+  final String filterKey;
+  final IconData? icon;
+  const _FilterChip(this.label, this.filterKey, this.icon);
 }
