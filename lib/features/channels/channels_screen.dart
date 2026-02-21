@@ -97,6 +97,9 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
   bool _use24HourTime = false;
   static const _kUse24HourTime = 'use_24_hour_time';
 
+  // Per-channel EPG timeshift in hours
+  final Map<String, int> _epgTimeshifts = {};
+
   // Persistence keys
   static const _kLastChannelId = 'last_channel_id';
   static const _kLastGroup = 'last_group';
@@ -1830,6 +1833,75 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
     }
   }
 
+  /// Show dialog to set EPG timeshift for a channel.
+  Future<void> _showTimeshiftDialog(db.Channel channel) async {
+    final current = _epgTimeshifts[channel.id] ?? 0;
+    final result = await showDialog<int>(
+      context: context,
+      builder: (ctx) {
+        int selected = current;
+        return StatefulBuilder(
+          builder: (ctx, setDialogState) => AlertDialog(
+            title: const Text('Timeshift EPG'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(channel.name, style: const TextStyle(fontWeight: FontWeight.bold)),
+                const SizedBox(height: 12),
+                const Text('Shift programme times by:', style: TextStyle(fontSize: 13)),
+                const SizedBox(height: 8),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    IconButton(
+                      onPressed: () => setDialogState(() => selected--),
+                      icon: const Icon(Icons.remove_circle_outline),
+                    ),
+                    Text(
+                      '${selected > 0 ? '+' : ''}${selected}h',
+                      style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                    ),
+                    IconButton(
+                      onPressed: () => setDialogState(() => selected++),
+                      icon: const Icon(Icons.add_circle_outline),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  selected == 0 ? 'No shift' : 'Programmes shifted ${selected > 0 ? 'forward' : 'back'} ${selected.abs()}h',
+                  style: const TextStyle(color: Colors.white54, fontSize: 12),
+                ),
+              ],
+            ),
+            actions: [
+              if (current != 0)
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx, 0),
+                  child: const Text('Reset'),
+                ),
+              TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+              FilledButton(
+                onPressed: () => Navigator.pop(ctx, selected),
+                child: const Text('Apply'),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+    if (result != null && result != current) {
+      setState(() {
+        if (result == 0) {
+          _epgTimeshifts.remove(channel.id);
+        } else {
+          _epgTimeshifts[channel.id] = result;
+        }
+      });
+      _refreshNowPlaying();
+    }
+  }
+
   Future<void> _showFavoriteListSheet(db.Channel channel) async {
     final database = ref.read(databaseProvider);
     final listsForChannel = await database.getListsForChannel(channel.id);
@@ -2468,6 +2540,14 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
           ]),
         ),
         PopupMenuItem(
+          value: 'timeshift',
+          child: Row(children: [
+            const Icon(Icons.schedule, size: 18),
+            const SizedBox(width: 8),
+            Text('Timeshift EPG${_epgTimeshifts.containsKey(channel.id) ? ' (${_epgTimeshifts[channel.id]! > 0 ? '+' : ''}${_epgTimeshifts[channel.id]!}h)' : ''}'),
+          ]),
+        ),
+        PopupMenuItem(
           value: 'debug',
           child: Row(children: [
             const Icon(Icons.bug_report, size: 18),
@@ -2499,6 +2579,8 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
           );
         case 'rename':
           _renameChannel(channel);
+        case 'timeshift':
+          _showTimeshiftDialog(channel);
         case 'debug':
           final ps = ref.read(playerServiceProvider);
           showDialog(
@@ -2535,18 +2617,21 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
 
         final programmes = snapshot.data!;
         final now = DateTime.now();
+        final shift = Duration(hours: _epgTimeshifts[channel.id] ?? 0);
 
         return SizedBox(
           width: totalWidth,
           child: Stack(
             children: programmes.map((prog) {
-              final startMin = prog.start.difference(dayStart).inMinutes.clamp(0, totalMinutes);
-              final endMin = prog.stop.difference(dayStart).inMinutes.clamp(0, totalMinutes);
+              final shiftedStart = prog.start.add(shift);
+              final shiftedStop = prog.stop.add(shift);
+              final startMin = shiftedStart.difference(dayStart).inMinutes.clamp(0, totalMinutes);
+              final endMin = shiftedStop.difference(dayStart).inMinutes.clamp(0, totalMinutes);
               final durationMin = (endMin - startMin).clamp(1, totalMinutes);
               final left = startMin * _pixelsPerMinute;
               final width = durationMin * _pixelsPerMinute;
               final isCurrent =
-                  now.isAfter(prog.start) && now.isBefore(prog.stop);
+                  now.isAfter(shiftedStart) && now.isBefore(shiftedStop);
               return Positioned(
                 left: left,
                 width: width,
