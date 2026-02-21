@@ -38,6 +38,7 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
 
   /// Maps channel ID → mapped EPG channel ID (from epg_mappings table)
   Map<String, String> _epgMappings = {};
+  Set<String> _validEpgChannelIds = {};
   bool _showGuideView = true;
   final _searchController = TextEditingController();
   final _searchFocusNode = FocusNode();
@@ -47,6 +48,7 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
   // Overlay state
   bool _showOverlay = false;
   Timer? _overlayTimer;
+  Timer? _nowPlayingTimer;
   final _focusNode = FocusNode();
 
   // Volume state
@@ -92,6 +94,28 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
     _ensureEpgSources();
     _startTopBarFade();
     _initFailoverListener();
+    // Refresh now-playing every 60 seconds so the info panel stays current
+    _nowPlayingTimer = Timer.periodic(const Duration(seconds: 60), (_) => _refreshNowPlaying());
+  }
+
+  Future<void> _refreshNowPlaying() async {
+    if (!mounted) return;
+    final database = ref.read(databaseProvider);
+    final epgChannelIds = <String>{};
+    for (final c in _allChannels) {
+      final mapped = _epgMappings[c.id];
+      if (mapped != null && mapped.isNotEmpty) {
+        epgChannelIds.add(mapped);
+      } else if (c.tvgId != null && c.tvgId!.isNotEmpty && _validEpgChannelIds.contains(c.tvgId)) {
+        epgChannelIds.add(c.tvgId!);
+      }
+    }
+    if (epgChannelIds.isEmpty) return;
+    final nowPlaying = await database.getNowPlaying(epgChannelIds.toList());
+    if (!mounted) return;
+    setState(() {
+      _nowPlaying = nowPlaying;
+    });
   }
 
   void _initFailoverListener() async {
@@ -193,6 +217,7 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
     _channelListController.dispose();
     _guideScrollController.dispose();
     _overlayTimer?.cancel();
+    _nowPlayingTimer?.cancel();
     _volumeOverlayTimer?.cancel();
     _topBarTimer?.cancel();
     _failoverTimer?.cancel();
@@ -223,17 +248,26 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
     final mappings = await database.getAllMappings();
     final epgMap = <String, String>{};
     for (final m in mappings) {
-      // Programmes are stored with prefixed ID: ${sourceId}_${epgChannelId}
       epgMap[m.channelId] = '${m.epgSourceId}_${m.epgChannelId}';
     }
 
-    // Load now-playing EPG data using mapped IDs (fall back to tvgId)
+    // Load valid EPG channel IDs from all sources
+    final epgSources = await database.getAllEpgSources();
+    final validIds = <String>{};
+    for (final src in epgSources) {
+      final chs = await database.getEpgChannelsForSource(src.id);
+      for (final ch in chs) {
+        validIds.add(ch.id); // prefixed: sourceId_channelId
+      }
+    }
+
+    // Load now-playing EPG data using mapped IDs (fall back to tvgId only if valid)
     final epgChannelIds = <String>{};
     for (final c in allChannels) {
       final mapped = epgMap[c.id];
       if (mapped != null && mapped.isNotEmpty) {
         epgChannelIds.add(mapped);
-      } else if (c.tvgId != null && c.tvgId!.isNotEmpty) {
+      } else if (c.tvgId != null && c.tvgId!.isNotEmpty && validIds.contains(c.tvgId)) {
         epgChannelIds.add(c.tvgId!);
       }
     }
@@ -252,6 +286,7 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
       _groups = groups;
       _nowPlaying = nowPlaying;
       _epgMappings = epgMap;
+      _validEpgChannelIds = validIds;
       _favoriteLists = favLists;
       _favoritedChannelIds = favChannelIds;
       _isLoading = false;
@@ -422,11 +457,13 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
   // EPG helpers
   // ---------------------------------------------------------------------------
 
-  /// Get the effective EPG channel ID: mapped ID takes priority over tvgId.
+  /// Get the effective EPG channel ID: mapped ID takes priority, tvgId only if valid.
   String? _getEpgId(db.Channel channel) {
     final mapped = _epgMappings[channel.id];
     if (mapped != null && mapped.isNotEmpty) return mapped;
-    if (channel.tvgId != null && channel.tvgId!.isNotEmpty) return channel.tvgId;
+    if (channel.tvgId != null && channel.tvgId!.isNotEmpty && _validEpgChannelIds.contains(channel.tvgId)) {
+      return channel.tvgId;
+    }
     return null;
   }
 

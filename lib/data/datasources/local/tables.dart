@@ -130,3 +130,35 @@ class FavoriteListChannels extends Table {
   @override
   Set<Column> get primaryKey => {listId, channelId};
 }
+
+/// EPG reminders — notify user before a programme starts.
+class EpgReminders extends Table {
+  TextColumn get id => text()();
+  TextColumn get epgChannelId => text()();
+  TextColumn get channelId => text().nullable()(); // link to Channels table
+  TextColumn get programmeTitle => text()();
+  DateTimeColumn get programmeStart => dateTime()();
+  DateTimeColumn get programmeStop => dateTime()();
+  IntColumn get minutesBefore => integer().withDefault(const Constant(5))();
+  BoolColumn get fired => boolean().withDefault(const Constant(false))();
+  DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
+/// Scheduled recordings — record a programme when it airs.
+class ScheduledRecordings extends Table {
+  TextColumn get id => text()();
+  TextColumn get epgChannelId => text()();
+  TextColumn get channelId => text().nullable()();
+  TextColumn get programmeTitle => text()();
+  DateTimeColumn get programmeStart => dateTime()();
+  DateTimeColumn get programmeStop => dateTime()();
+  TextColumn get status => text().withDefault(const Constant('scheduled'))(); // scheduled, recording, completed, failed
+  TextColumn get outputPath => text().nullable()();
+  DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
