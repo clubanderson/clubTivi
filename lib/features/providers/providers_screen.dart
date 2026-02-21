@@ -29,9 +29,27 @@ class ProvidersScreen extends ConsumerWidget {
       body: providersAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, _) => Center(child: Text('Error: $e')),
-        data: (providers) => providers.isEmpty
-            ? const _EmptyState()
-            : _ProviderList(providers: providers),
+        data: (providers) => ListView(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          children: [
+            if (providers.isNotEmpty) ...[
+              const _SectionHeader(title: 'Your Providers'),
+              ...providers.map((p) => _ProviderCard(provider: p)),
+              const SizedBox(height: 24),
+            ],
+            const _SectionHeader(title: 'Free TV Providers'),
+            const SizedBox(height: 8),
+            const Text(
+              'Tap to add free ad-supported channels',
+              style: TextStyle(color: Colors.white38, fontSize: 13),
+            ),
+            const SizedBox(height: 12),
+            ...FreeTvProvider.all.map((fp) => _FreeTvProviderTile(
+                  freeProvider: fp,
+                  isAdded: providers.any((p) => p.id == fp.id),
+                )),
+          ],
+        ),
       ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => showAddProviderDialog(context),
@@ -42,41 +60,22 @@ class ProvidersScreen extends ConsumerWidget {
   }
 }
 
-class _EmptyState extends StatelessWidget {
-  const _EmptyState();
+class _SectionHeader extends StatelessWidget {
+  final String title;
+  const _SectionHeader({required this.title});
 
   @override
   Widget build(BuildContext context) {
-    return const Center(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(Icons.dns_rounded, size: 64, color: Colors.white24),
-          SizedBox(height: 16),
-          Text('No providers configured',
-              style: TextStyle(fontSize: 20, color: Colors.white54)),
-          SizedBox(height: 8),
-          Text(
-            'Add an M3U playlist or Xtream Codes login',
-            style: TextStyle(fontSize: 14, color: Colors.white38),
-          ),
-        ],
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Text(
+        title,
+        style: const TextStyle(
+          fontSize: 18,
+          fontWeight: FontWeight.bold,
+          color: Colors.white70,
+        ),
       ),
-    );
-  }
-}
-
-class _ProviderList extends ConsumerWidget {
-  final List<db.Provider> providers;
-  const _ProviderList({required this.providers});
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    return ListView.builder(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      itemCount: providers.length,
-      itemBuilder: (context, index) =>
-          _ProviderCard(provider: providers[index]),
     );
   }
 }
@@ -191,5 +190,145 @@ class _ProviderCard extends ConsumerWidget {
         ),
       ),
     );
+  }
+}
+
+/// A well-known free FAST TV provider
+class FreeTvProvider {
+  final String id;
+  final String name;
+  final String url;
+  final String? epgUrl;
+  final IconData icon;
+  final String description;
+
+  const FreeTvProvider({
+    required this.id,
+    required this.name,
+    required this.url,
+    this.epgUrl,
+    this.icon = Icons.live_tv_rounded,
+    this.description = '',
+  });
+
+  static const all = [
+    FreeTvProvider(
+      id: 'pluto-tv',
+      name: 'Pluto TV',
+      url: 'https://iptv-org.github.io/iptv/us_pluto.m3u',
+      description: '200+ free channels — news, movies, sports, comedy',
+      icon: Icons.live_tv_rounded,
+    ),
+    FreeTvProvider(
+      id: 'samsung-tv-plus',
+      name: 'Samsung TV Plus',
+      url: 'https://iptv-org.github.io/iptv/us_samsung.m3u',
+      description: 'Free channels from Samsung — entertainment, news, sports',
+      icon: Icons.tv_rounded,
+    ),
+    FreeTvProvider(
+      id: 'plex-tv',
+      name: 'Plex FAST',
+      url: 'https://iptv-org.github.io/iptv/us_plex.m3u',
+      description: 'Free live TV from Plex — movies, shows, news',
+      icon: Icons.play_circle_outline_rounded,
+    ),
+    FreeTvProvider(
+      id: 'stirr-tv',
+      name: 'Stirr',
+      url: 'https://iptv-org.github.io/iptv/us_stirr.m3u',
+      description: 'Free local & national channels from Sinclair',
+      icon: Icons.cell_tower_rounded,
+    ),
+    FreeTvProvider(
+      id: 'xumo-tv',
+      name: 'Xumo',
+      url: 'https://iptv-org.github.io/iptv/us_xumo.m3u',
+      description: 'Free streaming — news, sports, movies, kids',
+      icon: Icons.stream_rounded,
+    ),
+    FreeTvProvider(
+      id: 'tubi-tv',
+      name: 'Tubi',
+      url: 'https://iptv-org.github.io/iptv/us_tubi.m3u',
+      description: 'Free movies and TV shows, ad-supported',
+      icon: Icons.movie_filter_rounded,
+    ),
+    FreeTvProvider(
+      id: 'roku-channel',
+      name: 'The Roku Channel',
+      url: 'https://www.apsattv.com/rok.m3u',
+      description: 'Free live TV and on-demand from Roku',
+      icon: Icons.connected_tv_rounded,
+    ),
+    FreeTvProvider(
+      id: 'iptv-org-us',
+      name: 'IPTV-Org (US)',
+      url: 'https://iptv-org.github.io/iptv/countries/us.m3u',
+      description: 'Community-maintained US channels aggregator',
+      icon: Icons.public_rounded,
+    ),
+  ];
+}
+
+class _FreeTvProviderTile extends ConsumerWidget {
+  final FreeTvProvider freeProvider;
+  final bool isAdded;
+
+  const _FreeTvProviderTile({
+    required this.freeProvider,
+    required this.isAdded,
+  });
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    const accent = Color(0xFF6C5CE7);
+    return Card(
+      margin: const EdgeInsets.only(bottom: 8),
+      child: ListTile(
+        leading: Icon(freeProvider.icon, color: accent, size: 32),
+        title: Text(
+          freeProvider.name,
+          style: const TextStyle(fontWeight: FontWeight.w600),
+        ),
+        subtitle: Text(
+          freeProvider.description,
+          style: const TextStyle(fontSize: 12, color: Colors.white54),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
+        trailing: isAdded
+            ? const Icon(Icons.check_circle, color: Colors.greenAccent, size: 28)
+            : IconButton(
+                icon: const Icon(Icons.add_circle_outline, color: accent, size: 28),
+                onPressed: () => _addProvider(context, ref),
+              ),
+      ),
+    );
+  }
+
+  Future<void> _addProvider(BuildContext context, WidgetRef ref) async {
+    try {
+      final manager = ref.read(providerManagerProvider);
+      await manager.addM3uProvider(
+        id: freeProvider.id,
+        name: freeProvider.name,
+        url: freeProvider.url,
+      );
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('${freeProvider.name} added — loading channels...')),
+      );
+    } on ProviderLimitException catch (e) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.toString())),
+      );
+    } catch (e) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to add: $e')),
+      );
+    }
   }
 }
