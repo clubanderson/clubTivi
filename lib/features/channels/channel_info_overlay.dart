@@ -12,7 +12,7 @@ import '../player/player_service.dart';
 enum OverlayPosition { top, bottom }
 
 class ChannelInfoOverlay extends StatefulWidget {
-  final int channelNumber;
+  final String? providerName;
   final String channelName;
   final String? channelLogo;
   final String? groupTitle;
@@ -26,7 +26,7 @@ class ChannelInfoOverlay extends StatefulWidget {
 
   const ChannelInfoOverlay({
     super.key,
-    required this.channelNumber,
+    this.providerName,
     required this.channelName,
     this.channelLogo,
     this.groupTitle,
@@ -127,7 +127,7 @@ class _ChannelInfoOverlayState extends State<ChannelInfoOverlay>
   @override
   void didUpdateWidget(covariant ChannelInfoOverlay oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.channelNumber != widget.channelNumber ||
+    if (oldWidget.providerName != widget.providerName ||
         oldWidget.channelName != widget.channelName) {
       reset();
     }
@@ -191,16 +191,25 @@ class _ChannelInfoOverlayState extends State<ChannelInfoOverlay>
                     const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                 child: Row(
                   children: [
-                    // Channel number
-                    Text(
-                      '${widget.channelNumber}',
-                      style: const TextStyle(
-                        fontSize: 22,
-                        fontWeight: FontWeight.bold,
-                        color: Color(0xFF6C5CE7),
+                    // Provider name badge
+                    if (widget.providerName != null && widget.providerName!.isNotEmpty)
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        margin: const EdgeInsets.only(right: 10),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF6C5CE7).withValues(alpha: 0.3),
+                          borderRadius: BorderRadius.circular(4),
+                          border: Border.all(color: const Color(0xFF6C5CE7).withValues(alpha: 0.5)),
+                        ),
+                        child: Text(
+                          widget.providerName!,
+                          style: const TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.bold,
+                            color: Color(0xFF6C5CE7),
+                          ),
+                        ),
                       ),
-                    ),
-                    const SizedBox(width: 10),
                     // Logo
                     if (widget.channelLogo != null &&
                         widget.channelLogo!.isNotEmpty)
