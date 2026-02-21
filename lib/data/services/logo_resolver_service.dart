@@ -98,9 +98,10 @@ class LogoResolverService {
   static String _normalizeChannelName(String name) {
     var n = name.toLowerCase().trim();
 
-    // Strip common IPTV prefixes like "US-P|", "US:", "UK:", "CA:", etc.
-    n = n.replaceAll(RegExp(r'^[a-z]{2}[-:]?\s*\|?\s*'), '');
-    // But if that stripped everything, use original
+    // Strip IPTV prefixes only when a separator is present:
+    // "US-P| CBS" → "CBS", "UK| BBC" → "BBC", "CA: CBC" → "CBC"
+    n = n.replaceAll(RegExp(r'^[a-z]{2}[-]?[a-z]?\|\s*'), '');
+    n = n.replaceAll(RegExp(r'^[a-z]{2}:\s+'), '');
     if (n.isEmpty) n = name.toLowerCase().trim();
 
     // Remove quality tags
@@ -137,17 +138,31 @@ class LogoResolverService {
     // Strategy 3: Find keys that start with our normalized name
     final prefixMatches = index.keys
         .where((k) => k.startsWith(normalized))
-        .toList()
-      ..sort((a, b) => a.length.compareTo(b.length)); // shortest first
-    if (prefixMatches.isNotEmpty) return index[prefixMatches.first];
+        .toList();
+    if (prefixMatches.isNotEmpty) {
+      // Prefer: exact+"-logo" variants > shortest non-variant match
+      final logoVariant = prefixMatches
+          .where((k) => k.startsWith('$normalized-logo'))
+          .toList()
+        ..sort((a, b) => a.length.compareTo(b.length));
+      if (logoVariant.isNotEmpty) return index[logoVariant.first];
+      // Otherwise prefer the plain network logo (skip sport/news variants)
+      final plain = prefixMatches
+          .where((k) => !k.contains('-news') && !k.contains('-sport') &&
+                        !k.contains('-nfl') && !k.contains('-nba'))
+          .toList()
+        ..sort((a, b) => a.length.compareTo(b.length));
+      if (plain.isNotEmpty) return index[plain.first];
+      prefixMatches.sort((a, b) => a.length.compareTo(b.length));
+      return index[prefixMatches.first];
+    }
 
-    // Strategy 4: Check if any key starts with our name (partial match)
+    // Strategy 4: Check if any key contains our name or vice versa
     final containsMatches = index.keys
         .where((k) => k.contains(normalized) || normalized.contains(k))
-        .where((k) => k.length > 2) // avoid trivial matches
+        .where((k) => k.length > 2)
         .toList()
       ..sort((a, b) {
-        // Prefer closer length matches
         final diffA = (a.length - normalized.length).abs();
         final diffB = (b.length - normalized.length).abs();
         return diffA.compareTo(diffB);
@@ -171,6 +186,13 @@ class LogoResolverService {
     // "the-weather-channel" → "weather-channel"
     if (normalized.startsWith('the-')) {
       aliases.add(normalized.substring(4));
+    }
+    // "usa-food-network" → "food-network" (strip country prefix)
+    if (normalized.startsWith('usa-')) {
+      aliases.add(normalized.substring(4));
+    }
+    if (normalized.startsWith('us-')) {
+      aliases.add(normalized.substring(3));
     }
     // Try adding common suffixes
     aliases.add('$normalized-network');
