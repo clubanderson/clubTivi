@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 
 import '../../data/datasources/local/database.dart' as db;
@@ -123,11 +124,14 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
 
   void _startPlayback() {
     final playerService = ref.read(playerServiceProvider);
+    final urls = [widget.streamUrl, ...widget.alternativeUrls];
 
-    // Only start playback if not already playing (preview already started it)
-    if (!(playerService.player.state.playing ||
-        playerService.player.state.buffering)) {
-      final urls = [widget.streamUrl, ...widget.alternativeUrls];
+    // If channels list is empty, this is a show/VOD stream — always start fresh
+    final isShowStream = widget.channels.isEmpty;
+
+    if (isShowStream ||
+        !(playerService.player.state.playing ||
+            playerService.player.state.buffering)) {
       playerService.play(urls[_currentUrlIndex]);
     }
 
@@ -196,7 +200,9 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
     if (key == LogicalKeyboardKey.escape ||
         key == LogicalKeyboardKey.backspace ||
         key == LogicalKeyboardKey.goBack) {
-      Navigator.of(context).pop();
+      GoRouter.of(context).canPop()
+          ? GoRouter.of(context).pop()
+          : GoRouter.of(context).go('/');
       return KeyEventResult.handled;
     }
 
@@ -307,7 +313,11 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
                               color: Colors.white, size: 20),
                           padding: EdgeInsets.zero,
                           constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
-                          onPressed: () => Navigator.of(context).pop(),
+                          onPressed: () {
+                            GoRouter.of(context).canPop()
+                                ? GoRouter.of(context).pop()
+                                : GoRouter.of(context).go('/');
+                          },
                         ),
                         const SizedBox(width: 4),
                         if (_currentChannelLogo != null)

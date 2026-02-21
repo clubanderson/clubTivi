@@ -138,6 +138,12 @@ class _CastDialogState extends State<_CastDialog> {
               ),
       ),
       actions: [
+        TextButton.icon(
+          onPressed: _addManualDevice,
+          icon: const Icon(Icons.add_rounded, size: 16),
+          label: const Text('Add by IP'),
+          style: TextButton.styleFrom(foregroundColor: Colors.amber),
+        ),
         if (_castService.isCasting)
           TextButton.icon(
             onPressed: () async {
@@ -157,6 +163,7 @@ class _CastDialogState extends State<_CastDialog> {
   }
 
   IconData _iconForDevice(CastDevice device) {
+    if (device.type == 'webos') return Icons.tv_rounded;
     final name = device.name.toLowerCase();
     if (name.contains('apple tv') || name.contains('airplay')) {
       return Icons.tv_rounded;
@@ -168,5 +175,79 @@ class _CastDialogState extends State<_CastDialog> {
       return Icons.speaker_rounded;
     }
     return Icons.devices_rounded;
+  }
+
+  Future<void> _addManualDevice() async {
+    final controller = TextEditingController();
+    final ip = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF1A1A2E),
+        title: const Text('Add Device by IP', style: TextStyle(color: Colors.white, fontSize: 16)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Enter the IP address of your LG WebOS TV.',
+              style: TextStyle(color: Colors.white54, fontSize: 13),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: controller,
+              autofocus: true,
+              style: const TextStyle(color: Colors.white),
+              decoration: InputDecoration(
+                hintText: '192.168.1.xxx',
+                hintStyle: const TextStyle(color: Colors.white24),
+                filled: true,
+                fillColor: Colors.white.withValues(alpha: 0.05),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+              ),
+              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              onSubmitted: (v) => Navigator.of(ctx).pop(v.trim()),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('Cancel', style: TextStyle(color: Colors.white54)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(controller.text.trim()),
+            child: const Text('Connect', style: TextStyle(color: Colors.amber)),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+
+    if (ip == null || ip.isEmpty) return;
+
+    setState(() => _scanning = true);
+    final device = await _castService.addManualDevice(ip);
+    if (mounted) {
+      setState(() => _scanning = false);
+      if (device != null) {
+        if (device.type == 'webos' && device.webosClient?.isConnected == true) {
+          Navigator.of(context).pop(device);
+        } else if (device.type == 'webos') {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Check your TV — accept the pairing prompt'),
+              backgroundColor: Color(0xFF2D2D44),
+            ),
+          );
+        }
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('No compatible device found at $ip'),
+            backgroundColor: Colors.red.shade800,
+          ),
+        );
+      }
+    }
   }
 }
