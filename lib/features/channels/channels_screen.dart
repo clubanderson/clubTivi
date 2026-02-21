@@ -13,11 +13,13 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/fuzzy_match.dart';
 import '../../data/datasources/local/database.dart' as db;
+import '../../data/datasources/remote/tmdb_client.dart';
 import '../../data/services/epg_refresh_service.dart';
 import '../casting/cast_service.dart';
 import '../casting/cast_dialog.dart';
 import '../player/player_service.dart';
 import '../providers/provider_manager.dart';
+import '../shows/shows_providers.dart';
 import 'channel_debug_dialog.dart';
 import 'channel_info_overlay.dart';
 
@@ -102,6 +104,9 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
   // Per-channel EPG timeshift in hours
   final Map<String, int> _epgTimeshifts = {};
   static const _kEpgTimeshifts = 'epg_timeshifts';
+
+  // IMDB ID cache: show title → IMDB ID (null = lookup in progress/failed)
+  final Map<String, String?> _imdbIdCache = {};
 
   // Persistence keys
   static const _kLastChannelId = 'last_channel_id';
@@ -634,19 +639,58 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
   /// Parse XMLTV episode-num into readable label (e.g. "S2 E5").
   String? _parseEpisodeLabel(String? episodeNum) {
     if (episodeNum == null || episodeNum.isEmpty) return null;
-    final seFmt = RegExp(r'S(\d+)\s*E(\d+)', caseSensitive: false);
-    final seMatch = seFmt.firstMatch(episodeNum);
-    if (seMatch != null) return 'S${seMatch.group(1)} E${seMatch.group(2)}';
-    final nsFmt = RegExp(r'^(\d+)\.(\d+)');
-    final nsMatch = nsFmt.firstMatch(episodeNum);
-    if (nsMatch != null) {
-      return 'S${int.parse(nsMatch.group(1)!) + 1} E${int.parse(nsMatch.group(2)!) + 1}';
-    }
+    final se = _parseSeasonEpisode(episodeNum);
+    if (se != null) return 'S${se.$1} E${se.$2}';
     return episodeNum;
   }
 
-  String _imdbSearchUrl(String title) =>
-      'https://www.imdb.com/find/?q=${Uri.encodeComponent(title)}&s=tt&ttype=tv';
+  /// Parse episode string into (season, episode) integers.
+  (int, int)? _parseSeasonEpisode(String? episodeNum) {
+    if (episodeNum == null || episodeNum.isEmpty) return null;
+    final seFmt = RegExp(r'S(\d+)\s*E(\d+)', caseSensitive: false);
+    final seMatch = seFmt.firstMatch(episodeNum);
+    if (seMatch != null) {
+      return (int.parse(seMatch.group(1)!), int.parse(seMatch.group(2)!));
+    }
+    final nsFmt = RegExp(r'^(\d+)\.(\d+)');
+    final nsMatch = nsFmt.firstMatch(episodeNum);
+    if (nsMatch != null) {
+      return (int.parse(nsMatch.group(1)!) + 1, int.parse(nsMatch.group(2)!) + 1);
+    }
+    return null;
+  }
+
+  /// Build IMDB URL — exact if IMDB ID cached, otherwise search fallback.
+  String _imdbUrl(String title, String? episodeNum) {
+    final imdbId = _imdbIdCache[title.toLowerCase()];
+    if (imdbId != null) {
+      final se = _parseSeasonEpisode(episodeNum);
+      if (se != null) {
+        return 'https://www.imdb.com/title/$imdbId/episodes/?season=${se.$1}';
+      }
+      return 'https://www.imdb.com/title/$imdbId/';
+    }
+    return 'https://www.imdb.com/find/?q=${Uri.encodeComponent(title)}&s=tt&ttype=tv';
+  }
+
+  /// Resolve IMDB ID for a show via TMDB (cached, background).
+  Future<void> _resolveImdbId(String title) async {
+    final key = title.toLowerCase();
+    if (_imdbIdCache.containsKey(key)) return;
+    _imdbIdCache[key] = null; // mark in-progress
+    try {
+      final keys = ref.read(showsApiKeysProvider);
+      if (!keys.hasTmdbKey) return;
+      final tmdb = TmdbClient(apiKey: keys.tmdbApiKey);
+      final results = await tmdb.searchTv(title);
+      if (results.isEmpty) return;
+      final detail = await tmdb.getTvShow(results.first.id);
+      if (detail.imdbId != null && detail.imdbId!.isNotEmpty) {
+        _imdbIdCache[key] = detail.imdbId;
+        if (mounted) setState(() {});
+      }
+    } catch (_) {}
+  }
 
   void _resetGuideIdleTimer(DateTime dayStart) {
     _guideIdleTimer?.cancel();
@@ -1168,22 +1212,26 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
                           if (programme != null && programme.episodeNum != null && programme.episodeNum!.isNotEmpty)
                             Padding(
                               padding: const EdgeInsets.only(top: 4),
-                              child: GestureDetector(
-                                onTap: () => launchUrl(Uri.parse(_imdbSearchUrl(programme.title))),
-                                child: Row(
-                                  children: [
-                                    Text(
-                                      _parseEpisodeLabel(programme.episodeNum) ?? programme.episodeNum!,
-                                      style: const TextStyle(color: Colors.white60, fontSize: 11),
-                                    ),
-                                    const SizedBox(width: 8),
-                                    const Text(
-                                      'IMDb ↗',
-                                      style: TextStyle(color: Colors.amber, fontSize: 11, decoration: TextDecoration.underline),
-                                    ),
-                                  ],
-                                ),
-                              ),
+                              child: Builder(builder: (_) {
+                                _resolveImdbId(programme.title);
+                                final hasExact = _imdbIdCache[programme.title.toLowerCase()] != null;
+                                return GestureDetector(
+                                  onTap: () => launchUrl(Uri.parse(_imdbUrl(programme.title, programme.episodeNum))),
+                                  child: Row(
+                                    children: [
+                                      Text(
+                                        _parseEpisodeLabel(programme.episodeNum) ?? programme.episodeNum!,
+                                        style: const TextStyle(color: Colors.white60, fontSize: 11),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Text(
+                                        hasExact ? 'IMDb ↗' : 'IMDb 🔍',
+                                        style: const TextStyle(color: Colors.amber, fontSize: 11, decoration: TextDecoration.underline),
+                                      ),
+                                    ],
+                                  ),
+                                );
+                              }),
                             ),
                           // Next up
                           if (nextProg != null)
