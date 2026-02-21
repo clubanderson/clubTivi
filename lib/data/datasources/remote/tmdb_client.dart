@@ -47,15 +47,17 @@ class TmdbClient {
   /// Get still/screenshot URL (w300)
   static String stillUrl(String? path) => imageUrl(path, size: 'w300');
 
-  /// Get TV show details including images
+  /// Get TV show details including images and external IDs
   Future<TmdbShowDetail> getTvShow(int tmdbId) async {
-    final response = await _dio.get('/tv/$tmdbId');
+    final response = await _dio.get('/tv/$tmdbId',
+        queryParameters: {'append_to_response': 'external_ids'});
     return TmdbShowDetail.fromJson(response.data as Map<String, dynamic>);
   }
 
-  /// Get movie details including images
+  /// Get movie details including images and external IDs
   Future<TmdbShowDetail> getMovie(int tmdbId) async {
-    final response = await _dio.get('/movie/$tmdbId');
+    final response = await _dio.get('/movie/$tmdbId',
+        queryParameters: {'append_to_response': 'external_ids'});
     return TmdbShowDetail.fromJson(response.data as Map<String, dynamic>);
   }
 
@@ -154,6 +156,7 @@ class TmdbClient {
 class TmdbShowDetail {
   final int id;
   final String title;
+  final String? imdbId;
   final String? posterPath;
   final String? backdropPath;
   final String? overview;
@@ -167,6 +170,7 @@ class TmdbShowDetail {
   const TmdbShowDetail({
     required this.id,
     this.title = '',
+    this.imdbId,
     this.posterPath,
     this.backdropPath,
     this.overview,
@@ -183,9 +187,13 @@ class TmdbShowDetail {
 
   factory TmdbShowDetail.fromJson(Map<String, dynamic> json) {
     final releaseDate = json['release_date'] as String? ?? json['first_air_date'] as String? ?? '';
+    // IMDB ID: movies have it at top level, TV shows have it in external_ids
+    final externalIds = json['external_ids'] as Map<String, dynamic>?;
+    final imdbId = json['imdb_id'] as String? ?? externalIds?['imdb_id'] as String?;
     return TmdbShowDetail(
       id: json['id'] as int,
       title: json['title'] as String? ?? json['name'] as String? ?? '',
+      imdbId: imdbId,
       posterPath: json['poster_path'] as String?,
       backdropPath: json['backdrop_path'] as String?,
       overview: json['overview'] as String?,

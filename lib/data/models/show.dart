@@ -41,6 +41,7 @@ class Show extends Equatable {
   });
 
   Show copyWith({
+    String? imdbId,
     String? posterUrl,
     String? backdropUrl,
     String? overview,
@@ -52,7 +53,7 @@ class Show extends Equatable {
   }) {
     return Show(
       traktId: traktId,
-      imdbId: imdbId,
+      imdbId: imdbId ?? this.imdbId,
       tmdbId: tmdbId,
       title: title,
       year: year,

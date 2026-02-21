@@ -297,12 +297,12 @@ class _ShowDetailScreenState extends ConsumerState<ShowDetailScreen> {
         _showSnackbar('No cached streams found');
         return;
       }
-      // Play the best quality stream
-      _launchPlayer(streams.first, show.title);
+      if (!mounted) return;
+      _showStreamPicker(streams, show.title);
     } catch (e) {
       _showSnackbar('Stream error: $e');
     } finally {
-      setState(() => _resolving = false);
+      if (mounted) setState(() => _resolving = false);
     }
   }
 
@@ -324,12 +324,99 @@ class _ShowDetailScreenState extends ConsumerState<ShowDetailScreen> {
         _showSnackbar('No cached streams found for ${episode.code}');
         return;
       }
-      _launchPlayer(streams.first, '${show.title} ${episode.code}');
+      if (!mounted) return;
+      _showStreamPicker(streams, '${show.title} ${episode.code}');
     } catch (e) {
       _showSnackbar('Stream error: $e');
     } finally {
-      setState(() => _resolving = false);
+      if (mounted) setState(() => _resolving = false);
     }
+  }
+
+  void _showStreamPicker(List<ResolvedStream> streams, String title) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: const Color(0xFF1A1A2E),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
+              child: Text(
+                'Select Stream',
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              child: Text(
+                title,
+                style: const TextStyle(color: Colors.white54, fontSize: 13),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            const SizedBox(height: 8),
+            const Divider(color: Colors.white12, height: 1),
+            ...streams.map((stream) => ListTile(
+                  leading: _streamQualityBadge(stream.quality),
+                  title: Text(
+                    stream.filename,
+                    style: const TextStyle(color: Colors.white, fontSize: 14),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  subtitle: Text(
+                    [
+                      if (stream.filesizeDisplay.isNotEmpty) stream.filesizeDisplay,
+                      stream.source,
+                    ].join(' • '),
+                    style: const TextStyle(color: Colors.white38, fontSize: 12),
+                  ),
+                  trailing: const Icon(Icons.play_circle_fill,
+                      color: Color(0xFF6C5CE7), size: 32),
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    _launchPlayer(stream, title);
+                  },
+                )),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _streamQualityBadge(String? quality) {
+    final color = switch (quality) {
+      '4K' => Colors.amber,
+      '1080p' => Colors.greenAccent,
+      '720p' => Colors.lightBlueAccent,
+      _ => Colors.white38,
+    };
+    return Container(
+      width: 52,
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.15),
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: color.withValues(alpha: 0.4)),
+      ),
+      child: Text(
+        quality ?? '?',
+        textAlign: TextAlign.center,
+        style: TextStyle(color: color, fontSize: 12, fontWeight: FontWeight.bold),
+      ),
+    );
   }
 
   void _launchPlayer(ResolvedStream stream, String title) {
