@@ -60,8 +60,13 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
 
   void _startPlayback() {
     final playerService = ref.read(playerServiceProvider);
-    final urls = [widget.streamUrl, ...widget.alternativeUrls];
-    playerService.play(urls[_currentUrlIndex]);
+
+    // Only start playback if not already playing (preview already started it)
+    if (!(playerService.player.state.playing ||
+        playerService.player.state.buffering)) {
+      final urls = [widget.streamUrl, ...widget.alternativeUrls];
+      playerService.play(urls[_currentUrlIndex]);
+    }
 
     playerService.bufferingStream.listen((buffering) {
       playerService.onBufferingChanged(buffering);
