@@ -2122,6 +2122,7 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
                   child: SizedBox(
                     width: totalWidth,
                     child: Row(
+                      mainAxisSize: MainAxisSize.min,
                       children: List.generate(24, (hour) {
                         final width = 60 * _pixelsPerMinute;
                         return SizedBox(
