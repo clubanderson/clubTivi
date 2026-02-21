@@ -135,6 +135,17 @@ class AppDatabase extends _$AppDatabase {
         .get();
   }
 
+  Future<List<EpgProgramme>> getNowPlayingWindow(
+    List<String> epgChannelIds, DateTime from, DateTime to,
+  ) {
+    return (select(epgProgrammes)
+          ..where((t) =>
+              t.epgChannelId.isIn(epgChannelIds) &
+              t.start.isSmallerOrEqualValue(to) &
+              t.stop.isBiggerOrEqualValue(from)))
+        .get();
+  }
+
   Future<void> insertProgrammes(List<EpgProgrammesCompanion> entries) async {
     await batch((b) {
       b.insertAll(epgProgrammes, entries, mode: InsertMode.insertOrReplace);

@@ -75,6 +75,8 @@ class EpgProgrammes extends Table {
   TextColumn get sourceId => text().references(EpgSources, #id)();
   TextColumn get title => text()();
   TextColumn get description => text().nullable()();
+  TextColumn get subtitle => text().nullable()();
+  TextColumn get episodeNum => text().nullable()();
   TextColumn get category => text().nullable()();
   DateTimeColumn get start => dateTime()();
   DateTimeColumn get stop => dateTime()();
