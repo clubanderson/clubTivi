@@ -157,10 +157,6 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
     return matches.length > 1 ? matches[1] : null;
   }
 
-  String? _getNowPlayingTitle(db.Channel channel) {
-    return _getEpgProgramme(channel)?.title;
-  }
-
   String _formatTime(DateTime dt) {
     final h = dt.hour > 12 ? dt.hour - 12 : (dt.hour == 0 ? 12 : dt.hour);
     final m = dt.minute.toString().padLeft(2, '0');
@@ -251,28 +247,16 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
             children: [
               _buildTopBar(context),
               Expanded(
-                child: Row(
+                child: Column(
                   children: [
-                    // Left: preview + now-playing info
-                    Expanded(
-                      flex: 4,
-                      child: Column(
-                        children: [
-                          _buildVideoPreview(),
-                          _buildNowPlayingInfo(),
-                        ],
-                      ),
-                    ),
-                    // Right: group filter + channel list
-                    Expanded(
-                      flex: 6,
-                      child: Column(
-                        children: [
-                          _buildGroupFilter(),
-                          Expanded(child: _buildChannelList()),
-                        ],
-                      ),
-                    ),
+                    // Video preview
+                    _buildVideoPreview(),
+                    // Persistent info bar with channel name, buffering status, fullscreen
+                    _buildPreviewInfoBar(),
+                    // Group filter
+                    _buildGroupFilter(),
+                    // Channel list fills the rest
+                    Expanded(child: _buildChannelList()),
                   ],
                 ),
               ),
@@ -408,9 +392,10 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
   Widget _buildVideoPreview() {
     final playerService = ref.watch(playerServiceProvider);
 
-    return Expanded(
+    return SizedBox(
+      height: 240,
       child: Container(
-        margin: const EdgeInsets.only(left: 16, right: 8, top: 4),
+        margin: const EdgeInsets.only(left: 16, right: 16, top: 4),
         decoration: BoxDecoration(
           color: Colors.black,
           borderRadius: BorderRadius.circular(12),
@@ -434,7 +419,6 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
               )
             : GestureDetector(
                 onTap: () => _goFullscreen(_previewChannel!),
-                onDoubleTap: () => _goFullscreen(_previewChannel!),
                 child: Stack(
                   fit: StackFit.expand,
                   children: [
@@ -442,52 +426,7 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
                       controller: playerService.videoController,
                       controls: NoVideoControls,
                     ),
-                    // Channel info overlay at bottom (gradient)
-                    Positioned(
-                      left: 0,
-                      right: 0,
-                      bottom: 0,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 12, vertical: 8),
-                        decoration: const BoxDecoration(
-                          gradient: LinearGradient(
-                            begin: Alignment.bottomCenter,
-                            end: Alignment.topCenter,
-                            colors: [
-                              Colors.black87,
-                              Colors.transparent,
-                            ],
-                          ),
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Text(
-                              _previewChannel!.name,
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontWeight: FontWeight.bold,
-                                fontSize: 14,
-                              ),
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                            if (_getNowPlayingTitle(_previewChannel!) !=
-                                null)
-                              Text(
-                                _getNowPlayingTitle(_previewChannel!)!,
-                                style: const TextStyle(
-                                  color: Colors.white70,
-                                  fontSize: 12,
-                                ),
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                          ],
-                        ),
-                      ),
-                    ),
-                    // Cable TV-style channel info overlay
+                    // Cable TV-style channel info overlay (temporary on channel change)
                     if (_showOverlay && _previewChannel != null)
                       ChannelInfoOverlay(
                         channelNumber: _selectedIndex + 1,
@@ -516,72 +455,91 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
     );
   }
 
-  Widget _buildNowPlayingInfo() {
+  /// Persistent info bar below the video: channel name, sparkline, fullscreen.
+  Widget _buildPreviewInfoBar() {
     if (_previewChannel == null) return const SizedBox.shrink();
 
-    final epgTitle = _getNowPlayingTitle(_previewChannel!);
+    final playerService = ref.watch(playerServiceProvider);
 
     return Container(
-      width: double.infinity,
-      margin: const EdgeInsets.only(left: 16, right: 8, top: 4, bottom: 8),
-      padding: const EdgeInsets.all(12),
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       decoration: BoxDecoration(
         color: const Color(0xFF16213E),
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: BorderRadius.circular(8),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      child: Row(
         children: [
-          Text(
-            _previewChannel!.name,
-            style: const TextStyle(
-              color: Colors.white,
-              fontWeight: FontWeight.bold,
-              fontSize: 15,
-            ),
-          ),
-          const SizedBox(height: 2),
-          if (_previewChannel!.groupTitle != null &&
-              _previewChannel!.groupTitle!.isNotEmpty)
-            Text(
-              _previewChannel!.groupTitle!,
-              style: const TextStyle(color: Colors.white54, fontSize: 12),
-            ),
-          if (epgTitle != null) ...[
-            const SizedBox(height: 4),
-            Row(
+          // Channel name
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
               children: [
-                const Icon(Icons.play_circle_outline,
-                    size: 14, color: Color(0xFF6C5CE7)),
-                const SizedBox(width: 4),
-                Expanded(
-                  child: Text(
-                    epgTitle,
-                    style: const TextStyle(
-                      color: Color(0xFF6C5CE7),
-                      fontSize: 13,
-                      fontWeight: FontWeight.w500,
-                    ),
+                Text(
+                  _previewChannel!.name,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 13,
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
+                if (_previewChannel!.groupTitle != null &&
+                    _previewChannel!.groupTitle!.isNotEmpty)
+                  Text(
+                    _previewChannel!.groupTitle!,
+                    style:
+                        const TextStyle(color: Colors.white38, fontSize: 11),
                     overflow: TextOverflow.ellipsis,
                   ),
-                ),
               ],
             ),
-          ],
-          const SizedBox(height: 8),
+          ),
+          const SizedBox(width: 8),
+          // Buffering sparkline (always visible)
+          StreamBuilder<bool>(
+            stream: playerService.bufferingStream,
+            builder: (context, snapshot) {
+              final buffering = snapshot.data ?? false;
+              return Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (buffering)
+                    const SizedBox(
+                      width: 12,
+                      height: 12,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 1.5,
+                        color: Colors.orangeAccent,
+                      ),
+                    )
+                  else
+                    const Icon(Icons.signal_cellular_alt,
+                        size: 14, color: Colors.green),
+                  const SizedBox(width: 4),
+                  Text(
+                    buffering ? 'Buffering' : 'OK',
+                    style: TextStyle(
+                      color: buffering ? Colors.orangeAccent : Colors.green,
+                      fontSize: 11,
+                    ),
+                  ),
+                ],
+              );
+            },
+          ),
+          const SizedBox(width: 8),
+          // Fullscreen button
           SizedBox(
-            width: double.infinity,
-            child: ElevatedButton.icon(
+            height: 28,
+            child: TextButton.icon(
               onPressed: () => _goFullscreen(_previewChannel!),
-              icon: const Icon(Icons.fullscreen_rounded),
-              label: const Text('Watch Fullscreen'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF6C5CE7),
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(vertical: 10),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(8),
-                ),
+              icon: const Icon(Icons.fullscreen_rounded, size: 16),
+              label: const Text('Fullscreen', style: TextStyle(fontSize: 11)),
+              style: TextButton.styleFrom(
+                foregroundColor: Colors.white70,
+                padding: const EdgeInsets.symmetric(horizontal: 8),
               ),
             ),
           ),
