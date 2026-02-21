@@ -28,7 +28,25 @@ class PlayerService {
     _bufferStartTime = null;
     await player.open(Media(url));
     await player.setVolume(100.0);
+
+    // Auto-select first audio track when tracks become available.
+    // Some streams don't auto-select audio.
+    player.stream.tracks.listen((tracks) {
+      if (tracks.audio.length > 1) {
+        // Index 0 is usually "no" / auto; pick first real track
+        final audioTrack = tracks.audio.length > 1 ? tracks.audio[1] : tracks.audio.first;
+        player.setAudioTrack(audioTrack);
+      }
+    });
   }
+
+  /// Whether audio tracks are available on the current stream.
+  Stream<bool> get hasAudioStream =>
+      player.stream.tracks.map((t) => t.audio.length > 1);
+
+  /// Number of audio tracks.
+  Stream<int> get audioTrackCountStream =>
+      player.stream.tracks.map((t) => t.audio.length);
 
   /// Stop playback.
   Future<void> stop() async {
