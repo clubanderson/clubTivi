@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:drift/drift.dart' show Value;
 import 'package:flutter/material.dart';
@@ -8,6 +9,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:media_kit_video/media_kit_video.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/fuzzy_match.dart';
 import '../../data/datasources/local/database.dart' as db;
@@ -99,6 +101,7 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
 
   // Per-channel EPG timeshift in hours
   final Map<String, int> _epgTimeshifts = {};
+  static const _kEpgTimeshifts = 'epg_timeshifts';
 
   // Persistence keys
   static const _kLastChannelId = 'last_channel_id';
@@ -140,7 +143,14 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
       }
     }
     if (epgChannelIds.isEmpty) return;
-    final nowPlaying = await database.getNowPlaying(epgChannelIds.toList());
+    final maxShift = _epgTimeshifts.values.fold<int>(0, (m, v) => v.abs() > m ? v.abs() : m);
+    final now = DateTime.now();
+    final nowPlaying = maxShift > 0
+        ? await database.getNowPlayingWindow(
+            epgChannelIds.toList(),
+            now.subtract(Duration(hours: maxShift + 1)),
+            now.add(Duration(hours: maxShift + 1)))
+        : await database.getNowPlaying(epgChannelIds.toList());
     if (!mounted) return;
     setState(() {
       _nowPlaying = nowPlaying;
@@ -370,6 +380,16 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
   Future<void> _restoreSession() async {
     final prefs = await SharedPreferences.getInstance();
     _use24HourTime = prefs.getBool(_kUse24HourTime) ?? false;
+
+    // Restore EPG timeshifts
+    final tsJson = prefs.getString(_kEpgTimeshifts);
+    if (tsJson != null) {
+      try {
+        final decoded = jsonDecode(tsJson) as Map<String, dynamic>;
+        _epgTimeshifts.clear();
+        decoded.forEach((k, v) => _epgTimeshifts[k] = v as int);
+      } catch (_) {}
+    }
     final lastGroup = prefs.getString(_kLastGroup);
     final lastChannelId = prefs.getString(_kLastChannelId);
 
@@ -574,17 +594,25 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
   db.EpgProgramme? _getEpgProgramme(db.Channel channel) {
     final epgId = _getEpgId(channel);
     if (epgId == null) return null;
-    final matches =
-        _nowPlaying.where((p) => p.epgChannelId == epgId).toList();
+    final shift = _epgTimeshifts[channel.id] ?? 0;
+    final adjusted = DateTime.now().subtract(Duration(hours: shift));
+    final matches = _nowPlaying.where((p) =>
+        p.epgChannelId == epgId &&
+        !p.start.isAfter(adjusted) &&
+        p.stop.isAfter(adjusted)).toList();
     return matches.isNotEmpty ? matches.first : null;
   }
 
   db.EpgProgramme? _getNextProgramme(db.Channel channel) {
     final epgId = _getEpgId(channel);
     if (epgId == null) return null;
-    final matches =
-        _nowPlaying.where((p) => p.epgChannelId == epgId).toList();
-    return matches.length > 1 ? matches[1] : null;
+    final current = _getEpgProgramme(channel);
+    if (current == null) return null;
+    final matches = _nowPlaying.where((p) =>
+        p.epgChannelId == epgId &&
+        !p.start.isBefore(current.stop)).toList();
+    matches.sort((a, b) => a.start.compareTo(b.start));
+    return matches.isNotEmpty ? matches.first : null;
   }
 
   String _formatTime(DateTime dt) {
@@ -597,10 +625,28 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
     return '$h:$m $ampm';
   }
 
-  String? _programmeTimeRange(db.EpgProgramme? p) {
+  String? _programmeTimeRange(db.EpgProgramme? p, {int timeshiftHours = 0}) {
     if (p == null) return null;
-    return '${_formatTime(p.start)} - ${_formatTime(p.stop)}';
+    final shift = Duration(hours: timeshiftHours);
+    return '${_formatTime(p.start.add(shift))} - ${_formatTime(p.stop.add(shift))}';
   }
+
+  /// Parse XMLTV episode-num into readable label (e.g. "S2 E5").
+  String? _parseEpisodeLabel(String? episodeNum) {
+    if (episodeNum == null || episodeNum.isEmpty) return null;
+    final seFmt = RegExp(r'S(\d+)\s*E(\d+)', caseSensitive: false);
+    final seMatch = seFmt.firstMatch(episodeNum);
+    if (seMatch != null) return 'S${seMatch.group(1)} E${seMatch.group(2)}';
+    final nsFmt = RegExp(r'^(\d+)\.(\d+)');
+    final nsMatch = nsFmt.firstMatch(episodeNum);
+    if (nsMatch != null) {
+      return 'S${int.parse(nsMatch.group(1)!) + 1} E${int.parse(nsMatch.group(2)!) + 1}';
+    }
+    return episodeNum;
+  }
+
+  String _imdbSearchUrl(String title) =>
+      'https://www.imdb.com/find/?q=${Uri.encodeComponent(title)}&s=tt&ttype=tv';
 
   void _resetGuideIdleTimer(DateTime dayStart) {
     _guideIdleTimer?.cancel();
@@ -991,9 +1037,9 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
                                 channelLogo: _previewChannel!.tvgLogo,
                                 groupTitle: _previewChannel!.groupTitle,
                                 currentProgramme: programme?.title,
-                                currentProgrammeTime: _programmeTimeRange(programme),
+                                currentProgrammeTime: _programmeTimeRange(programme, timeshiftHours: _epgTimeshifts[_previewChannel!.id] ?? 0),
                                 nextProgramme: nextProg?.title,
-                                nextProgrammeTime: _programmeTimeRange(nextProg),
+                                nextProgrammeTime: _programmeTimeRange(nextProg, timeshiftHours: _epgTimeshifts[_previewChannel!.id] ?? 0),
                                 playerService: playerService,
                                 onDismissed: () {
                                   if (mounted) setState(() => _showOverlay = false);
@@ -1041,32 +1087,53 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          // Channel name + group
-                          Text(
-                            _previewChannel!.name,
-                            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 15),
-                            overflow: TextOverflow.ellipsis,
+                          // Top row: name+group left, provider+time right
+                          Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      _previewChannel!.name,
+                                      style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 15),
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                    if (_previewChannel!.groupTitle != null && _previewChannel!.groupTitle!.isNotEmpty)
+                                      Text(
+                                        _previewChannel!.groupTitle!,
+                                        style: const TextStyle(color: Colors.white38, fontSize: 11),
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                  ],
+                                ),
+                              ),
+                              Column(
+                                crossAxisAlignment: CrossAxisAlignment.end,
+                                children: [
+                                  if (_getProviderName(_previewChannel!.providerId).isNotEmpty)
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                      decoration: BoxDecoration(
+                                        color: const Color(0xFF6C5CE7).withValues(alpha: 0.2),
+                                        borderRadius: BorderRadius.circular(4),
+                                      ),
+                                      child: Text(
+                                        _getProviderName(_previewChannel!.providerId),
+                                        style: const TextStyle(fontSize: 10, color: Color(0xFF6C5CE7), fontWeight: FontWeight.w600),
+                                      ),
+                                    ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    _formatTime(DateTime.now()),
+                                    style: const TextStyle(color: Colors.white60, fontSize: 11),
+                                  ),
+                                ],
+                              ),
+                            ],
                           ),
-                          if (_previewChannel!.groupTitle != null && _previewChannel!.groupTitle!.isNotEmpty)
-                            Text(
-                              _previewChannel!.groupTitle!,
-                              style: const TextStyle(color: Colors.white38, fontSize: 11),
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          if (_getProviderName(_previewChannel!.providerId).isNotEmpty)
-                            Container(
-                              margin: const EdgeInsets.only(top: 4),
-                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                              decoration: BoxDecoration(
-                                color: const Color(0xFF6C5CE7).withValues(alpha: 0.2),
-                                borderRadius: BorderRadius.circular(4),
-                              ),
-                              child: Text(
-                                _getProviderName(_previewChannel!.providerId),
-                                style: const TextStyle(fontSize: 10, color: Color(0xFF6C5CE7), fontWeight: FontWeight.w600),
-                              ),
-                            ),
-                          const SizedBox(height: 8),
+                          const SizedBox(height: 4),
                           // Now playing
                           if (programme != null) ...[
                             Row(
@@ -1083,7 +1150,7 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
                               ],
                             ),
                             Text(
-                              _programmeTimeRange(programme) ?? '',
+                              _programmeTimeRange(programme, timeshiftHours: _epgTimeshifts[_previewChannel!.id] ?? 0) ?? '',
                               style: const TextStyle(color: Colors.white38, fontSize: 11),
                             ),
                           ],
@@ -1093,8 +1160,29 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
                               child: Text(
                                 programme.description!,
                                 style: const TextStyle(color: Colors.white54, fontSize: 11),
-                                maxLines: 2,
+                                maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          // Episode info + IMDB link
+                          if (programme != null && programme.episodeNum != null && programme.episodeNum!.isNotEmpty)
+                            Padding(
+                              padding: const EdgeInsets.only(top: 4),
+                              child: GestureDetector(
+                                onTap: () => launchUrl(Uri.parse(_imdbSearchUrl(programme.title))),
+                                child: Row(
+                                  children: [
+                                    Text(
+                                      _parseEpisodeLabel(programme.episodeNum) ?? programme.episodeNum!,
+                                      style: const TextStyle(color: Colors.white60, fontSize: 11),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    const Text(
+                                      'IMDb ↗',
+                                      style: TextStyle(color: Colors.amber, fontSize: 11, decoration: TextDecoration.underline),
+                                    ),
+                                  ],
+                                ),
                               ),
                             ),
                           // Next up
@@ -1106,7 +1194,7 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
                                   const Text('Next: ', style: TextStyle(color: Colors.white38, fontSize: 11)),
                                   Expanded(
                                     child: Text(
-                                      '${nextProg.title}  ${_programmeTimeRange(nextProg) ?? ''}',
+                                      '${nextProg.title}  ${_programmeTimeRange(nextProg, timeshiftHours: _epgTimeshifts[_previewChannel!.id] ?? 0) ?? ''}',
                                       style: const TextStyle(color: Colors.white54, fontSize: 11),
                                       overflow: TextOverflow.ellipsis,
                                     ),
@@ -1898,6 +1986,9 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
           _epgTimeshifts[channel.id] = result;
         }
       });
+      // Persist timeshifts
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_kEpgTimeshifts, jsonEncode(_epgTimeshifts));
       _refreshNowPlaying();
     }
   }
