@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io' show Platform;
 
 import 'package:drift/drift.dart' show Value;
 import 'package:flutter/material.dart';
@@ -45,7 +46,7 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
   /// Maps channel ID → mapped EPG channel ID (from epg_mappings table)
   Map<String, String> _epgMappings = {};
   Set<String> _validEpgChannelIds = {};
-  bool _showGuideView = true;
+  bool _showGuideView = !Platform.isAndroid;
   final _searchController = TextEditingController();
   final _searchFocusNode = FocusNode();
   final _channelListController = ScrollController();
@@ -255,7 +256,7 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
 
   void _startTopBarFade() {
     _topBarTimer?.cancel();
-    if (_mouseInTopBar) return; // Don't fade while mouse is over the bar
+    if (_mouseInTopBar || Platform.isAndroid) return;
     _topBarTimer = Timer(const Duration(seconds: 3), () {
       if (mounted && !_mouseInTopBar) setState(() => _topBarOpacity = 0.0);
     });
@@ -714,8 +715,12 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
   // ---------------------------------------------------------------------------
 
   void _handleKeyEvent(KeyEvent event) {
-    if (event.logicalKey == LogicalKeyboardKey.arrowUp ||
-        event.logicalKey == LogicalKeyboardKey.channelUp) {
+    // On Android/TV, arrow keys are used for D-pad focus navigation.
+    // Channel switching uses dedicated channelUp/channelDown keys.
+    final isAndroid = Platform.isAndroid;
+
+    if (event.logicalKey == LogicalKeyboardKey.channelUp ||
+        (!isAndroid && event.logicalKey == LogicalKeyboardKey.arrowUp)) {
       final newIndex = (_selectedIndex - 1).clamp(0, _filteredChannels.length - 1);
       if (newIndex != _selectedIndex) {
         _selectChannel(newIndex);
@@ -724,8 +729,8 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
       return;
     }
 
-    if (event.logicalKey == LogicalKeyboardKey.arrowDown ||
-        event.logicalKey == LogicalKeyboardKey.channelDown) {
+    if (event.logicalKey == LogicalKeyboardKey.channelDown ||
+        (!isAndroid && event.logicalKey == LogicalKeyboardKey.arrowDown)) {
       final newIndex = (_selectedIndex + 1).clamp(0, _filteredChannels.length - 1);
       if (newIndex != _selectedIndex) {
         _selectChannel(newIndex);
@@ -742,12 +747,12 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
       return;
     }
 
-    if (event.logicalKey == LogicalKeyboardKey.arrowLeft) {
+    if (!isAndroid && event.logicalKey == LogicalKeyboardKey.arrowLeft) {
       _adjustVolume(-5);
       return;
     }
 
-    if (event.logicalKey == LogicalKeyboardKey.arrowRight) {
+    if (!isAndroid && event.logicalKey == LogicalKeyboardKey.arrowRight) {
       _adjustVolume(5);
       return;
     }
@@ -800,55 +805,86 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
       return _buildEmptyState(context);
     }
 
-    return KeyboardListener(
-      focusNode: _focusNode,
-      autofocus: true,
-      onKeyEvent: (event) {
-        if (event is! KeyDownEvent) return;
-        if (_searchFocusNode.hasFocus) return;
-        _handleKeyEvent(event);
-      },
-      child: Scaffold(
-        backgroundColor: const Color(0xFF1A1A2E),
-        body: SafeArea(
-          child: Column(
-            children: [
-              MouseRegion(
-                onEnter: (_) {
-                  _mouseInTopBar = true;
-                  _topBarTimer?.cancel();
-                  setState(() => _topBarOpacity = 1.0);
-                },
-                onExit: (_) {
-                  _mouseInTopBar = false;
-                  _startTopBarFade();
-                },
-                child: AnimatedOpacity(
-                  opacity: _topBarOpacity,
-                  duration: const Duration(milliseconds: 600),
-                  child: _buildTopBar(context),
-                ),
-              ),
-              Expanded(
-                child: Row(
-                  children: [
-                    // Collapsible sidebar tree
-                    _buildSidebar(),
-                    // Main content area
-                    Expanded(
-                      child: Column(
-                        children: [
-                          _buildPreviewRow(),
-                          if (_showFailoverBanner && _failoverSuggestion != null)
-                            _buildFailoverBanner(),
-                          Expanded(child: _showGuideView ? _buildGuideView() : _buildChannelList()),
-                        ],
-                      ),
+    return PopScope(
+      canPop: false,
+      child: FocusTraversalGroup(
+        policy: WidgetOrderTraversalPolicy(),
+        child: Focus(
+          focusNode: _focusNode,
+          autofocus: !Platform.isAndroid,
+          skipTraversal: Platform.isAndroid,
+          onKeyEvent: (node, event) {
+            if (event is! KeyDownEvent) return KeyEventResult.ignored;
+            if (_searchFocusNode.hasFocus) return KeyEventResult.ignored;
+            final isAndroid = Platform.isAndroid;
+            final key = event.logicalKey;
+            if (isAndroid) {
+              // Manually handle D-pad traversal to prevent focus from escaping the app
+              if (key == LogicalKeyboardKey.arrowUp ||
+                  key == LogicalKeyboardKey.arrowDown ||
+                  key == LogicalKeyboardKey.arrowLeft ||
+                  key == LogicalKeyboardKey.arrowRight) {
+                final direction = key == LogicalKeyboardKey.arrowUp
+                    ? TraversalDirection.up
+                    : key == LogicalKeyboardKey.arrowDown
+                        ? TraversalDirection.down
+                        : key == LogicalKeyboardKey.arrowLeft
+                            ? TraversalDirection.left
+                            : TraversalDirection.right;
+                final focused = FocusManager.instance.primaryFocus;
+                if (focused != null && node.context != null) {
+                  FocusTraversalGroup.of(node.context!).inDirection(focused, direction);
+                }
+                return KeyEventResult.handled;
+              }
+              return KeyEventResult.ignored;
+            }
+            _handleKeyEvent(event);
+            return KeyEventResult.handled;
+          },
+          child: Scaffold(
+            backgroundColor: const Color(0xFF1A1A2E),
+            body: SafeArea(
+              child: Column(
+                children: [
+                  MouseRegion(
+                    onEnter: (_) {
+                      _mouseInTopBar = true;
+                      _topBarTimer?.cancel();
+                      setState(() => _topBarOpacity = 1.0);
+                    },
+                    onExit: (_) {
+                      _mouseInTopBar = false;
+                      _startTopBarFade();
+                    },
+                    child: AnimatedOpacity(
+                      opacity: _topBarOpacity,
+                      duration: const Duration(milliseconds: 600),
+                      child: _buildTopBar(context),
                     ),
-                  ],
-                ),
+                  ),
+                  Expanded(
+                    child: Row(
+                      children: [
+                        // Collapsible sidebar tree
+                        _buildSidebar(),
+                        // Main content area
+                        Expanded(
+                          child: Column(
+                            children: [
+                              _buildPreviewRow(),
+                              if (_showFailoverBanner && _failoverSuggestion != null)
+                                _buildFailoverBanner(),
+                              Expanded(child: _showGuideView ? _buildGuideView() : _buildChannelList()),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
               ),
-            ],
+            ),
           ),
         ),
       ),
@@ -887,7 +923,7 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
             const SizedBox(height: 24),
             FilledButton.icon(
               autofocus: true,
-              onPressed: () => context.go('/providers'),
+              onPressed: () => context.push('/providers'),
               icon: const Icon(Icons.add),
               label: const Text('Add Provider'),
             ),
@@ -899,7 +935,8 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
   }
 
   Widget _buildTopBar(BuildContext context) {
-    return Padding(
+    return FocusTraversalGroup(
+      child: Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       child: Row(
         children: [
@@ -1037,6 +1074,7 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
           ),
         ],
       ),
+    ),
     );
   }
 
@@ -1707,7 +1745,8 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
       );
     }
 
-    return ListView.builder(
+    return FocusTraversalGroup(
+      child: ListView.builder(
       controller: _channelListController,
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       itemCount: _filteredChannels.length,
@@ -1720,10 +1759,29 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
           color: Colors.transparent,
           child: GestureDetector(
             onSecondaryTapUp: (_) => _showFavoriteListSheet(channel),
-            child: InkWell(
-              onTap: () => _selectChannel(index),
-              onDoubleTap: () => _goFullscreen(channel),
-              onLongPress: () => _showFavoriteListSheet(channel),
+            child: Focus(
+              autofocus: index == 0 && Platform.isAndroid,
+              onFocusChange: (hasFocus) {
+                if (hasFocus && Platform.isAndroid) _selectChannel(index);
+              },
+              onKeyEvent: (node, event) {
+                if (event is! KeyDownEvent) return KeyEventResult.ignored;
+                final key = event.logicalKey;
+                if (key == LogicalKeyboardKey.select ||
+                    key == LogicalKeyboardKey.enter ||
+                    key == LogicalKeyboardKey.gameButtonA) {
+                  _goFullscreen(channel);
+                  return KeyEventResult.handled;
+                }
+                return KeyEventResult.ignored;
+              },
+              child: Builder(
+                builder: (context) {
+                  final focused = Focus.of(context).hasFocus;
+                  return InkWell(
+                    onTap: () => _selectChannel(index),
+                    onDoubleTap: () => _goFullscreen(channel),
+                    onLongPress: () => _showFavoriteListSheet(channel),
             borderRadius: BorderRadius.circular(8),
             child: Container(
               padding:
@@ -1731,12 +1789,16 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
               decoration: BoxDecoration(
                 color: isSelected
                     ? const Color(0xFF6C5CE7).withValues(alpha: 0.3)
-                    : Colors.transparent,
+                    : focused
+                        ? const Color(0xFF6C5CE7).withValues(alpha: 0.15)
+                        : Colors.transparent,
                 borderRadius: BorderRadius.circular(8),
-                border: isSelected
-                    ? Border.all(
-                        color: const Color(0xFF6C5CE7), width: 1.5)
-                    : null,
+                border: focused
+                    ? Border.all(color: Colors.white, width: 2.0)
+                    : isSelected
+                        ? Border.all(
+                            color: const Color(0xFF6C5CE7), width: 1.5)
+                        : null,
               ),
               child: Row(
                 children: [
@@ -1833,10 +1895,14 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
                 ],
               ),
             ),
+          );
+          },
+          ),
           ),
           ),
         );
       },
+    ),
     );
   }
 

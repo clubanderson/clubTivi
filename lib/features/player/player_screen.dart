@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io' show Platform;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -195,8 +196,9 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
     if (event is! KeyDownEvent) return KeyEventResult.ignored;
 
     final key = event.logicalKey;
+    final isAndroid = Platform.isAndroid;
 
-    // Escape / Backspace → exit fullscreen
+    // Escape / Backspace / Back → exit fullscreen
     if (key == LogicalKeyboardKey.escape ||
         key == LogicalKeyboardKey.backspace ||
         key == LogicalKeyboardKey.goBack) {
@@ -206,28 +208,34 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
       return KeyEventResult.handled;
     }
 
-    // Up arrow → previous channel
-    if (key == LogicalKeyboardKey.arrowUp ||
-        key == LogicalKeyboardKey.channelUp) {
+    // Select / Enter → toggle overlay
+    if (key == LogicalKeyboardKey.select ||
+        key == LogicalKeyboardKey.enter ||
+        key == LogicalKeyboardKey.gameButtonA) {
+      _toggleOverlay();
+      return KeyEventResult.handled;
+    }
+
+    // Channel switching: use channelUp/Down on Android, arrows elsewhere
+    if (key == LogicalKeyboardKey.channelUp ||
+        (!isAndroid && key == LogicalKeyboardKey.arrowUp)) {
       _switchChannel(-1);
       return KeyEventResult.handled;
     }
 
-    // Down arrow → next channel
-    if (key == LogicalKeyboardKey.arrowDown ||
-        key == LogicalKeyboardKey.channelDown) {
+    if (key == LogicalKeyboardKey.channelDown ||
+        (!isAndroid && key == LogicalKeyboardKey.arrowDown)) {
       _switchChannel(1);
       return KeyEventResult.handled;
     }
 
-    // Left arrow → volume down
-    if (key == LogicalKeyboardKey.arrowLeft) {
+    // Volume: only on non-Android (D-pad arrows needed for focus on Android)
+    if (!isAndroid && key == LogicalKeyboardKey.arrowLeft) {
       _adjustVolume(-5);
       return KeyEventResult.handled;
     }
 
-    // Right arrow → volume up
-    if (key == LogicalKeyboardKey.arrowRight) {
+    if (!isAndroid && key == LogicalKeyboardKey.arrowRight) {
       _adjustVolume(5);
       return KeyEventResult.handled;
     }
