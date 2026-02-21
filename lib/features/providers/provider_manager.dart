@@ -141,7 +141,7 @@ class ProviderManager {
         }
       }
       for (final ch in needsLogo.toList()) {
-        final stripped = ch.name.toLowerCase().replaceAll(RegExp(r'^[a-z]{2}[-:]?\s*\|?\s*'), '');
+        final stripped = ch.name.toLowerCase().replaceAll(RegExp(r'^[a-z]{2}[-]?[a-z]?\|\s*'), '').replaceAll(RegExp(r'^[a-z]{2}:\s+'), '');
         final icon = epgIconMap[ch.name.toLowerCase()] ?? epgIconMap[stripped];
         if (icon != null) {
           await _db.updateChannelLogo(ch.id, icon);
