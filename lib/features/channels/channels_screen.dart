@@ -12,6 +12,8 @@ import 'package:media_kit_video/media_kit_video.dart';
 import '../../core/fuzzy_match.dart';
 import '../../data/datasources/local/database.dart' as db;
 import '../../data/services/epg_refresh_service.dart';
+import '../casting/cast_service.dart';
+import '../casting/cast_dialog.dart';
 import '../player/player_service.dart';
 import '../providers/provider_manager.dart';
 import 'channel_debug_dialog.dart';
@@ -823,6 +825,38 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
             icon: const Icon(Icons.movie_rounded, color: Colors.white70),
             tooltip: 'Shows & Movies',
             onPressed: () => context.push('/shows'),
+          ),
+          IconButton(
+            icon: Icon(
+              ref.read(castServiceProvider).isCasting
+                  ? Icons.cast_connected_rounded
+                  : Icons.cast_rounded,
+              color: ref.read(castServiceProvider).isCasting
+                  ? Colors.amber
+                  : Colors.white70,
+            ),
+            tooltip: 'Cast to device',
+            onPressed: () async {
+              final device = await showCastDialog(context, ref);
+              if (device != null && mounted && _selectedIndex >= 0 && _selectedIndex < _filteredChannels.length) {
+                final channel = _filteredChannels[_selectedIndex];
+                final success = await ref.read(castServiceProvider).castTo(
+                  device,
+                  channel.streamUrl,
+                  title: channel.name,
+                );
+                if (success && mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('Casting to ${device.name}'),
+                      backgroundColor: Colors.green.shade800,
+                      duration: const Duration(seconds: 2),
+                    ),
+                  );
+                  setState(() {});
+                }
+              }
+            },
           ),
         ],
       ),
@@ -2087,6 +2121,7 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
                   itemBuilder: (context, index) {
                     final channel = _filteredChannels[index];
                     final isFav = _favoritedChannelIds.contains(channel.id);
+                    final isSelected = index == _selectedIndex;
                     return GestureDetector(
                       behavior: HitTestBehavior.opaque,
                       onTap: () => _selectChannel(index),
@@ -2095,8 +2130,16 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
                       ),
                       child: Container(
                         height: 48,
-                        decoration: const BoxDecoration(
-                          border: Border(bottom: BorderSide(color: Colors.white10, width: 0.5)),
+                        decoration: BoxDecoration(
+                          color: isSelected
+                              ? const Color(0xFF6C5CE7).withValues(alpha: 0.25)
+                              : Colors.transparent,
+                          border: Border(
+                            bottom: const BorderSide(color: Colors.white10, width: 0.5),
+                            left: isSelected
+                                ? const BorderSide(color: Color(0xFF6C5CE7), width: 3)
+                                : BorderSide.none,
+                          ),
                         ),
                         child: Row(
                           children: [
