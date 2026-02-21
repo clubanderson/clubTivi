@@ -25,7 +25,11 @@ class EpgRefreshService {
     debugPrint('[EPG] Refreshing source: ${source.name} (${source.url})');
 
     // Download XMLTV data
-    final dio = Dio();
+    final dio = Dio(BaseOptions(
+      headers: {
+        'User-Agent': 'clubTivi/1.0 IPTV Player (compatible; XMLTV fetcher)',
+      },
+    ));
     try {
       final response = await dio.get<List<int>>(
         source.url,
@@ -103,13 +107,8 @@ class EpgRefreshService {
 
     final defaults = [
       (
-        name: 'EPG.pw – English (Global)',
-        url: 'https://epg.pw/xmltv/en.xml.gz',
-        enabled: true,
-      ),
-      (
-        name: 'Open-EPG – US Channels',
-        url: 'https://www.open-epg.com/files/unitedStates_all.xml',
+        name: 'USA Locals (ABC, CBS, Fox, NBC)',
+        url: 'https://raw.githubusercontent.com/usa-local-epg/usa-locals/main/usalocals.xml.gz',
         enabled: true,
       ),
       (

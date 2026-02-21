@@ -1,3 +1,4 @@
+import 'package:drift/drift.dart' show Value;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -155,6 +156,50 @@ class _EpgSourcesScreenState extends ConsumerState<_EpgSourcesScreen> {
     await _loadSources();
   }
 
+  Future<void> _editSource(db.EpgSource source) async {
+    final nameCtrl = TextEditingController(text: source.name);
+    final urlCtrl = TextEditingController(text: source.url);
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Edit EPG Source'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: nameCtrl,
+              decoration: const InputDecoration(labelText: 'Name'),
+            ),
+            const SizedBox(height: 8),
+            TextField(
+              controller: urlCtrl,
+              decoration: const InputDecoration(labelText: 'URL'),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+    if (result == true && mounted) {
+      final database = ref.read(databaseProvider);
+      await database.upsertEpgSource(db.EpgSourcesCompanion(
+        id: Value(source.id),
+        name: Value(nameCtrl.text.trim()),
+        url: Value(urlCtrl.text.trim()),
+        enabled: Value(source.enabled),
+      ));
+      await _loadSources();
+    }
+    nameCtrl.dispose();
+    urlCtrl.dispose();
+  }
+
   Future<void> _showAddDialog() async {
     final result = await showDialog<bool>(
       context: context,
@@ -202,6 +247,11 @@ class _EpgSourcesScreenState extends ConsumerState<_EpgSourcesScreen> {
                   trailing: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
+                      IconButton(
+                        icon: const Icon(Icons.edit_outlined),
+                        tooltip: 'Edit source',
+                        onPressed: () => _editSource(source),
+                      ),
                       if (isRefreshing)
                         const SizedBox(
                           width: 24,

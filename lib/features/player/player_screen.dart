@@ -192,11 +192,10 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
         body: GestureDetector(
           onTap: _toggleOverlay,
           child: Stack(
+            fit: StackFit.expand,
             children: [
-              // Video
-              Center(
-                child: Video(controller: playerService.videoController),
-              ),
+              // Video — fill entire screen
+              Video(controller: playerService.videoController),
 
               // Overlay
               if (_showOverlay) ...[
@@ -206,7 +205,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
                   left: 0,
                   right: 0,
                   child: Container(
-                    padding: const EdgeInsets.fromLTRB(16, 48, 16, 16),
+                    padding: const EdgeInsets.fromLTRB(8, 4, 8, 8),
                     decoration: const BoxDecoration(
                       gradient: LinearGradient(
                         begin: Alignment.topCenter,
@@ -218,17 +217,19 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
                       children: [
                         IconButton(
                           icon: const Icon(Icons.arrow_back,
-                              color: Colors.white),
+                              color: Colors.white, size: 20),
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
                           onPressed: () => Navigator.of(context).pop(),
                         ),
-                        const SizedBox(width: 8),
+                        const SizedBox(width: 4),
                         if (_currentChannelLogo != null)
                           Padding(
-                            padding: const EdgeInsets.only(right: 12),
+                            padding: const EdgeInsets.only(right: 8),
                             child: Image.network(
                               _currentChannelLogo!,
-                              width: 32,
-                              height: 32,
+                              width: 24,
+                              height: 24,
                               errorBuilder: (c, e, s) =>
                                   const SizedBox(),
                             ),
@@ -238,7 +239,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
                             _currentChannelName,
                             style: const TextStyle(
                               color: Colors.white,
-                              fontSize: 18,
+                              fontSize: 15,
                               fontWeight: FontWeight.w600,
                             ),
                             overflow: TextOverflow.ellipsis,
@@ -272,7 +273,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
                   left: 0,
                   right: 0,
                   child: Container(
-                    padding: const EdgeInsets.fromLTRB(16, 16, 16, 48),
+                    padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
                     decoration: const BoxDecoration(
                       gradient: LinearGradient(
                         begin: Alignment.bottomCenter,
