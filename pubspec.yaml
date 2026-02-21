@@ -68,6 +68,7 @@ dev_dependencies:
   json_serializable: ^6.9.4
   drift_dev: ^2.22.1
   mockito: ^5.4.5
+  flutter_launcher_icons: ^0.14.4
 
 flutter:
   uses-material-design: true
@@ -75,3 +76,19 @@ flutter:
   assets:
     - assets/icons/
     - assets/fonts/
+
+flutter_launcher_icons:
+  android: true
+  ios: false
+  macos:
+    generate: true
+    image_path: "assets/icon/clubtivi-icon.png"
+  windows:
+    generate: true
+    image_path: "assets/icon/clubtivi-icon.png"
+  linux:
+    generate: true
+    image_path: "assets/icon/clubtivi-icon.png"
+  image_path: "assets/icon/clubtivi-icon.png"
+  adaptive_icon_background: "#0F0E1A"
+  adaptive_icon_foreground: "assets/icon/clubtivi-icon.png"

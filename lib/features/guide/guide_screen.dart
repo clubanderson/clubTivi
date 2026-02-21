@@ -24,8 +24,10 @@ class _GuideScreenState extends ConsumerState<GuideScreen> {
     super.initState();
     // Scroll to "now" on load
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      final nowMinutes = _focusTime.hour * 60 + _focusTime.minute;
-      _scrollController.jumpTo(nowMinutes * _pixelsPerMinute - 100);
+      if (_scrollController.hasClients) {
+        final nowMinutes = _focusTime.hour * 60 + _focusTime.minute;
+        _scrollController.jumpTo(nowMinutes * _pixelsPerMinute - 100);
+      }
     });
   }
 
