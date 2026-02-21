@@ -7,6 +7,8 @@ import 'package:media_kit_video/media_kit_video.dart';
 
 import '../../data/datasources/local/database.dart' as db;
 import '../../features/providers/provider_manager.dart' show databaseProvider;
+import '../casting/cast_service.dart';
+import '../casting/cast_dialog.dart';
 import 'player_service.dart';
 
 /// Full-screen video player with overlay controls and keyboard navigation.
@@ -146,6 +148,29 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
     setState(() => _currentUrlIndex++);
     final urls = [widget.streamUrl, ...widget.alternativeUrls];
     ref.read(playerServiceProvider).play(urls[_currentUrlIndex]);
+  }
+
+  Future<void> _showCastPicker() async {
+    final device = await showCastDialog(context, ref);
+    if (device != null && mounted) {
+      final castService = ref.read(castServiceProvider);
+      final urls = [widget.streamUrl, ...widget.alternativeUrls];
+      final success = await castService.castTo(
+        device,
+        urls[_currentUrlIndex],
+        title: widget.channelName,
+      );
+      if (success && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Casting to ${device.name}'),
+            backgroundColor: Colors.green.shade800,
+            duration: const Duration(seconds: 2),
+          ),
+        );
+        setState(() {});
+      }
+    }
   }
 
   void _autoHideOverlay() {
@@ -404,6 +429,18 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
                             tooltip: 'Switch stream',
                             onPressed: _switchToNextStream,
                           ),
+                        IconButton(
+                          icon: Icon(
+                            ref.read(castServiceProvider).isCasting
+                                ? Icons.cast_connected_rounded
+                                : Icons.cast_rounded,
+                            color: ref.read(castServiceProvider).isCasting
+                                ? Colors.amber
+                                : Colors.white70,
+                          ),
+                          tooltip: 'Cast to device',
+                          onPressed: () => _showCastPicker(),
+                        ),
                       ],
                     ),
                   ),
