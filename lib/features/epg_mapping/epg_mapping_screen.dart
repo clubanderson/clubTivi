@@ -186,11 +186,19 @@ class _EpgMappingScreenState extends ConsumerState<EpgMappingScreen> {
     );
   }
 
-  void _showMappingDialog(ChannelMappingEntry entry) {
-    showDialog(
+  void _showMappingDialog(ChannelMappingEntry entry) async {
+    final result = await showDialog<MappingCandidate>(
       context: context,
       builder: (context) => _ManualMappingDialog(entry: entry),
     );
+    if (result != null) {
+      await ref.read(epgMappingProvider.notifier).applyManualMapping(
+        channelId: entry.channel.id,
+        providerId: entry.channel.providerId,
+        epgChannelId: result.epgChannelId,
+        epgSourceId: result.epgSourceId,
+      );
+    }
   }
 }
 

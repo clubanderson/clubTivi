@@ -1,3 +1,4 @@
+import 'package:drift/drift.dart' show Value;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../data/datasources/local/database.dart' as db;
 import '../../data/models/epg.dart';
@@ -274,6 +275,24 @@ class EpgMappingNotifier extends StateNotifier<EpgMappingState> {
   /// Remove a mapping.
   Future<void> removeMapping(String channelId, String providerId) async {
     await _db.deleteMapping(channelId, providerId);
+    await load();
+  }
+
+  Future<void> applyManualMapping({
+    required String channelId,
+    required String providerId,
+    required String epgChannelId,
+    required String epgSourceId,
+  }) async {
+    await _db.upsertMapping(db.EpgMappingsCompanion.insert(
+      channelId: channelId,
+      providerId: providerId,
+      epgChannelId: epgChannelId,
+      epgSourceId: epgSourceId,
+      confidence: const Value(1.0),
+      source: const Value('manual'),
+      locked: const Value(true),
+    ));
     await load();
   }
 
