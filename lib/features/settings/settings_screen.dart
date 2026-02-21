@@ -212,10 +212,30 @@ class _EpgSourcesScreenState extends ConsumerState<_EpgSourcesScreen> {
     if (result == true) await _loadSources();
   }
 
+  Future<void> _resetToDefaults() async {
+    final service = ref.read(epgRefreshServiceProvider);
+    await service.resetToDefaultSources();
+    await _loadSources();
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('EPG sources reset to defaults')),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('EPG Sources')),
+      appBar: AppBar(
+        title: const Text('EPG Sources'),
+        actions: [
+          TextButton.icon(
+            onPressed: _resetToDefaults,
+            icon: const Icon(Icons.restart_alt, size: 18),
+            label: const Text('Reset to Defaults'),
+          ),
+        ],
+      ),
       floatingActionButton: FloatingActionButton(
         onPressed: _showAddDialog,
         child: const Icon(Icons.add),

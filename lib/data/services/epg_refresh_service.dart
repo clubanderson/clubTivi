@@ -104,16 +104,28 @@ class EpgRefreshService {
   Future<void> addDefaultSources() async {
     final existing = await _db.getAllEpgSources();
     if (existing.isNotEmpty) return;
+    await _insertDefaults();
+  }
 
+  /// Delete all existing sources and re-add defaults.
+  Future<void> resetToDefaultSources() async {
+    final existing = await _db.getAllEpgSources();
+    for (final s in existing) {
+      await _db.deleteEpgSource(s.id);
+    }
+    await _insertDefaults();
+  }
+
+  Future<void> _insertDefaults() async {
     final defaults = [
-      (
-        name: 'USA Locals (ABC, CBS, Fox, NBC)',
-        url: 'https://raw.githubusercontent.com/usa-local-epg/usa-locals/main/usalocals.xml.gz',
-        enabled: true,
-      ),
       (
         name: 'EPG.best',
         url: 'http://epg.best/16b5b-ypkixv.xml.gz',
+        enabled: true,
+      ),
+      (
+        name: 'USA Locals (ABC, CBS, Fox, NBC)',
+        url: 'https://raw.githubusercontent.com/usa-local-epg/usa-locals/main/usalocals.xml.gz',
         enabled: true,
       ),
     ];
