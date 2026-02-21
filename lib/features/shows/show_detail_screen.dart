@@ -24,14 +24,16 @@ class ShowDetailScreen extends ConsumerStatefulWidget {
 class _ShowDetailScreenState extends ConsumerState<ShowDetailScreen> {
   int? _selectedSeason; // null until initialized
   bool _resolving = false;
-  bool _seasonInitialized = false;
+  int _lastSeasonCount = 0; // track when seasons change
 
   static const _seasonPrefPrefix = 'show_last_season_';
 
   /// Initialize season: use persisted preference, or default to latest season
   void _initSeason(ShowDetail detail) {
-    if (_seasonInitialized) return;
-    _seasonInitialized = true;
+    // Skip if no seasons yet, or re-init if season count changed
+    if (detail.seasons.isEmpty) return;
+    if (_selectedSeason != null && detail.seasons.length == _lastSeasonCount) return;
+    _lastSeasonCount = detail.seasons.length;
     _loadLastSeason(detail);
   }
 
@@ -440,12 +442,10 @@ class _ShowDetailScreenState extends ConsumerState<ShowDetailScreen> {
                         style: const TextStyle(color: Colors.white38, fontSize: 12),
                       ),
                       trailing: Icon(
-                        stream.isCached
-                            ? Icons.play_circle_fill
-                            : Icons.cloud_download_outlined,
+                        Icons.play_circle_fill,
                         color: stream.isCached
                             ? const Color(0xFF6C5CE7)
-                            : Colors.white38,
+                            : const Color(0xFF6C5CE7).withValues(alpha: 0.6),
                         size: 32,
                       ),
                       onTap: () {
