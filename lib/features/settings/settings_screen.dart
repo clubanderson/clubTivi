@@ -364,7 +364,7 @@ class _ShowsApiKeysSectionState extends ConsumerState<_ShowsApiKeysSection> {
               _apiKeyField(
                 controller: _tmdbCtrl,
                 label: 'TMDB API Key',
-                hint: 'Get from themoviedb.org/settings/api',
+                hint: 'API Key or Read Access Token from themoviedb.org',
                 icon: Icons.image,
                 hasValue: keys.hasTmdbKey,
               ),
