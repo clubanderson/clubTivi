@@ -277,6 +277,11 @@ class EpgMappingNotifier extends StateNotifier<EpgMappingState> {
     await load();
   }
 
+  Future<void> clearAllMappings() async {
+    await _db.deleteAllMappings();
+    await load();
+  }
+
   /// Toggle lock on a mapping.
   Future<void> toggleLock(String channelId, String providerId) async {
     // Re-load and toggle — simplified

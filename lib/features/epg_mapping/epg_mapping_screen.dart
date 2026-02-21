@@ -57,8 +57,23 @@ class _EpgMappingScreenState extends ConsumerState<EpgMappingScreen> {
             label: const Text('Auto-Map'),
           ),
           PopupMenuButton<String>(
-            onSelected: (value) {
-              // TODO: Handle import/export
+            onSelected: (value) async {
+              if (value == 'clear') {
+                final confirm = await showDialog<bool>(
+                  context: context,
+                  builder: (ctx) => AlertDialog(
+                    title: const Text('Clear All Mappings?'),
+                    content: const Text('This will remove all EPG mappings. You can re-run Auto-Map after.'),
+                    actions: [
+                      TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+                      FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Clear')),
+                    ],
+                  ),
+                );
+                if (confirm == true) {
+                  await ref.read(epgMappingProvider.notifier).clearAllMappings();
+                }
+              }
             },
             itemBuilder: (context) => const [
               PopupMenuItem(value: 'import', child: Text('Import Mappings')),
@@ -124,29 +139,31 @@ class _EpgMappingScreenState extends ConsumerState<EpgMappingScreen> {
 
           // Channel mapping list
           Expanded(
-            child: state.filteredEntries.isEmpty
-                ? _EmptyState(
-                    hasChannels: state.entries.isNotEmpty,
-                    filter: state.filter,
-                  )
-                : ListView.builder(
-                    itemCount: state.filteredEntries.length,
-                    itemBuilder: (context, index) {
-                      return _MappingTile(
-                        entry: state.filteredEntries[index],
-                        onTap: () => _showMappingDialog(
-                          state.filteredEntries[index],
-                        ),
-                        onRemove: () {
-                          final e = state.filteredEntries[index];
-                          ref.read(epgMappingProvider.notifier).removeMapping(
-                            e.channel.id,
-                            e.channel.providerId,
-                          );
-                        },
+            child: () {
+              final filtered = state.filteredEntries;
+              if (filtered.isEmpty) {
+                return _EmptyState(
+                  hasChannels: state.entries.isNotEmpty,
+                  filter: state.filter,
+                );
+              }
+              return ListView.builder(
+                itemCount: filtered.length,
+                itemBuilder: (context, index) {
+                  final entry = filtered[index];
+                  return _MappingTile(
+                    entry: entry,
+                    onTap: () => _showMappingDialog(entry),
+                    onRemove: () {
+                      ref.read(epgMappingProvider.notifier).removeMapping(
+                        entry.channel.id,
+                        entry.channel.providerId,
                       );
                     },
-                  ),
+                  );
+                },
+              );
+            }(),
           ),
         ],
       ),

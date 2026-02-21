@@ -172,6 +172,8 @@ class AppDatabase extends _$AppDatabase {
                 t.providerId.equals(providerId)))
           .go();
 
+  Future<void> deleteAllMappings() => delete(epgMappings).go();
+
   /// Get mapping stats.
   Future<Map<String, int>> getMappingStats() async {
     final all = await select(epgMappings).get();
