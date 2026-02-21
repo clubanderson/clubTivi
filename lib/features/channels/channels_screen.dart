@@ -994,6 +994,12 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
             )
           else
             const Spacer(),
+          Flexible(
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
           // Previous channel toggle button
           if (_previousIndex >= 0)
             IconButton(
@@ -1071,6 +1077,10 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
                 }
               }
             },
+          ),
+                ],
+              ),
+            ),
           ),
         ],
       ),
@@ -1351,15 +1361,13 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
                               ),
                               // Fullscreen
                               SizedBox(
-                                height: 28,
-                                child: TextButton.icon(
+                                height: 28, width: 28,
+                                child: IconButton(
                                   onPressed: () => _goFullscreen(_previewChannel!),
                                   icon: const Icon(Icons.fullscreen_rounded, size: 16),
-                                  label: const Text('Fullscreen', style: TextStyle(fontSize: 11)),
-                                  style: TextButton.styleFrom(
-                                    foregroundColor: Colors.white70,
-                                    padding: const EdgeInsets.symmetric(horizontal: 8),
-                                  ),
+                                  padding: EdgeInsets.zero,
+                                  color: Colors.white70,
+                                  tooltip: 'Fullscreen',
                                 ),
                               ),
                             ],
