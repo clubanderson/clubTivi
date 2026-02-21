@@ -38,7 +38,7 @@ class _ShowsScreenState extends ConsumerState<ShowsScreen> {
   Widget build(BuildContext context) {
     final apiKeys = ref.watch(showsApiKeysProvider);
 
-    if (!apiKeys.hasTraktKey) {
+    if (!apiKeys.hasTraktKey && !apiKeys.hasTmdbKey) {
       return _buildSetupPrompt(context);
     }
 
@@ -80,7 +80,7 @@ class _ShowsScreenState extends ConsumerState<ShowsScreen> {
               ),
               const SizedBox(height: 12),
               const Text(
-                'Configure your API keys in Settings to browse\ntrending shows, movies, and stream via Real-Debrid.',
+                'Configure at least a Trakt or TMDB API key in Settings\nto browse trending shows, movies, and stream via Real-Debrid.',
                 textAlign: TextAlign.center,
                 style: TextStyle(color: Colors.white60, fontSize: 16),
               ),
