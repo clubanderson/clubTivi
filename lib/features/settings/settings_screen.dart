@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../data/datasources/local/database.dart' as db;
 import '../../data/services/backup_service.dart';
@@ -169,6 +170,12 @@ class SettingsScreen extends ConsumerWidget {
                 trailing: const Icon(Icons.chevron_right),
                 onTap: () {},
               ),
+            ],
+          ),
+          _SettingsSection(
+            title: 'Display',
+            children: [
+              _TimeFormatTile(),
             ],
           ),
           _SettingsSection(
@@ -575,6 +582,40 @@ class _SettingsSection extends StatelessWidget {
         ),
         ...children,
       ],
+    );
+  }
+}
+
+class _TimeFormatTile extends StatefulWidget {
+  @override
+  State<_TimeFormatTile> createState() => _TimeFormatTileState();
+}
+
+class _TimeFormatTileState extends State<_TimeFormatTile> {
+  bool _use24Hour = false;
+
+  @override
+  void initState() {
+    super.initState();
+    SharedPreferences.getInstance().then((prefs) {
+      if (mounted) {
+        setState(() => _use24Hour = prefs.getBool('use_24_hour_time') ?? false);
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SwitchListTile(
+      secondary: const Icon(Icons.schedule_rounded),
+      title: const Text('24-Hour Time'),
+      subtitle: Text(_use24Hour ? '14:30' : '2:30 PM'),
+      value: _use24Hour,
+      onChanged: (value) async {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setBool('use_24_hour_time', value);
+        setState(() => _use24Hour = value);
+      },
     );
   }
 }

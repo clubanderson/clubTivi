@@ -36,11 +36,16 @@ class EpgAutoMapper {
         continue;
       }
 
+      // 24/7 channels: only allow exact tvg-id match, skip fuzzy matching
+      final is247 = channel.displayName.contains('24/7') ||
+          channel.displayName.contains('24-7');
+
       final candidates = findCandidates(
         channel: channel,
         epgChannels: epgChannels,
         index: index,
         epgSourceId: epgSourceId,
+        exactOnly: is247,
       );
 
       if (candidates.isEmpty) {
@@ -89,6 +94,7 @@ class EpgAutoMapper {
     required List<EpgChannel> epgChannels,
     Object? index,
     required String epgSourceId,
+    bool exactOnly = false,
   }) {
     final idx = index is _EpgIndex ? index : _EpgIndex.build(epgChannels);
     final results = <String, _CandidateScore>{};
@@ -110,29 +116,32 @@ class EpgAutoMapper {
       }
     }
 
-    // Strategy 3: Fuzzy name matching
-    final channelName = _cleanChannelName(channel.displayName);
-    if (channelName.isNotEmpty) {
-      final nameResults = _fuzzyNameMatch(channelName, epgChannels);
-      for (final (epgCh, score) in nameResults) {
-        _addScore(results, epgCh, score, 'fuzzy_name');
+    // For 24/7 channels, skip fuzzy/number/logo matching
+    if (!exactOnly) {
+      // Strategy 3: Fuzzy name matching
+      final channelName = _cleanChannelName(channel.displayName);
+      if (channelName.isNotEmpty) {
+        final nameResults = _fuzzyNameMatch(channelName, epgChannels);
+        for (final (epgCh, score) in nameResults) {
+          _addScore(results, epgCh, score, 'fuzzy_name');
+        }
       }
-    }
 
-    // Strategy 4: Channel number match
-    if (channel.channelNumber != null) {
-      final numStr = channel.channelNumber.toString();
-      final match = idx.byNumber[numStr];
-      if (match != null) {
-        _addScore(results, match, 0.50, 'channel_number');
+      // Strategy 4: Channel number match
+      if (channel.channelNumber != null) {
+        final numStr = channel.channelNumber.toString();
+        final match = idx.byNumber[numStr];
+        if (match != null) {
+          _addScore(results, match, 0.50, 'channel_number');
+        }
       }
-    }
 
-    // Strategy 5: Logo URL match
-    if (channel.tvgLogo != null && channel.tvgLogo!.isNotEmpty) {
-      final match = idx.byIconUrl[channel.tvgLogo!];
-      if (match != null) {
-        _addScore(results, match, 0.40, 'logo_url');
+      // Strategy 5: Logo URL match
+      if (channel.tvgLogo != null && channel.tvgLogo!.isNotEmpty) {
+        final match = idx.byIconUrl[channel.tvgLogo!];
+        if (match != null) {
+          _addScore(results, match, 0.40, 'logo_url');
+        }
       }
     }
 
@@ -196,6 +205,8 @@ class EpgAutoMapper {
       RegExp(r'^[A-Z]{2,3}\s*[:|/\-]\s*', caseSensitive: false),
       '',
     );
+    // Remove "24/7" prefix
+    cleaned = cleaned.replaceAll(RegExp(r'^24[/\-]7\s*', caseSensitive: false), '');
     // Remove quality suffixes
     cleaned = cleaned.replaceAll(
       RegExp(r'\s*(HD|FHD|UHD|4K|SD|HEVC|H\.?265|H\.?264)\s*',
