@@ -228,6 +228,9 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
   KeyEventResult _handleKeyEvent(FocusNode node, KeyEvent event) {
     if (event is! KeyDownEvent) return KeyEventResult.ignored;
 
+    // Don't intercept keys when the search field has focus
+    if (_searchFocusNode.hasFocus) return KeyEventResult.ignored;
+
     if (event.logicalKey == LogicalKeyboardKey.arrowUp ||
         event.logicalKey == LogicalKeyboardKey.channelUp) {
       final newIndex = (_selectedIndex - 1).clamp(0, _filteredChannels.length - 1);

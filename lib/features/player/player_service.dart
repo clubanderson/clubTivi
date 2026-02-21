@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
@@ -8,6 +10,8 @@ class PlayerService {
   VideoController? _videoController;
   bool _isBuffering = false;
   DateTime? _bufferStartTime;
+  StreamSubscription<Tracks>? _tracksSub;
+  bool _audioTrackSelected = false;
 
   /// Buffer stall threshold before triggering failover.
   static const bufferStallThreshold = Duration(seconds: 3);
@@ -26,16 +30,17 @@ class PlayerService {
   Future<void> play(String url) async {
     _isBuffering = false;
     _bufferStartTime = null;
+    _audioTrackSelected = false;
+    _tracksSub?.cancel();
     await player.open(Media(url));
     await player.setVolume(100.0);
 
-    // Auto-select first audio track when tracks become available.
-    // Some streams don't auto-select audio.
-    player.stream.tracks.listen((tracks) {
-      if (tracks.audio.length > 1) {
-        // Index 0 is usually "no" / auto; pick first real track
-        final audioTrack = tracks.audio.length > 1 ? tracks.audio[1] : tracks.audio.first;
-        player.setAudioTrack(audioTrack);
+    // Auto-select first real audio track once, then stop listening.
+    _tracksSub = player.stream.tracks.listen((tracks) {
+      if (!_audioTrackSelected && tracks.audio.length > 1) {
+        _audioTrackSelected = true;
+        player.setAudioTrack(tracks.audio[1]);
+        _tracksSub?.cancel();
       }
     });
   }
@@ -98,6 +103,7 @@ class PlayerService {
   }
 
   void dispose() {
+    _tracksSub?.cancel();
     _player?.dispose();
   }
 }
