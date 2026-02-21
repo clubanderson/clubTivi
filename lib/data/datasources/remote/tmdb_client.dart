@@ -251,20 +251,33 @@ class TmdbSearchResult {
   final String? name;
   final String? title;
   final String? posterPath;
+  final String? backdropPath;
   final String? overview;
   final double? voteAverage;
+  final String? firstAirDate;
+  final String? releaseDate;
 
   const TmdbSearchResult({
     required this.id,
     this.name,
     this.title,
     this.posterPath,
+    this.backdropPath,
     this.overview,
     this.voteAverage,
+    this.firstAirDate,
+    this.releaseDate,
   });
 
   String get displayName => name ?? title ?? 'Unknown';
   String get posterUrl => TmdbClient.posterUrl(posterPath);
+  String get backdropUrl => TmdbClient.backdropUrl(backdropPath);
+
+  int? get year {
+    final date = firstAirDate ?? releaseDate;
+    if (date == null || date.length < 4) return null;
+    return int.tryParse(date.substring(0, 4));
+  }
 
   factory TmdbSearchResult.fromJson(Map<String, dynamic> json) {
     return TmdbSearchResult(
@@ -272,8 +285,11 @@ class TmdbSearchResult {
       name: json['name'] as String?,
       title: json['title'] as String?,
       posterPath: json['poster_path'] as String?,
+      backdropPath: json['backdrop_path'] as String?,
       overview: json['overview'] as String?,
       voteAverage: (json['vote_average'] as num?)?.toDouble(),
+      firstAirDate: json['first_air_date'] as String?,
+      releaseDate: json['release_date'] as String?,
     );
   }
 }

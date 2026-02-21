@@ -29,37 +29,67 @@ class ShowsRepository {
 
   /// Get trending shows, enriched with TMDB posters
   Future<List<Show>> getTrendingShows({int page = 1, int limit = 20}) async {
-    if (_trakt == null) return [];
-    final shows = await _trakt.getTrendingShows(page: page, limit: limit);
-    return _enrichWithTmdb(shows);
+    if (_trakt != null) {
+      final shows = await _trakt.getTrendingShows(page: page, limit: limit);
+      return _enrichWithTmdb(shows);
+    }
+    if (_tmdb != null) {
+      return _tmdbResultsToShows(await _tmdb.getTrendingTv(page: page), ShowType.show);
+    }
+    return [];
   }
 
   /// Get popular shows, enriched with TMDB posters
   Future<List<Show>> getPopularShows({int page = 1, int limit = 20}) async {
-    if (_trakt == null) return [];
-    final shows = await _trakt.getPopularShows(page: page, limit: limit);
-    return _enrichWithTmdb(shows);
+    if (_trakt != null) {
+      final shows = await _trakt.getPopularShows(page: page, limit: limit);
+      return _enrichWithTmdb(shows);
+    }
+    if (_tmdb != null) {
+      return _tmdbResultsToShows(await _tmdb.getPopularTv(page: page), ShowType.show);
+    }
+    return [];
   }
 
   /// Get trending movies, enriched with TMDB posters
   Future<List<Show>> getTrendingMovies({int page = 1, int limit = 20}) async {
-    if (_trakt == null) return [];
-    final shows = await _trakt.getTrendingMovies(page: page, limit: limit);
-    return _enrichWithTmdb(shows);
+    if (_trakt != null) {
+      final shows = await _trakt.getTrendingMovies(page: page, limit: limit);
+      return _enrichWithTmdb(shows);
+    }
+    if (_tmdb != null) {
+      return _tmdbResultsToShows(await _tmdb.getTrendingMovie(page: page), ShowType.movie);
+    }
+    return [];
   }
 
   /// Get popular movies, enriched with TMDB posters
   Future<List<Show>> getPopularMovies({int page = 1, int limit = 20}) async {
-    if (_trakt == null) return [];
-    final shows = await _trakt.getPopularMovies(page: page, limit: limit);
-    return _enrichWithTmdb(shows);
+    if (_trakt != null) {
+      final shows = await _trakt.getPopularMovies(page: page, limit: limit);
+      return _enrichWithTmdb(shows);
+    }
+    if (_tmdb != null) {
+      return _tmdbResultsToShows(await _tmdb.getPopularMovie(page: page), ShowType.movie);
+    }
+    return [];
   }
 
   /// Search shows and movies
   Future<List<Show>> search(String query) async {
-    if (_trakt == null) return [];
-    final results = await _trakt.search(query);
-    return _enrichWithTmdb(results);
+    if (_trakt != null) {
+      final results = await _trakt.search(query);
+      return _enrichWithTmdb(results);
+    }
+    if (_tmdb != null) {
+      final tvResults = await _tmdb.searchTv(query);
+      final movieResults = await _tmdb.searchMovie(query);
+      return [
+        ..._tmdbResultsToShows(tvResults, ShowType.show),
+        ..._tmdbResultsToShows(movieResults, ShowType.movie),
+      ];
+    }
+    return [];
   }
 
   /// Get full show detail with seasons
@@ -244,5 +274,20 @@ class ShowsRepository {
       _log.w('TMDB enrichment failed for ${show.title}: $e');
       return show;
     }
+  }
+
+  /// Convert TMDB search results to Show objects (fallback when Trakt unavailable)
+  List<Show> _tmdbResultsToShows(List<TmdbSearchResult> results, ShowType type) {
+    return results.map((r) => Show(
+      traktId: r.id,
+      tmdbId: r.id,
+      title: r.displayName,
+      year: r.year,
+      overview: r.overview,
+      rating: r.voteAverage,
+      posterUrl: r.posterUrl.isNotEmpty ? r.posterUrl : null,
+      backdropUrl: r.backdropUrl.isNotEmpty ? r.backdropUrl : null,
+      type: type,
+    )).toList();
   }
 }

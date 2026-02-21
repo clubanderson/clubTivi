@@ -18,9 +18,10 @@ class _ShowsScreenState extends ConsumerState<ShowsScreen> {
   final _searchController = TextEditingController();
   final _searchFocusNode = FocusNode();
   bool _isSearching = false;
-  int _selectedCategory = 0;
+  int _selectedCategory = 0; // 0 = Favorites (default)
 
   static const _categories = [
+    'Favorites',
     'Trending Shows',
     'Popular Shows',
     'Trending Movies',
@@ -204,16 +205,43 @@ class _ShowsScreenState extends ConsumerState<ShowsScreen> {
 
     switch (_selectedCategory) {
       case 0:
-        return _buildShowGrid(ref.watch(trendingShowsProvider));
+        return _buildFavorites();
       case 1:
-        return _buildShowGrid(ref.watch(popularShowsProvider));
+        return _buildShowGrid(ref.watch(trendingShowsProvider));
       case 2:
-        return _buildShowGrid(ref.watch(trendingMoviesProvider));
+        return _buildShowGrid(ref.watch(popularShowsProvider));
       case 3:
+        return _buildShowGrid(ref.watch(trendingMoviesProvider));
+      case 4:
         return _buildShowGrid(ref.watch(popularMoviesProvider));
       default:
         return const SizedBox.shrink();
     }
+  }
+
+  Widget _buildFavorites() {
+    final favorites = ref.watch(favoritesProvider);
+    if (favorites.isEmpty) {
+      return const Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.favorite_border, size: 48, color: Colors.white24),
+            SizedBox(height: 12),
+            Text(
+              'No favorites yet',
+              style: TextStyle(color: Colors.white38, fontSize: 16),
+            ),
+            SizedBox(height: 4),
+            Text(
+              'Browse shows and tap ♥ to add them here',
+              style: TextStyle(color: Colors.white24, fontSize: 13),
+            ),
+          ],
+        ),
+      );
+    }
+    return _buildShowGrid(AsyncValue.data(favorites));
   }
 
   Widget _buildSearchResults() {
@@ -296,36 +324,65 @@ class _ShowsScreenState extends ConsumerState<ShowsScreen> {
   }
 }
 
-class _ShowPosterCard extends StatelessWidget {
+class _ShowPosterCard extends ConsumerWidget {
   final Show show;
   final VoidCallback onTap;
 
   const _ShowPosterCard({required this.show, required this.onTap});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final isFav = ref.watch(favoritesProvider.select(
+      (favs) => favs.any((s) => s.traktId == show.traktId),
+    ));
+
     return GestureDetector(
       onTap: onTap,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Expanded(
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(8),
-              child: show.posterUrl != null && show.posterUrl!.isNotEmpty
-                  ? CachedNetworkImage(
-                      imageUrl: show.posterUrl!,
-                      fit: BoxFit.cover,
-                      width: double.infinity,
-                      placeholder: (_, __) => Container(
-                        color: const Color(0xFF1A1A2E),
-                        child: const Center(
-                          child: Icon(Icons.movie, color: Colors.white24, size: 40),
-                        ),
+            child: Stack(
+              children: [
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(8),
+                  child: show.posterUrl != null && show.posterUrl!.isNotEmpty
+                      ? CachedNetworkImage(
+                          imageUrl: show.posterUrl!,
+                          fit: BoxFit.cover,
+                          width: double.infinity,
+                          height: double.infinity,
+                          placeholder: (_, __) => Container(
+                            color: const Color(0xFF1A1A2E),
+                            child: const Center(
+                              child: Icon(Icons.movie, color: Colors.white24, size: 40),
+                            ),
+                          ),
+                          errorWidget: (_, __, ___) => _placeholderPoster(),
+                        )
+                      : _placeholderPoster(),
+                ),
+                // Favorite heart button
+                Positioned(
+                  top: 4,
+                  right: 4,
+                  child: GestureDetector(
+                    onTap: () => ref.read(favoritesProvider.notifier).toggle(show),
+                    child: Container(
+                      padding: const EdgeInsets.all(4),
+                      decoration: BoxDecoration(
+                        color: Colors.black54,
+                        borderRadius: BorderRadius.circular(12),
                       ),
-                      errorWidget: (_, __, ___) => _placeholderPoster(),
-                    )
-                  : _placeholderPoster(),
+                      child: Icon(
+                        isFav ? Icons.favorite : Icons.favorite_border,
+                        color: isFav ? Colors.redAccent : Colors.white70,
+                        size: 18,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
           const SizedBox(height: 6),
