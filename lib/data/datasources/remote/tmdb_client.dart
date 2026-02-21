@@ -153,6 +153,7 @@ class TmdbClient {
 /// TMDB show/movie detail with image paths
 class TmdbShowDetail {
   final int id;
+  final String title;
   final String? posterPath;
   final String? backdropPath;
   final String? overview;
@@ -161,9 +162,11 @@ class TmdbShowDetail {
   final List<String> genres;
   final int? numberOfSeasons;
   final int? numberOfEpisodes;
+  final int? year;
 
   const TmdbShowDetail({
     required this.id,
+    this.title = '',
     this.posterPath,
     this.backdropPath,
     this.overview,
@@ -172,14 +175,17 @@ class TmdbShowDetail {
     this.genres = const [],
     this.numberOfSeasons,
     this.numberOfEpisodes,
+    this.year,
   });
 
   String get posterUrl => TmdbClient.posterUrl(posterPath);
   String get backdropUrl => TmdbClient.backdropUrl(backdropPath);
 
   factory TmdbShowDetail.fromJson(Map<String, dynamic> json) {
+    final releaseDate = json['release_date'] as String? ?? json['first_air_date'] as String? ?? '';
     return TmdbShowDetail(
       id: json['id'] as int,
+      title: json['title'] as String? ?? json['name'] as String? ?? '',
       posterPath: json['poster_path'] as String?,
       backdropPath: json['backdrop_path'] as String?,
       overview: json['overview'] as String?,
@@ -191,6 +197,7 @@ class TmdbShowDetail {
           [],
       numberOfSeasons: json['number_of_seasons'] as int?,
       numberOfEpisodes: json['number_of_episodes'] as int?,
+      year: releaseDate.length >= 4 ? int.tryParse(releaseDate.substring(0, 4)) : null,
     );
   }
 }

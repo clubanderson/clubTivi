@@ -37,7 +37,13 @@ class _ShowDetailScreenState extends ConsumerState<ShowDetailScreen> {
         loading: () => _buildWithShow(widget.initialShow, loading: true),
         error: (err, _) => _buildError(err),
         data: (detail) {
-          if (detail == null) return _buildError('Show not found');
+          if (detail == null) {
+            // Fallback to initialShow if provider returned null
+            if (widget.initialShow != null) {
+              return _buildDetail(ShowDetail(show: widget.initialShow!));
+            }
+            return _buildError('Show not found');
+          }
           return _buildDetail(detail);
         },
       ),
