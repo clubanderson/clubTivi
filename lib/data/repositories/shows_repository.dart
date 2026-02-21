@@ -94,49 +94,79 @@ class ShowsRepository {
 
   /// Get full show detail with seasons
   Future<ShowDetail?> getShowDetail(int traktId, {ShowType type = ShowType.show}) async {
-    if (_trakt == null) return null;
+    // Trakt-based detail
+    if (_trakt != null) {
+      final show = type == ShowType.movie
+          ? await _trakt.getMovie(traktId)
+          : await _trakt.getShow(traktId);
+      final enriched = await _enrichSingle(show);
 
-    final show = type == ShowType.movie
-        ? await _trakt.getMovie(traktId)
-        : await _trakt.getShow(traktId);
+      List<Season> seasons = [];
+      if (type == ShowType.show) {
+        seasons = await _trakt.getSeasons(traktId);
+        seasons = seasons.where((s) => s.number > 0).toList();
+        if (_tmdb != null && enriched.tmdbId != null) {
+          seasons = await _enrichSeasons(enriched.tmdbId!, seasons);
+        }
+      }
+      return ShowDetail(show: enriched, seasons: seasons);
+    }
 
-    // Enrich with TMDB images
-    final enriched = await _enrichSingle(show);
+    // TMDB-only fallback — traktId is actually tmdbId in this case
+    if (_tmdb != null) {
+      return _getShowDetailFromTmdb(traktId, type: type);
+    }
 
-    // Get seasons (only for shows)
-    List<Season> seasons = [];
-    if (type == ShowType.show) {
-      seasons = await _trakt.getSeasons(traktId);
-      // Filter out specials (season 0) by default
-      seasons = seasons.where((s) => s.number > 0).toList();
+    return null;
+  }
 
-      // Enrich seasons with TMDB posters
-      if (_tmdb != null && enriched.tmdbId != null) {
-        for (var i = 0; i < seasons.length; i++) {
+  /// TMDB-only show detail
+  Future<ShowDetail?> _getShowDetailFromTmdb(int tmdbId, {ShowType type = ShowType.show}) async {
+    if (_tmdb == null) return null;
+    try {
+      final detail = type == ShowType.movie
+          ? await _tmdb.getMovie(tmdbId)
+          : await _tmdb.getTvShow(tmdbId);
+
+      final show = Show(
+        traktId: tmdbId,
+        tmdbId: tmdbId,
+        title: detail.overview != null ? '' : '', // will be filled below
+        posterUrl: detail.posterUrl.isNotEmpty ? detail.posterUrl : null,
+        backdropUrl: detail.backdropUrl.isNotEmpty ? detail.backdropUrl : null,
+        overview: detail.overview,
+        rating: detail.voteAverage,
+        votes: detail.voteCount,
+        genres: detail.genres,
+        type: type,
+      );
+
+      // For TV shows, build seasons list from TMDB
+      List<Season> seasons = [];
+      if (type == ShowType.show && detail.numberOfSeasons != null) {
+        for (int i = 1; i <= detail.numberOfSeasons!; i++) {
           try {
-            final tmdbSeason = await _tmdb.getTvSeason(enriched.tmdbId!, seasons[i].number);
-            seasons[i] = Season(
-              number: seasons[i].number,
-              title: seasons[i].title,
-              overview: tmdbSeason.overview ?? seasons[i].overview,
-              episodeCount: seasons[i].episodeCount,
-              airedEpisodes: seasons[i].airedEpisodes,
-              rating: seasons[i].rating,
+            final tmdbSeason = await _tmdb.getTvSeason(tmdbId, i);
+            seasons.add(Season(
+              number: i,
+              overview: tmdbSeason.overview,
+              episodeCount: tmdbSeason.episodes.length,
+              airedEpisodes: tmdbSeason.episodes.length,
               posterUrl: tmdbSeason.posterPath != null
                   ? TmdbClient.posterUrl(tmdbSeason.posterPath)
                   : null,
-              firstAired: seasons[i].firstAired,
-              traktId: seasons[i].traktId,
-              tmdbId: seasons[i].tmdbId,
-            );
+            ));
           } catch (_) {
-            // TMDB enrichment failed; keep Trakt data
+            seasons.add(Season(number: i));
           }
         }
       }
-    }
 
-    return ShowDetail(show: enriched, seasons: seasons);
+      return ShowDetail(show: show, seasons: seasons);
+    } catch (e) {
+      _log.e('TMDB detail failed for $tmdbId: $e');
+      return null;
+    }
   }
 
   /// Get episodes for a season
