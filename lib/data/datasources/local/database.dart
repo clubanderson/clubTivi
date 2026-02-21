@@ -107,6 +107,27 @@ class AppDatabase extends _$AppDatabase {
     });
   }
 
+  Future<void> deleteEpgProgrammesForSource(String sourceId) =>
+      (delete(epgProgrammes)..where((t) => t.sourceId.equals(sourceId))).go();
+
+  Future<void> insertEpgProgrammes(List<EpgProgrammesCompanion> entries) async {
+    await batch((b) {
+      b.insertAll(epgProgrammes, entries);
+    });
+  }
+
+  Future<void> updateEpgSourceRefreshTime(String id) =>
+      (update(epgSources)..where((t) => t.id.equals(id)))
+          .write(EpgSourcesCompanion(lastRefresh: Value(DateTime.now())));
+
+  Future<void> deleteEpgSource(String id) async {
+    await deleteEpgProgrammesForSource(id);
+    await (delete(epgChannels)..where((t) => t.sourceId.equals(id))).go();
+    await (delete(epgSources)..where((t) => t.id.equals(id))).go();
+  }
+
+  Future<List<Channel>> getAllChannels() => select(channels).get();
+
   /// Delete old programmes to keep DB size manageable.
   Future<void> pruneOldProgrammes({Duration maxAge = const Duration(days: 7)}) {
     final cutoff = DateTime.now().subtract(maxAge);
