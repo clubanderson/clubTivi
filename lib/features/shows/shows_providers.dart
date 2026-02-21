@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'dart:convert';
 import '../../data/datasources/remote/trakt_client.dart';
 import '../../data/datasources/remote/tmdb_client.dart';
 import '../../data/datasources/remote/debrid_client.dart';
@@ -190,6 +191,86 @@ class ShowsApiKeys {
 final showsApiKeysProvider =
     StateNotifierProvider<ShowsApiKeysNotifier, ShowsApiKeys>((ref) {
   final notifier = ShowsApiKeysNotifier();
+  notifier.load();
+  return notifier;
+});
+
+// --- Favorites ---
+
+const _kFavorites = 'shows_favorites';
+
+/// Manages a list of favorite shows persisted to SharedPreferences as JSON
+class FavoritesNotifier extends StateNotifier<List<Show>> {
+  FavoritesNotifier() : super(const []);
+
+  Future<void> load() async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_kFavorites);
+    if (raw == null || raw.isEmpty) return;
+    try {
+      final list = jsonDecode(raw) as List;
+      state = list.map((e) => _showFromJson(e as Map<String, dynamic>)).toList();
+    } catch (_) {
+      // Corrupted data — start fresh
+    }
+  }
+
+  Future<void> toggle(Show show) async {
+    final exists = state.any((s) => s.traktId == show.traktId);
+    if (exists) {
+      state = state.where((s) => s.traktId != show.traktId).toList();
+    } else {
+      state = [...state, show];
+    }
+    await _persist();
+  }
+
+  bool isFavorite(int traktId) => state.any((s) => s.traktId == traktId);
+
+  Future<void> _persist() async {
+    final prefs = await SharedPreferences.getInstance();
+    final json = state.map(_showToJson).toList();
+    await prefs.setString(_kFavorites, jsonEncode(json));
+  }
+
+  static Map<String, dynamic> _showToJson(Show s) => {
+        'traktId': s.traktId,
+        'imdbId': s.imdbId,
+        'tmdbId': s.tmdbId,
+        'title': s.title,
+        'year': s.year,
+        'overview': s.overview,
+        'rating': s.rating,
+        'posterUrl': s.posterUrl,
+        'backdropUrl': s.backdropUrl,
+        'type': s.type == ShowType.movie ? 'movie' : 'show',
+        'genres': s.genres,
+        'network': s.network,
+        'status': s.status,
+        'runtime': s.runtime,
+      };
+
+  static Show _showFromJson(Map<String, dynamic> j) => Show(
+        traktId: j['traktId'] as int,
+        imdbId: j['imdbId'] as String?,
+        tmdbId: j['tmdbId'] as int?,
+        title: j['title'] as String? ?? '',
+        year: j['year'] as int?,
+        overview: j['overview'] as String?,
+        rating: (j['rating'] as num?)?.toDouble(),
+        posterUrl: j['posterUrl'] as String?,
+        backdropUrl: j['backdropUrl'] as String?,
+        type: j['type'] == 'movie' ? ShowType.movie : ShowType.show,
+        genres: (j['genres'] as List?)?.cast<String>() ?? const [],
+        network: j['network'] as String?,
+        status: j['status'] as String?,
+        runtime: j['runtime'] as int?,
+      );
+}
+
+final favoritesProvider =
+    StateNotifierProvider<FavoritesNotifier, List<Show>>((ref) {
+  final notifier = FavoritesNotifier();
   notifier.load();
   return notifier;
 });
