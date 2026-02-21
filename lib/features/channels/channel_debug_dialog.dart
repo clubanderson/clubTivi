@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../../data/datasources/local/database.dart' as db;
 import '../player/player_service.dart';
@@ -155,13 +156,34 @@ class _ChannelDebugDialogState extends State<ChannelDebugDialog> {
                         : 'Unmapped'),
                 _labelValue('Stream Type', ch.streamType),
                 const SizedBox(height: 4),
-                const Text(
-                  'Stream URL',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 12,
-                  ),
+                Row(
+                  children: [
+                    const Text(
+                      'Stream URL',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 12,
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    InkWell(
+                      onTap: () {
+                        Clipboard.setData(ClipboardData(text: ch.streamUrl));
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('URL copied'),
+                            duration: Duration(seconds: 1),
+                          ),
+                        );
+                      },
+                      borderRadius: BorderRadius.circular(4),
+                      child: const Padding(
+                        padding: EdgeInsets.all(2),
+                        child: Icon(Icons.copy_rounded, size: 14, color: Colors.white38),
+                      ),
+                    ),
+                  ],
                 ),
                 const SizedBox(height: 2),
                 SelectableText(

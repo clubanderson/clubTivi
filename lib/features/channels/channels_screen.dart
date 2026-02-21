@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:drift/drift.dart' show Value;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:media_kit_video/media_kit_video.dart';
@@ -55,15 +56,40 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
   // Last channel for back/forth toggle (not a full history stack)
   int _previousIndex = -1;
 
+  // Sidebar state
+  bool _sidebarExpanded = true;
+  Set<String> _expandedSections = {'providers', 'favorites'};
+
+  // Top bar auto-hide
+  double _topBarOpacity = 1.0;
+  Timer? _topBarTimer;
+
   // Favorite lists state
   List<db.FavoriteList> _favoriteLists = [];
   Set<String> _favoritedChannelIds = {};
+
+  // Persistence keys
+  static const _kLastChannelId = 'last_channel_id';
+  static const _kLastGroup = 'last_group';
 
   @override
   void initState() {
     super.initState();
     _loadChannels();
     _ensureEpgSources();
+    _startTopBarFade();
+  }
+
+  void _startTopBarFade() {
+    _topBarTimer?.cancel();
+    _topBarTimer = Timer(const Duration(seconds: 3), () {
+      if (mounted) setState(() => _topBarOpacity = 0.0);
+    });
+  }
+
+  void _showTopBar() {
+    setState(() => _topBarOpacity = 1.0);
+    _startTopBarFade();
   }
 
   /// Add default EPG sources on first run and kick off a background refresh.
@@ -86,6 +112,7 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
     _guideScrollController.dispose();
     _overlayTimer?.cancel();
     _volumeOverlayTimer?.cancel();
+    _topBarTimer?.cancel();
     _focusNode.dispose();
     super.dispose();
   }
@@ -108,11 +135,12 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
     }
     final groups = groupSet.toList()..sort();
 
-    // Load EPG mappings (channel ID → EPG channel ID)
+    // Load EPG mappings (channel ID → prefixed EPG channel ID for programme lookup)
     final mappings = await database.getAllMappings();
     final epgMap = <String, String>{};
     for (final m in mappings) {
-      epgMap[m.channelId] = m.epgChannelId;
+      // Programmes are stored with prefixed ID: ${sourceId}_${epgChannelId}
+      epgMap[m.channelId] = '${m.epgSourceId}_${m.epgChannelId}';
     }
 
     // Load now-playing EPG data using mapped IDs (fall back to tvgId)
@@ -145,6 +173,37 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
       _isLoading = false;
       _applyFilters();
     });
+
+    // Restore last session state
+    _restoreSession();
+  }
+
+  Future<void> _restoreSession() async {
+    final prefs = await SharedPreferences.getInstance();
+    final lastGroup = prefs.getString(_kLastGroup);
+    final lastChannelId = prefs.getString(_kLastChannelId);
+
+    if (lastGroup != null && lastGroup != _selectedGroup) {
+      setState(() {
+        _selectedGroup = lastGroup;
+        _applyFilters();
+      });
+    }
+
+    if (lastChannelId != null && _filteredChannels.isNotEmpty) {
+      final idx = _filteredChannels.indexWhere((c) => c.id == lastChannelId);
+      if (idx >= 0) {
+        _selectChannel(idx);
+      }
+    }
+  }
+
+  Future<void> _saveSession() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_kLastGroup, _selectedGroup);
+    if (_selectedIndex >= 0 && _selectedIndex < _filteredChannels.length) {
+      await prefs.setString(_kLastChannelId, _filteredChannels[_selectedIndex].id);
+    }
   }
 
   void _applyFilters() {
@@ -208,6 +267,7 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
       _previewChannel = channel;
     });
     _showInfoOverlay(channel, index);
+    _saveSession();
   }
 
   /// Toggle between current channel and the last channel.
@@ -235,7 +295,7 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
     });
   }
 
-  void _goFullscreen(db.Channel channel) {
+  Future<void> _goFullscreen(db.Channel channel) async {
     final channelMaps = _filteredChannels
         .map((c) => <String, dynamic>{
               'name': c.name,
@@ -245,7 +305,7 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
               'alternativeUrls': <String>[],
             })
         .toList();
-    context.push('/player', extra: {
+    await context.push('/player', extra: {
       'streamUrl': channel.streamUrl,
       'channelName': channel.name,
       'channelLogo': channel.tvgLogo,
@@ -253,6 +313,7 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
       'channels': channelMaps,
       'currentIndex': _selectedIndex >= 0 ? _selectedIndex : 0,
     });
+    if (mounted) _showTopBar();
   }
 
   // ---------------------------------------------------------------------------
@@ -407,16 +468,28 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
         body: SafeArea(
           child: Column(
             children: [
-              _buildTopBar(context),
+              MouseRegion(
+                onEnter: (_) => _showTopBar(),
+                child: AnimatedOpacity(
+                  opacity: _topBarOpacity,
+                  duration: const Duration(milliseconds: 600),
+                  child: _buildTopBar(context),
+                ),
+              ),
               Expanded(
-                child: Column(
+                child: Row(
                   children: [
-                    // Video preview (left) + programme info (right)
-                    _buildPreviewRow(),
-                    // Group filter
-                    _buildGroupFilter(),
-                    // Channel list or guide view fills the rest
-                    Expanded(child: _showGuideView ? _buildGuideView() : _buildChannelList()),
+                    // Collapsible sidebar tree
+                    _buildSidebar(),
+                    // Main content area
+                    Expanded(
+                      child: Column(
+                        children: [
+                          _buildPreviewRow(),
+                          Expanded(child: _showGuideView ? _buildGuideView() : _buildChannelList()),
+                        ],
+                      ),
+                    ),
                   ],
                 ),
               ),
@@ -467,12 +540,12 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       child: Row(
         children: [
-          const Text(
+          Text(
             'clubTivi',
             style: TextStyle(
-              fontSize: 24,
-              fontWeight: FontWeight.bold,
-              color: Colors.white,
+              fontSize: 14,
+              fontWeight: FontWeight.w500,
+              color: Colors.white.withValues(alpha: 0.4),
             ),
           ),
           const SizedBox(width: 16),
@@ -801,69 +874,213 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
     );
   }
 
-  Widget _buildGroupFilter() {
-    // Build chip items: All | ★ Favorites | ★ <list names> | [group chips...] | Manage ★
-    final List<_FilterChip> items = [
-      _FilterChip('All', 'All', null),
-      _FilterChip('★ Favorites', 'Favorites', Icons.star_rounded),
-    ];
-    for (final list in _favoriteLists) {
-      items.add(_FilterChip('★ ${list.name}', 'fav:${list.id}', Icons.star_outline_rounded));
-    }
-    for (final group in _groups) {
-      items.add(_FilterChip(group, group, null));
-    }
-
-    return SizedBox(
-      height: 40,
-      child: Row(
+  Widget _buildSidebar() {
+    final width = _sidebarExpanded ? 220.0 : 44.0;
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 200),
+      width: width,
+      color: const Color(0xFF111127),
+      child: Column(
         children: [
-          Expanded(
-            child: ListView.builder(
-              scrollDirection: Axis.horizontal,
+          // Toggle button
+          InkWell(
+            onTap: () => setState(() => _sidebarExpanded = !_sidebarExpanded),
+            child: Container(
+              height: 36,
               padding: const EdgeInsets.symmetric(horizontal: 8),
-              itemCount: items.length,
-              itemBuilder: (context, index) {
-                final item = items[index];
-                final isSelected = item.filterKey == _selectedGroup;
-                return Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 3),
-                  child: ChoiceChip(
-                    avatar: item.icon != null
-                        ? Icon(item.icon, size: 14,
-                            color: isSelected ? Colors.amber : Colors.amber.withValues(alpha: 0.6))
-                        : null,
-                    label: Text(
-                      item.label,
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: isSelected ? Colors.white : Colors.white60,
-                      ),
-                    ),
-                    selected: isSelected,
-                    selectedColor: item.filterKey == 'Favorites' || item.filterKey.startsWith('fav:')
-                        ? const Color(0xFFE17055)
-                        : const Color(0xFF6C5CE7),
-                    backgroundColor: const Color(0xFF16213E),
-                    side: BorderSide.none,
-                    onSelected: (_) {
-                      setState(() {
-                        _selectedGroup = item.filterKey;
-                        _applyFilters();
-                      });
-                    },
-                  ),
-                );
-              },
+              alignment: _sidebarExpanded ? Alignment.centerRight : Alignment.center,
+              child: Icon(
+                _sidebarExpanded ? Icons.chevron_left_rounded : Icons.chevron_right_rounded,
+                color: Colors.white38,
+                size: 20,
+              ),
             ),
           ),
-          // Manage favorites button
-          IconButton(
-            icon: const Icon(Icons.playlist_add_rounded, size: 20, color: Colors.white54),
-            tooltip: 'Manage Favorite Lists',
-            onPressed: () => _showManageFavoritesDialog(),
+          const Divider(height: 1, color: Colors.white10),
+          // Tree content
+          Expanded(
+            child: _sidebarExpanded ? _buildSidebarTree() : _buildCollapsedSidebar(),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildCollapsedSidebar() {
+    // Icons-only when collapsed
+    final isAll = _selectedGroup == 'All';
+    final isFav = _selectedGroup == 'Favorites' || _selectedGroup.startsWith('fav:');
+    return ListView(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      children: [
+        _sidebarIcon(Icons.grid_view_rounded, 'All', isAll, () {
+          setState(() { _selectedGroup = 'All'; _applyFilters(); _saveSession(); });
+        }),
+        _sidebarIcon(Icons.star_rounded, 'Favorites', isFav, () {
+          setState(() { _selectedGroup = 'Favorites'; _applyFilters(); _saveSession(); });
+        }),
+        const Divider(height: 1, color: Colors.white10),
+        _sidebarIcon(Icons.folder_rounded, 'Groups', !isAll && !isFav, () {
+          setState(() => _sidebarExpanded = true);
+        }),
+      ],
+    );
+  }
+
+  Widget _sidebarIcon(IconData icon, String tooltip, bool active, VoidCallback onTap) {
+    return Tooltip(
+      message: tooltip,
+      preferBelow: false,
+      child: InkWell(
+        onTap: onTap,
+        child: Container(
+          height: 36,
+          alignment: Alignment.center,
+          color: active ? Colors.white.withValues(alpha: 0.08) : Colors.transparent,
+          child: Icon(icon, size: 18, color: active ? Colors.white : Colors.white38),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSidebarTree() {
+    return ListView(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      children: [
+        // All Channels
+        _buildTreeItem('All', 'All', Icons.grid_view_rounded, indent: 0),
+        // Favorites section
+        _buildTreeSection(
+          'favorites',
+          Icons.star_rounded,
+          'Favorites',
+          [
+            _buildTreeItem('★ All Favorites', 'Favorites', Icons.star_rounded, indent: 1),
+            for (final list in _favoriteLists)
+              _buildTreeItem('★ ${list.name}', 'fav:${list.id}', Icons.star_outline_rounded, indent: 1),
+            // Add list button
+            _buildTreeAction('New List…', Icons.add_rounded, () => _showManageFavoritesDialog(), indent: 1),
+          ],
+        ),
+        const Divider(height: 1, color: Colors.white10),
+        // Groups section
+        _buildTreeSection(
+          'providers',
+          Icons.folder_rounded,
+          'Groups (${_groups.length})',
+          [
+            for (final group in _groups)
+              _buildTreeItem(group, group, null, indent: 1),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildTreeSection(String sectionKey, IconData icon, String label, List<Widget> children) {
+    final expanded = _expandedSections.contains(sectionKey);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        InkWell(
+          onTap: () {
+            setState(() {
+              if (expanded) {
+                _expandedSections.remove(sectionKey);
+              } else {
+                _expandedSections.add(sectionKey);
+              }
+            });
+          },
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+            child: Row(
+              children: [
+                Icon(
+                  expanded ? Icons.expand_more_rounded : Icons.chevron_right_rounded,
+                  size: 16,
+                  color: Colors.white38,
+                ),
+                const SizedBox(width: 4),
+                Icon(icon, size: 14, color: Colors.white54),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    label,
+                    style: const TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.white54,
+                      letterSpacing: 0.5,
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        if (expanded) ...children,
+      ],
+    );
+  }
+
+  Widget _buildTreeItem(String label, String filterKey, IconData? icon, {int indent = 0}) {
+    final isSelected = _selectedGroup == filterKey;
+    return InkWell(
+      onTap: () {
+        setState(() {
+          _selectedGroup = filterKey;
+          _applyFilters();
+        });
+        _saveSession();
+      },
+      child: Container(
+        height: 30,
+        padding: EdgeInsets.only(left: 12.0 + (indent * 16.0), right: 8),
+        color: isSelected ? Colors.white.withValues(alpha: 0.1) : Colors.transparent,
+        alignment: Alignment.centerLeft,
+        child: Row(
+          children: [
+            if (icon != null) ...[
+              Icon(icon, size: 13,
+                  color: isSelected ? Colors.amber : Colors.white38),
+              const SizedBox(width: 6),
+            ],
+            Expanded(
+              child: Text(
+                label,
+                style: TextStyle(
+                  fontSize: 12,
+                  color: isSelected ? Colors.white : Colors.white60,
+                  fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+                ),
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTreeAction(String label, IconData icon, VoidCallback onTap, {int indent = 0}) {
+    return InkWell(
+      onTap: onTap,
+      child: Container(
+        height: 28,
+        padding: EdgeInsets.only(left: 12.0 + (indent * 16.0), right: 8),
+        alignment: Alignment.centerLeft,
+        child: Row(
+          children: [
+            Icon(icon, size: 13, color: Colors.white24),
+            const SizedBox(width: 6),
+            Text(
+              label,
+              style: const TextStyle(fontSize: 11, color: Colors.white30, fontStyle: FontStyle.italic),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -1796,14 +2013,6 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
       },
     );
   }
-}
-
-/// Helper model for filter chip items.
-class _FilterChip {
-  final String label;
-  final String filterKey;
-  final IconData? icon;
-  const _FilterChip(this.label, this.filterKey, this.icon);
 }
 
 /// Helper for inline EPG mapping dialog.
