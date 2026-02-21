@@ -1375,14 +1375,22 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
     return widgets;
   }
 
-  Widget _buildTreeSection(String sectionKey, IconData icon, String label, List<Widget> children) {
+  Widget _buildTreeSection(String sectionKey, IconData icon, String label, List<Widget> children, {String? filterKey}) {
     final expanded = _expandedSections.contains(sectionKey);
+    final isSelected = filterKey != null && _selectedGroup == filterKey;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         InkWell(
           onTap: () {
             setState(() {
+              // If filterKey provided, clicking header selects that filter
+              if (filterKey != null) {
+                _selectedGroup = filterKey;
+                _applyFilters();
+                _saveSession();
+              }
+              // Toggle expand/collapse
               if (expanded) {
                 _expandedSections.remove(sectionKey);
               } else {
@@ -1400,15 +1408,15 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
                   color: Colors.white38,
                 ),
                 const SizedBox(width: 4),
-                Icon(icon, size: 14, color: Colors.white54),
+                Icon(icon, size: 14, color: isSelected ? Colors.amber : Colors.white54),
                 const SizedBox(width: 6),
                 Expanded(
                   child: Text(
                     label,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 11,
                       fontWeight: FontWeight.w600,
-                      color: Colors.white54,
+                      color: isSelected ? Colors.white : Colors.white54,
                       letterSpacing: 0.5,
                     ),
                     overflow: TextOverflow.ellipsis,
