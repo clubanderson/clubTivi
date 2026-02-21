@@ -33,7 +33,10 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
   db.Channel? _previewChannel;
   List<db.EpgProgramme> _nowPlaying = [];
   bool _isLoading = true;
-  bool _showGuideView = false;
+
+  /// Maps channel ID → mapped EPG channel ID (from epg_mappings table)
+  Map<String, String> _epgMappings = {};
+  bool _showGuideView = true;
   final _searchController = TextEditingController();
   final _searchFocusNode = FocusNode();
   final _channelListController = ScrollController();
@@ -105,15 +108,26 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
     }
     final groups = groupSet.toList()..sort();
 
-    // Load now-playing EPG data
-    final epgChannelIds = allChannels
-        .where((c) => c.tvgId != null && c.tvgId!.isNotEmpty)
-        .map((c) => c.tvgId!)
-        .toSet()
-        .toList();
+    // Load EPG mappings (channel ID → EPG channel ID)
+    final mappings = await database.getAllMappings();
+    final epgMap = <String, String>{};
+    for (final m in mappings) {
+      epgMap[m.channelId] = m.epgChannelId;
+    }
+
+    // Load now-playing EPG data using mapped IDs (fall back to tvgId)
+    final epgChannelIds = <String>{};
+    for (final c in allChannels) {
+      final mapped = epgMap[c.id];
+      if (mapped != null && mapped.isNotEmpty) {
+        epgChannelIds.add(mapped);
+      } else if (c.tvgId != null && c.tvgId!.isNotEmpty) {
+        epgChannelIds.add(c.tvgId!);
+      }
+    }
     List<db.EpgProgramme> nowPlaying = [];
     if (epgChannelIds.isNotEmpty) {
-      nowPlaying = await database.getNowPlaying(epgChannelIds);
+      nowPlaying = await database.getNowPlaying(epgChannelIds.toList());
     }
 
     // Load favorite lists
@@ -125,6 +139,7 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
       _allChannels = allChannels;
       _groups = groups;
       _nowPlaying = nowPlaying;
+      _epgMappings = epgMap;
       _favoriteLists = favLists;
       _favoritedChannelIds = favChannelIds;
       _isLoading = false;
@@ -244,24 +259,35 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
   // EPG helpers
   // ---------------------------------------------------------------------------
 
+  /// Get the effective EPG channel ID: mapped ID takes priority over tvgId.
+  String? _getEpgId(db.Channel channel) {
+    final mapped = _epgMappings[channel.id];
+    if (mapped != null && mapped.isNotEmpty) return mapped;
+    if (channel.tvgId != null && channel.tvgId!.isNotEmpty) return channel.tvgId;
+    return null;
+  }
+
   String? _getChannelNowPlaying(db.Channel channel) {
-    if (channel.tvgId == null || channel.tvgId!.isEmpty) return null;
+    final epgId = _getEpgId(channel);
+    if (epgId == null) return null;
     final match =
-        _nowPlaying.where((p) => p.epgChannelId == channel.tvgId).toList();
+        _nowPlaying.where((p) => p.epgChannelId == epgId).toList();
     return match.isNotEmpty ? match.first.title : null;
   }
 
   db.EpgProgramme? _getEpgProgramme(db.Channel channel) {
-    if (channel.tvgId == null || channel.tvgId!.isEmpty) return null;
+    final epgId = _getEpgId(channel);
+    if (epgId == null) return null;
     final matches =
-        _nowPlaying.where((p) => p.epgChannelId == channel.tvgId).toList();
+        _nowPlaying.where((p) => p.epgChannelId == epgId).toList();
     return matches.isNotEmpty ? matches.first : null;
   }
 
   db.EpgProgramme? _getNextProgramme(db.Channel channel) {
-    if (channel.tvgId == null || channel.tvgId!.isEmpty) return null;
+    final epgId = _getEpgId(channel);
+    if (epgId == null) return null;
     final matches =
-        _nowPlaying.where((p) => p.epgChannelId == channel.tvgId).toList();
+        _nowPlaying.where((p) => p.epgChannelId == epgId).toList();
     return matches.length > 1 ? matches[1] : null;
   }
 
@@ -1409,7 +1435,8 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
 
   Widget _buildGuideRowProgrammes(db.Channel channel,
       db.AppDatabase database, DateTime dayStart, DateTime dayEnd) {
-    if (channel.tvgId == null || channel.tvgId!.isEmpty) {
+    final epgId = _getEpgId(channel);
+    if (epgId == null) {
       return Container(
         margin: const EdgeInsets.symmetric(vertical: 2),
         decoration: BoxDecoration(
@@ -1426,7 +1453,7 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
     return FutureBuilder<List<db.EpgProgramme>>(
       // TODO: Consider a batch load for all channels to avoid per-row queries
       future: database.getProgrammes(
-        epgChannelId: channel.tvgId!,
+        epgChannelId: epgId,
         start: dayStart,
         end: dayEnd,
       ),
