@@ -214,26 +214,39 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
   void _applyFilters() {
     var channels = _allChannels;
 
-    // Favorite list filters
-    if (_selectedGroup == 'Favorites') {
-      channels =
-          channels.where((c) => _favoritedChannelIds.contains(c.id)).toList();
-    } else if (_selectedGroup.startsWith('fav:')) {
-      final listId = _selectedGroup.substring(4);
-      // We'll need the channel IDs for this list — loaded async below
-      _applyFavoriteListFilter(listId);
-      return;
-    } else if (_selectedGroup != 'All') {
-      channels =
-          channels.where((c) => c.groupTitle == _selectedGroup).toList();
+    // When sidebar search is active, search ALL channels regardless of group
+    if (_sidebarSearchQuery.isNotEmpty) {
+      final terms = _sidebarSearchQuery.split(RegExp(r'\s+')).where((t) => t.isNotEmpty).toList();
+      channels = channels
+          .where((c) {
+            final nowPlaying = _getChannelNowPlaying(c) ?? '';
+            final haystack = '${c.name} ${c.groupTitle ?? ''} $nowPlaying'.toLowerCase();
+            return terms.every((t) => haystack.contains(t));
+          })
+          .toList();
+    } else {
+      // Group filters only apply when not searching
+      if (_selectedGroup == 'Favorites') {
+        channels =
+            channels.where((c) => _favoritedChannelIds.contains(c.id)).toList();
+      } else if (_selectedGroup.startsWith('fav:')) {
+        final listId = _selectedGroup.substring(4);
+        _applyFavoriteListFilter(listId);
+        return;
+      } else if (_selectedGroup != 'All') {
+        channels =
+            channels.where((c) => c.groupTitle == _selectedGroup).toList();
+      }
     }
 
+    // Top-bar search stacks on top
     if (_searchQuery.isNotEmpty) {
       channels = channels
           .where((c) => fuzzyMatchPasses(
               _searchQuery, [c.name, c.groupTitle, _getChannelNowPlaying(c)]))
           .toList();
     }
+
     _filteredChannels = channels;
     if (_selectedIndex >= _filteredChannels.length) {
       _selectedIndex = _filteredChannels.isEmpty ? -1 : 0;
@@ -247,6 +260,11 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
       channels = channels
           .where((c) => fuzzyMatchPasses(
               _searchQuery, [c.name, c.groupTitle, _getChannelNowPlaying(c)]))
+          .toList();
+    }
+    if (_sidebarSearchQuery.isNotEmpty) {
+      channels = channels
+          .where((c) => c.name.toLowerCase().contains(_sidebarSearchQuery))
           .toList();
     }
     if (!mounted) return;
@@ -919,7 +937,7 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
                   controller: _sidebarSearchController,
                   style: const TextStyle(color: Colors.white, fontSize: 12),
                   decoration: InputDecoration(
-                    hintText: 'Search groups…',
+                    hintText: 'Search channels…',
                     hintStyle: const TextStyle(color: Colors.white24, fontSize: 12),
                     prefixIcon: const Icon(Icons.search_rounded, size: 14, color: Colors.white24),
                     prefixIconConstraints: const BoxConstraints(minWidth: 30),
@@ -941,7 +959,12 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
                       borderSide: BorderSide.none,
                     ),
                   ),
-                  onChanged: (v) => setState(() => _sidebarSearchQuery = v.toLowerCase()),
+                  onChanged: (v) {
+                    setState(() {
+                      _sidebarSearchQuery = v.toLowerCase();
+                      _applyFilters();
+                    });
+                  },
                 ),
               ),
             ),
@@ -1796,71 +1819,76 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
             itemBuilder: (context, index) {
               final channel = _filteredChannels[index];
               final isFav = _favoritedChannelIds.contains(channel.id);
-              return SizedBox(
-                height: 48,
-                child: Row(
-                  children: [
-                    // Channel label with logo + right-click menu
-                    GestureDetector(
-                      onSecondaryTapUp: (details) => _showGuideChannelMenu(
-                        channel, details.globalPosition,
-                      ),
-                      onTap: () => _selectChannel(index),
-                      child: SizedBox(
+              return GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () => _selectChannel(index),
+                onSecondaryTapUp: (details) => _showGuideChannelMenu(
+                  channel, details.globalPosition,
+                ),
+                child: Container(
+                  height: 48,
+                  decoration: const BoxDecoration(
+                    border: Border(bottom: BorderSide(color: Colors.white10, width: 0.5)),
+                  ),
+                  child: Row(
+                    children: [
+                      // Channel label with logo
+                      Container(
                         width: 200,
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 4),
-                          child: Row(
-                            children: [
-                              // Channel logo
-                              ClipRRect(
-                                borderRadius: BorderRadius.circular(4),
-                                child: channel.tvgLogo != null && channel.tvgLogo!.isNotEmpty
-                                    ? Image.network(
-                                        channel.tvgLogo!,
-                                        width: 28,
-                                        height: 28,
-                                        fit: BoxFit.contain,
-                                        errorBuilder: (_, __, ___) => Container(
-                                          width: 28, height: 28,
-                                          color: const Color(0xFF16213E),
-                                          child: const Icon(Icons.tv, size: 14, color: Colors.white24),
-                                        ),
-                                      )
-                                    : Container(
+                        decoration: const BoxDecoration(
+                          border: Border(right: BorderSide(color: Colors.white10, width: 0.5)),
+                        ),
+                        padding: const EdgeInsets.symmetric(horizontal: 4),
+                        child: Row(
+                          children: [
+                            // Channel logo
+                            ClipRRect(
+                              borderRadius: BorderRadius.circular(4),
+                              child: channel.tvgLogo != null && channel.tvgLogo!.isNotEmpty
+                                  ? Image.network(
+                                      channel.tvgLogo!,
+                                      width: 28,
+                                      height: 28,
+                                      fit: BoxFit.contain,
+                                      errorBuilder: (_, __, ___) => Container(
                                         width: 28, height: 28,
                                         color: const Color(0xFF16213E),
                                         child: const Icon(Icons.tv, size: 14, color: Colors.white24),
                                       ),
-                              ),
-                              const SizedBox(width: 4),
-                              Expanded(
-                                child: Column(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      channel.name,
-                                      style: const TextStyle(fontSize: 11, color: Colors.white70),
-                                      maxLines: 2,
-                                      overflow: TextOverflow.ellipsis,
+                                    )
+                                  : Container(
+                                      width: 28, height: 28,
+                                      color: const Color(0xFF16213E),
+                                      child: const Icon(Icons.tv, size: 14, color: Colors.white24),
                                     ),
-                                    if (isFav)
-                                      const Icon(Icons.star_rounded, color: Colors.amber, size: 12),
-                                  ],
-                                ),
+                            ),
+                            const SizedBox(width: 4),
+                            Expanded(
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    channel.name,
+                                    style: const TextStyle(fontSize: 11, color: Colors.white70),
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                  if (isFav)
+                                    const Icon(Icons.star_rounded, color: Colors.amber, size: 12),
+                                ],
                               ),
-                            ],
-                          ),
+                            ),
+                          ],
                         ),
                       ),
-                    ),
-                    // Programme blocks
-                    Expanded(
-                      child: _buildGuideRowProgrammes(
-                          channel, database, dayStart, dayEnd),
-                    ),
-                  ],
+                      // Programme blocks
+                      Expanded(
+                        child: _buildGuideRowProgrammes(
+                            channel, database, dayStart, dayEnd),
+                      ),
+                    ],
+                  ),
                 ),
               );
             },
