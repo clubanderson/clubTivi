@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 
+import '../../core/fuzzy_match.dart';
 import '../../data/datasources/local/database.dart' as db;
 import '../player/player_service.dart';
 import '../providers/provider_manager.dart';
@@ -98,9 +99,8 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
           channels.where((c) => c.groupTitle == _selectedGroup).toList();
     }
     if (_searchQuery.isNotEmpty) {
-      final q = _searchQuery.toLowerCase();
       channels =
-          channels.where((c) => c.name.toLowerCase().contains(q)).toList();
+          channels.where((c) => fuzzyMatchPasses(_searchQuery, [c.name, c.groupTitle])).toList();
     }
     _filteredChannels = channels;
     if (_selectedIndex >= _filteredChannels.length) {
@@ -438,7 +438,10 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
                 child: Stack(
                   fit: StackFit.expand,
                   children: [
-                    Video(controller: playerService.videoController),
+                    Video(
+                      controller: playerService.videoController,
+                      controls: NoVideoControls,
+                    ),
                     // Channel info overlay at bottom (gradient)
                     Positioned(
                       left: 0,

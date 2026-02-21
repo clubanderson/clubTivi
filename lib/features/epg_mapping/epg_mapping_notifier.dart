@@ -4,7 +4,7 @@ import '../../data/models/epg.dart';
 import '../../data/models/channel.dart' hide Provider;
 import '../../data/services/epg_auto_mapper.dart';
 import '../providers/provider_manager.dart';
-import 'fuzzy_match.dart';
+import '../../core/fuzzy_match.dart';
 
 /// State for the EPG mapping screen.
 class EpgMappingState {

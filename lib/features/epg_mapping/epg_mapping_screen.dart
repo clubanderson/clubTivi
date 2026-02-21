@@ -3,7 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../data/models/epg.dart';
 import 'epg_mapping_notifier.dart';
-import 'fuzzy_match.dart';
+import '../../core/fuzzy_match.dart';
 
 class EpgMappingScreen extends ConsumerStatefulWidget {
   const EpgMappingScreen({super.key});
