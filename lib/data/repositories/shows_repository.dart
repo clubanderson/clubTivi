@@ -128,9 +128,12 @@ class ShowsRepository {
           ? await _tmdb.getMovie(tmdbId)
           : await _tmdb.getTvShow(tmdbId);
 
+      _log.i('TMDB detail for $tmdbId: title=${detail.title}, imdb=${detail.imdbId}, seasons=${detail.numberOfSeasons}');
+
       final show = Show(
         traktId: tmdbId,
         tmdbId: tmdbId,
+        imdbId: detail.imdbId,
         title: detail.title,
         posterUrl: detail.posterUrl.isNotEmpty ? detail.posterUrl : null,
         backdropUrl: detail.backdropUrl.isNotEmpty ? detail.backdropUrl : null,
@@ -144,8 +147,10 @@ class ShowsRepository {
 
       // For TV shows, build seasons list from TMDB
       List<Season> seasons = [];
-      if (type == ShowType.show && detail.numberOfSeasons != null) {
-        for (int i = 1; i <= detail.numberOfSeasons!; i++) {
+      if (type == ShowType.show) {
+        final numSeasons = detail.numberOfSeasons ?? 0;
+        _log.i('Fetching $numSeasons seasons for ${detail.title}');
+        for (int i = 1; i <= numSeasons; i++) {
           try {
             final tmdbSeason = await _tmdb.getTvSeason(tmdbId, i);
             seasons.add(Season(
@@ -157,7 +162,8 @@ class ShowsRepository {
                   ? TmdbClient.posterUrl(tmdbSeason.posterPath)
                   : null,
             ));
-          } catch (_) {
+          } catch (e) {
+            _log.w('Failed to fetch season $i for $tmdbId: $e');
             seasons.add(Season(number: i));
           }
         }
@@ -350,7 +356,7 @@ class ShowsRepository {
     }
   }
 
-  /// Enrich a single show with TMDB images
+  /// Enrich a single show with TMDB images and IMDB ID
   Future<Show> _enrichSingle(Show show) async {
     if (_tmdb == null || show.tmdbId == null) return show;
     try {
@@ -358,6 +364,7 @@ class ShowsRepository {
           ? await _tmdb.getMovie(show.tmdbId!)
           : await _tmdb.getTvShow(show.tmdbId!);
       return show.copyWith(
+        imdbId: detail.imdbId,
         posterUrl: detail.posterUrl.isNotEmpty ? detail.posterUrl : null,
         backdropUrl: detail.backdropUrl.isNotEmpty ? detail.backdropUrl : null,
         overview: show.overview ?? detail.overview,
