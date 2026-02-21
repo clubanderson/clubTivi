@@ -287,14 +287,14 @@ class ShowsRepository {
   }
 
   /// Resolve a specific torrent via Real-Debrid (add magnet → wait → stream URL)
-  Future<ResolvedStream?> resolveMagnet(String magnetUrl) async {
-    if (_debrid == null) return null;
-    try {
-      return await _debrid.resolveFromMagnet(magnetUrl);
-    } catch (e) {
-      _log.e('Failed to resolve magnet: $e');
-      return null;
+  Future<ResolvedStream?> resolveMagnet(
+    String magnetUrl, {
+    void Function(String status, int progress)? onProgress,
+  }) async {
+    if (_debrid == null) {
+      throw Exception('No Real-Debrid API key configured');
     }
+    return await _debrid.resolveFromMagnet(magnetUrl, onProgress: onProgress);
   }
 
   /// Enrich a list of shows with TMDB poster/backdrop URLs

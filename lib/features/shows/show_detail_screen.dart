@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../../data/models/show.dart';
 import 'shows_providers.dart';
 
@@ -25,6 +26,7 @@ class _ShowDetailScreenState extends ConsumerState<ShowDetailScreen> {
   int? _selectedSeason; // null until initialized
   bool _resolving = false;
   int _lastSeasonCount = 0; // track when seasons change
+  final _seasonScrollController = ScrollController();
 
   static const _seasonPrefPrefix = 'show_last_season_';
 
@@ -46,12 +48,39 @@ class _ShowDetailScreenState extends ConsumerState<ShowDetailScreen> {
     setState(() {
       _selectedSeason = saved ?? latestSeason;
     });
+    _scrollToSelectedSeason(detail);
+  }
+
+  void _scrollToSelectedSeason(ShowDetail detail) {
+    if (_selectedSeason == null || detail.seasons.isEmpty) return;
+    final index = detail.seasons.indexWhere((s) => s.number == _selectedSeason);
+    if (index < 0) return;
+    // Each chip is ~110px wide (label + padding)
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_seasonScrollController.hasClients) {
+        final target = (index * 110.0 - 40).clamp(
+          0.0,
+          _seasonScrollController.position.maxScrollExtent,
+        );
+        _seasonScrollController.animateTo(
+          target,
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeOut,
+        );
+      }
+    });
   }
 
   Future<void> _selectSeason(int season) async {
     setState(() => _selectedSeason = season);
     final prefs = await SharedPreferences.getInstance();
     await prefs.setInt('$_seasonPrefPrefix${widget.traktId}', season);
+  }
+
+  @override
+  void dispose() {
+    _seasonScrollController.dispose();
+    super.dispose();
   }
 
   @override
@@ -233,6 +262,7 @@ class _ShowDetailScreenState extends ConsumerState<ShowDetailScreen> {
             child: SizedBox(
               height: 48,
               child: ListView.builder(
+                controller: _seasonScrollController,
                 scrollDirection: Axis.horizontal,
                 padding: const EdgeInsets.symmetric(horizontal: 20),
                 itemCount: detail.seasons.length,
@@ -441,12 +471,32 @@ class _ShowDetailScreenState extends ConsumerState<ShowDetailScreen> {
                         ].join(' • '),
                         style: const TextStyle(color: Colors.white38, fontSize: 12),
                       ),
-                      trailing: Icon(
-                        Icons.play_circle_fill,
-                        color: stream.isCached
-                            ? const Color(0xFF6C5CE7)
-                            : const Color(0xFF6C5CE7).withValues(alpha: 0.6),
-                        size: 32,
+                      trailing: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          IconButton(
+                            icon: const Icon(Icons.download_rounded, color: Colors.white54, size: 24),
+                            tooltip: 'Download via browser',
+                            onPressed: () {
+                              Navigator.pop(ctx);
+                              _resolveAndDownload(stream, title);
+                            },
+                          ),
+                          IconButton(
+                            icon: Icon(
+                              Icons.play_circle_fill,
+                              color: stream.isCached
+                                  ? const Color(0xFF6C5CE7)
+                                  : const Color(0xFF6C5CE7).withValues(alpha: 0.6),
+                              size: 32,
+                            ),
+                            tooltip: 'Play',
+                            onPressed: () {
+                              Navigator.pop(ctx);
+                              _resolveAndPlay(stream, title);
+                            },
+                          ),
+                        ],
                       ),
                       onTap: () {
                         Navigator.pop(ctx);
@@ -468,11 +518,18 @@ class _ShowDetailScreenState extends ConsumerState<ShowDetailScreen> {
       _showSnackbar('No magnet URL available');
       return;
     }
-    _showSnackbar(stream.isCached ? 'Resolving stream...' : 'Adding to Real-Debrid...');
+    _showSnackbar(stream.isCached ? 'Resolving cached stream…' : 'Adding to Real-Debrid…');
     setState(() => _resolving = true);
     try {
       final repo = await ref.read(showsRepositoryProvider.future);
-      final resolved = await repo.resolveMagnet(stream.magnetUrl!);
+      final resolved = await repo.resolveMagnet(
+        stream.magnetUrl!,
+        onProgress: (status, progress) {
+          if (mounted) {
+            _showSnackbar('$status ${progress > 0 ? '($progress%)' : ''}');
+          }
+        },
+      );
       if (resolved == null) {
         _showSnackbar('Failed to resolve stream');
         return;
@@ -480,7 +537,42 @@ class _ShowDetailScreenState extends ConsumerState<ShowDetailScreen> {
       if (!mounted) return;
       _launchPlayer(resolved, title);
     } catch (e) {
-      _showSnackbar('Resolve error: $e');
+      _showSnackbar('$e');
+    } finally {
+      if (mounted) setState(() => _resolving = false);
+    }
+  }
+
+  Future<void> _resolveAndDownload(ResolvedStream stream, String title) async {
+    if (stream.magnetUrl == null) {
+      _showSnackbar('No magnet URL available');
+      return;
+    }
+    _showSnackbar(stream.isCached ? 'Getting download link…' : 'Adding to Real-Debrid…');
+    setState(() => _resolving = true);
+    try {
+      final repo = await ref.read(showsRepositoryProvider.future);
+      final resolved = await repo.resolveMagnet(
+        stream.magnetUrl!,
+        onProgress: (status, progress) {
+          if (mounted) {
+            _showSnackbar('$status ${progress > 0 ? '($progress%)' : ''}');
+          }
+        },
+      );
+      if (resolved == null || resolved.url.isEmpty) {
+        _showSnackbar('Failed to get download link');
+        return;
+      }
+      final uri = Uri.parse(resolved.url);
+      if (await canLaunchUrl(uri)) {
+        await launchUrl(uri, mode: LaunchMode.externalApplication);
+        if (mounted) _showSnackbar('Download started in browser');
+      } else {
+        _showSnackbar('Could not open download URL');
+      }
+    } catch (e) {
+      _showSnackbar('$e');
     } finally {
       if (mounted) setState(() => _resolving = false);
     }
