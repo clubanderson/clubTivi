@@ -44,6 +44,9 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
   bool _showVolumeOverlay = false;
   Timer? _volumeOverlayTimer;
 
+  // Channel history (stack of channel indices for back navigation)
+  final List<int> _channelHistory = [];
+
   @override
   void initState() {
     super.initState();
@@ -118,6 +121,10 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
 
   void _selectChannel(int index) {
     if (index < 0 || index >= _filteredChannels.length) return;
+    // Push current channel to history before switching
+    if (_selectedIndex >= 0 && _selectedIndex != index) {
+      _channelHistory.add(_selectedIndex);
+    }
     final channel = _filteredChannels[index];
     final playerService = ref.read(playerServiceProvider);
     playerService.play(channel.streamUrl);
@@ -126,6 +133,24 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
       _previewChannel = channel;
     });
     _showInfoOverlay(channel, index);
+  }
+
+  void _goBackChannel() {
+    if (_channelHistory.isEmpty) return;
+    final prevIndex = _channelHistory.removeLast();
+    if (prevIndex < 0 || prevIndex >= _filteredChannels.length) return;
+    final channel = _filteredChannels[prevIndex];
+    final playerService = ref.read(playerServiceProvider);
+    playerService.play(channel.streamUrl);
+    setState(() {
+      _selectedIndex = prevIndex;
+      _previewChannel = channel;
+    });
+    _showInfoOverlay(channel, prevIndex);
+  }
+
+  void _clearHistory() {
+    setState(() => _channelHistory.clear());
   }
 
   void _showInfoOverlay(db.Channel channel, int index) {
@@ -230,6 +255,12 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
 
     if (event.logicalKey == LogicalKeyboardKey.arrowRight) {
       _adjustVolume(5);
+      return KeyEventResult.handled;
+    }
+
+    // Backspace → go back in channel history
+    if (event.logicalKey == LogicalKeyboardKey.backspace) {
+      _goBackChannel();
       return KeyEventResult.handled;
     }
 
@@ -402,6 +433,42 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
             )
           else
             const Spacer(),
+          // Channel history back button
+          if (_channelHistory.isNotEmpty)
+            Stack(
+              children: [
+                IconButton(
+                  icon: const Icon(Icons.arrow_back_rounded, color: Colors.white70),
+                  tooltip: 'Previous channel (Backspace)',
+                  onPressed: _goBackChannel,
+                ),
+                Positioned(
+                  right: 4,
+                  top: 4,
+                  child: Container(
+                    padding: const EdgeInsets.all(3),
+                    decoration: const BoxDecoration(
+                      color: Color(0xFF6C5CE7),
+                      shape: BoxShape.circle,
+                    ),
+                    child: Text(
+                      '${_channelHistory.length}',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 9,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          if (_channelHistory.isNotEmpty)
+            IconButton(
+              icon: const Icon(Icons.clear_all_rounded, color: Colors.white38),
+              tooltip: 'Clear history',
+              onPressed: _clearHistory,
+            ),
           IconButton(
             icon: const Icon(Icons.search_rounded, color: Colors.white70),
             tooltip: 'Search',

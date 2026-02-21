@@ -98,17 +98,15 @@ class EpgRefreshService {
 
     final defaults = [
       (
-        name: 'IPTV-Org EPG',
-        url:
-            'https://iptv-org.github.io/epg/guides/en/magticom.ge.epg.xml.gz',
+        name: 'EPG.pw – English (Global)',
+        url: 'https://epg.pw/xmltv/en.xml.gz',
       ),
       (
-        name: 'IPTV-Org US',
-        url:
-            'https://iptv-org.github.io/epg/guides/en/directv.com.epg.xml.gz',
+        name: 'Open-EPG – US Channels',
+        url: 'https://www.open-epg.com/files/unitedStates_all.xml',
       ),
       (
-        name: 'EPG.best (configure your key)',
+        name: 'EPG.best (requires API key)',
         url: 'https://epg.best/xmltv/YOUR_KEY_HERE',
       ),
     ];
