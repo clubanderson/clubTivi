@@ -17,15 +17,7 @@ class _EpgMappingScreenState extends ConsumerState<EpgMappingScreen> {
   @override
   void initState() {
     super.initState();
-    Future.microtask(() async {
-      final notifier = ref.read(epgMappingProvider.notifier);
-      await notifier.load();
-      // Auto-run mapper if there are unmapped channels and EPG data exists
-      final s = ref.read(epgMappingProvider);
-      if (s.unmappedCount > 0) {
-        await notifier.runAutoMapper();
-      }
-    });
+    Future.microtask(() => ref.read(epgMappingProvider.notifier).load());
   }
 
   @override
@@ -40,17 +32,41 @@ class _EpgMappingScreenState extends ConsumerState<EpgMappingScreen> {
             onPressed: state.isLoading
                 ? null
                 : () async {
-                    final stats =
-                        await ref.read(epgMappingProvider.notifier).runAutoMapper();
-                    if (context.mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                        content: Text(
-                          'Auto-mapped ${stats.mapped} channels, '
-                          '${stats.suggested} suggestions, '
-                          '${stats.unmapped} unmapped '
-                          '(${stats.elapsed.inMilliseconds}ms)',
+                    // Show progress dialog
+                    showDialog(
+                      context: context,
+                      barrierDismissible: false,
+                      builder: (_) => const AlertDialog(
+                        content: Row(
+                          children: [
+                            CircularProgressIndicator(),
+                            SizedBox(width: 20),
+                            Expanded(child: Text('Auto-mapping channels...\nThis may take a moment.')),
+                          ],
                         ),
-                      ));
+                      ),
+                    );
+                    try {
+                      final stats =
+                          await ref.read(epgMappingProvider.notifier).runAutoMapper();
+                      if (context.mounted) {
+                        Navigator.of(context).pop(); // dismiss dialog
+                        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                          content: Text(
+                            'Auto-mapped ${stats.mapped} channels, '
+                            '${stats.suggested} suggestions, '
+                            '${stats.unmapped} unmapped '
+                            '(${stats.elapsed.inMilliseconds}ms)',
+                          ),
+                        ));
+                      }
+                    } catch (e) {
+                      if (context.mounted) {
+                        Navigator.of(context).pop();
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text('Auto-map error: $e')),
+                        );
+                      }
                     }
                   },
             icon: const Icon(Icons.auto_fix_high_rounded),
