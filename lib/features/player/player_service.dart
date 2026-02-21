@@ -23,7 +23,7 @@ class PlayerService {
     if (_player == null) {
       _player = Player(
         configuration: const PlayerConfiguration(
-          logLevel: MPVLogLevel.v,
+          logLevel: MPVLogLevel.warn,
         ),
       );
       _initPlayer(_player!);
