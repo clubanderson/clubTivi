@@ -809,7 +809,10 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
           IconButton(
             icon: const Icon(Icons.dns_rounded, color: Colors.white70),
             tooltip: 'Providers',
-            onPressed: () => context.push('/providers'),
+            onPressed: () async {
+              await context.push('/providers');
+              if (mounted) _loadChannels();
+            },
           ),
           IconButton(
             icon: const Icon(Icons.link_rounded, color: Colors.white70),
