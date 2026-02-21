@@ -805,6 +805,11 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
             tooltip: 'Settings',
             onPressed: () => context.push('/settings'),
           ),
+          IconButton(
+            icon: const Icon(Icons.movie_rounded, color: Colors.white70),
+            tooltip: 'Shows & Movies',
+            onPressed: () => context.push('/shows'),
+          ),
         ],
       ),
     );
