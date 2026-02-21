@@ -928,7 +928,7 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
                             ),
                             if (_showOverlay && _previewChannel != null)
                               ChannelInfoOverlay(
-                                channelNumber: _selectedIndex + 1,
+                                providerName: _getProviderName(_previewChannel!.providerId),
                                 channelName: _previewChannel!.name,
                                 channelLogo: _previewChannel!.tvgLogo,
                                 groupTitle: _previewChannel!.groupTitle,
@@ -994,6 +994,19 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
                               _previewChannel!.groupTitle!,
                               style: const TextStyle(color: Colors.white38, fontSize: 11),
                               overflow: TextOverflow.ellipsis,
+                            ),
+                          if (_getProviderName(_previewChannel!.providerId).isNotEmpty)
+                            Container(
+                              margin: const EdgeInsets.only(top: 4),
+                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF6C5CE7).withValues(alpha: 0.2),
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              child: Text(
+                                _getProviderName(_previewChannel!.providerId),
+                                style: const TextStyle(fontSize: 10, color: Color(0xFF6C5CE7), fontWeight: FontWeight.w600),
+                              ),
                             ),
                           const SizedBox(height: 8),
                           // Now playing
