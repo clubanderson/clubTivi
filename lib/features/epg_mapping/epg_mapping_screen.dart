@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../data/models/epg.dart';
 import '../providers/provider_manager.dart';
@@ -26,6 +27,10 @@ class _EpgMappingScreenState extends ConsumerState<EpgMappingScreen> {
 
     return Scaffold(
       appBar: AppBar(
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () => context.go('/'),
+        ),
         title: const Text('EPG Mappings'),
         actions: [
           TextButton.icon(
