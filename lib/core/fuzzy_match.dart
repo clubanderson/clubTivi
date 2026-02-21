@@ -19,8 +19,9 @@ String buildSearchBlob(List<String?> fields) {
 /// Tokenizes the query and scores each token:
 /// - 1.0 for an exact substring match in the blob
 /// - 0.5 for a fuzzy match (best word similarity > 0.6)
+/// - 0.0 if the token doesn't match at all
 ///
-/// A channel passes the filter when score >= tokens.length * 0.5.
+/// ALL tokens must match for the result to pass (AND logic).
 double fuzzyMatch(String query, List<String?> fields) {
   final tokens = tokenizeQuery(query);
   if (tokens.isEmpty) return 0.0;
@@ -44,15 +45,18 @@ double fuzzyMatch(String query, List<String?> fields) {
       }
       if (bestSim > 0.6) {
         score += 0.5;
+      } else {
+        // Token didn't match at all — AND fails
+        return 0.0;
       }
     }
   }
   return score;
 }
 
-/// Whether the score passes the minimum threshold.
+/// Whether ALL tokens in the query match the fields (AND logic).
 bool fuzzyMatchPasses(String query, List<String?> fields) {
   final tokens = tokenizeQuery(query);
   if (tokens.isEmpty) return true;
-  return fuzzyMatch(query, fields) >= tokens.length * 0.5;
+  return fuzzyMatch(query, fields) > 0.0;
 }
