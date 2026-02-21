@@ -13,23 +13,20 @@ const _kTraktClientId = 'shows_trakt_client_id';
 const _kTmdbApiKey = 'shows_tmdb_api_key';
 const _kDebridApiToken = 'shows_debrid_api_token';
 
-/// Provider for the shows repository (initialized from saved API keys)
+/// Provider for the shows repository (rebuilds when API keys change)
 final showsRepositoryProvider = FutureProvider<ShowsRepository>((ref) async {
-  final prefs = await SharedPreferences.getInstance();
-
-  final traktId = prefs.getString(_kTraktClientId);
-  final tmdbKey = prefs.getString(_kTmdbApiKey);
-  final debridToken = prefs.getString(_kDebridApiToken);
+  // Watch API keys so repository rebuilds when keys are saved
+  final keys = ref.watch(showsApiKeysProvider);
 
   return ShowsRepository(
-    trakt: traktId != null && traktId.isNotEmpty
-        ? TraktClient(clientId: traktId)
+    trakt: keys.hasTraktKey
+        ? TraktClient(clientId: keys.traktClientId)
         : null,
-    tmdb: tmdbKey != null && tmdbKey.isNotEmpty
-        ? TmdbClient(apiKey: tmdbKey)
+    tmdb: keys.hasTmdbKey
+        ? TmdbClient(apiKey: keys.tmdbApiKey)
         : null,
-    debrid: debridToken != null && debridToken.isNotEmpty
-        ? DebridClient(apiToken: debridToken)
+    debrid: keys.hasDebridKey
+        ? DebridClient(apiToken: keys.debridApiToken)
         : null,
     torrentSearch: TorrentSearchClient(),
   );

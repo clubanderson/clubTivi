@@ -13,13 +13,20 @@ class TmdbClient {
     required this.apiKey,
     Dio? dio,
   }) : _dio = dio ?? Dio() {
+    // Detect if user provided a v4 Bearer token (long JWT) vs v3 API key (short hex)
+    final isBearerToken = apiKey.length > 40 || apiKey.startsWith('eyJ');
+
     _dio.options
       ..baseUrl = _baseUrl
       ..connectTimeout = const Duration(seconds: 10)
       ..receiveTimeout = const Duration(seconds: 15);
     _dio.interceptors.add(InterceptorsWrapper(
       onRequest: (options, handler) {
-        options.queryParameters['api_key'] = apiKey;
+        if (isBearerToken) {
+          options.headers['Authorization'] = 'Bearer $apiKey';
+        } else {
+          options.queryParameters['api_key'] = apiKey;
+        }
         handler.next(options);
       },
     ));
