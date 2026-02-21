@@ -5,6 +5,8 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 
+import '../../data/datasources/local/database.dart' as db;
+import '../../features/providers/provider_manager.dart' show databaseProvider;
 import 'player_service.dart';
 
 /// Full-screen video player with overlay controls and keyboard navigation.
@@ -47,6 +49,12 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
   // Overlay timer
   Timer? _overlayTimer;
 
+  // EPG state
+  String? _nowPlayingTitle;
+  String? _nowPlayingTime;
+  String? _nextTitle;
+  String? _nextTime;
+
   @override
   void initState() {
     super.initState();
@@ -56,7 +64,60 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
     _startPlayback();
     _autoHideOverlay();
+    _loadEpgInfo();
   }
+
+  Future<void> _loadEpgInfo() async {
+    if (widget.channels.isEmpty) return;
+    final ch = widget.channels[_channelIndex];
+    final epgId = ch['epgId'] as String?;
+    if (epgId == null || epgId.isEmpty) {
+      if (mounted) {
+        setState(() {
+          _nowPlayingTitle = null;
+          _nowPlayingTime = null;
+          _nextTitle = null;
+          _nextTime = null;
+        });
+      }
+      return;
+    }
+
+    final database = ref.read(databaseProvider);
+    final now = DateTime.now();
+    final programmes = await database.getProgrammes(
+      epgChannelId: epgId,
+      start: now.subtract(const Duration(hours: 1)),
+      end: now.add(const Duration(hours: 6)),
+    );
+
+    if (!mounted) return;
+
+    db.EpgProgramme? current;
+    db.EpgProgramme? next;
+    for (final p in programmes) {
+      if (now.isAfter(p.start) && now.isBefore(p.stop)) {
+        current = p;
+      } else if (current != null && next == null && now.isBefore(p.start)) {
+        next = p;
+        break;
+      }
+    }
+
+    setState(() {
+      _nowPlayingTitle = current?.title;
+      _nowPlayingTime = current != null
+          ? '${_fmtTime(current.start)} – ${_fmtTime(current.stop)}'
+          : null;
+      _nextTitle = next?.title;
+      _nextTime = next != null
+          ? '${_fmtTime(next.start)} – ${_fmtTime(next.stop)}'
+          : null;
+    });
+  }
+
+  String _fmtTime(DateTime t) =>
+      '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
 
   void _startPlayback() {
     final playerService = ref.read(playerServiceProvider);
@@ -158,6 +219,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
     final ch = widget.channels[_channelIndex];
     ref.read(playerServiceProvider).play(ch['streamUrl'] as String? ?? '');
     _autoHideOverlay();
+    _loadEpgInfo();
   }
 
   void _adjustVolume(double delta) {
@@ -235,14 +297,41 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
                             ),
                           ),
                         Expanded(
-                          child: Text(
-                            _currentChannelName,
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 15,
-                              fontWeight: FontWeight.w600,
-                            ),
-                            overflow: TextOverflow.ellipsis,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                _currentChannelName,
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              if (_nowPlayingTitle != null) ...[
+                                const SizedBox(height: 2),
+                                Text(
+                                  '▶ $_nowPlayingTitle${_nowPlayingTime != null ? '  $_nowPlayingTime' : ''}',
+                                  style: const TextStyle(
+                                    color: Colors.white70,
+                                    fontSize: 11,
+                                  ),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ],
+                              if (_nextTitle != null) ...[
+                                Text(
+                                  'Next: $_nextTitle${_nextTime != null ? '  $_nextTime' : ''}',
+                                  style: const TextStyle(
+                                    color: Colors.white38,
+                                    fontSize: 10,
+                                  ),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ],
+                            ],
                           ),
                         ),
                         // ESC exit hint

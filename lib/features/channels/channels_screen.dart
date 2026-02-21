@@ -294,6 +294,10 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
       _favoriteLists = favLists;
       _favoritedChannelIds = favChannelIds;
       _isLoading = false;
+      // Auto-expand provider sections in sidebar
+      for (final p in providers) {
+        _expandedSections.add('prov_${p.id}');
+      }
       _applyFilters();
     });
 
@@ -355,6 +359,17 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
         final providerId = _selectedGroup.substring(9);
         channels =
             channels.where((c) => c.providerId == providerId).toList();
+      } else if (_selectedGroup.startsWith('provgroup:')) {
+        // Format: provgroup:{providerId}:{groupTitle}
+        final parts = _selectedGroup.substring(10);
+        final sepIdx = parts.indexOf(':');
+        if (sepIdx > 0) {
+          final providerId = parts.substring(0, sepIdx);
+          final groupTitle = parts.substring(sepIdx + 1);
+          channels = channels
+              .where((c) => c.providerId == providerId && c.groupTitle == groupTitle)
+              .toList();
+        }
       } else if (_selectedGroup != 'All') {
         channels =
             channels.where((c) => c.groupTitle == _selectedGroup).toList();
@@ -447,6 +462,7 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
               'streamUrl': c.streamUrl,
               'tvgLogo': c.tvgLogo,
               'groupTitle': c.groupTitle,
+              'epgId': _getEpgId(c),
               'alternativeUrls': <String>[],
             })
         .toList();
@@ -1211,26 +1227,7 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
         if (showFavSection || showProvSection)
           const Divider(height: 1, color: Colors.white10),
         if (showProvSection)
-          _buildTreeSection(
-            'providersList',
-            Icons.dns_rounded,
-            'Providers (${filteredProviders.length})',
-            [
-              for (final prov in filteredProviders)
-                _buildTreeItem(
-                  prov.name,
-                  'provider:${prov.id}',
-                  prov.type == 'xtream' ? Icons.bolt_rounded : Icons.playlist_play_rounded,
-                  indent: 1,
-                  trailing: Text(
-                    '${_allChannels.where((c) => c.providerId == prov.id).length}',
-                    style: const TextStyle(fontSize: 10, color: Colors.white38),
-                  ),
-                ),
-              if (q.isEmpty)
-                _buildTreeAction('Add Provider…', Icons.add_rounded, () => context.push('/providers'), indent: 1),
-            ],
-          ),
+          ..._buildProviderTrees(filteredProviders, q),
         if (showProvSection || filteredGroups.isNotEmpty)
           const Divider(height: 1, color: Colors.white10),
         if (filteredGroups.isNotEmpty)
@@ -1245,6 +1242,60 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
           ),
       ],
     );
+  }
+
+  /// Build provider tree nodes: each provider is a collapsible section
+  /// containing its category groups as sub-items.
+  List<Widget> _buildProviderTrees(List<db.Provider> providers, String query) {
+    final widgets = <Widget>[];
+    for (final prov in providers) {
+      final provChannels = _allChannels.where((c) => c.providerId == prov.id).toList();
+      // Get unique groups for this provider
+      final provGroups = <String>{};
+      for (final ch in provChannels) {
+        if (ch.groupTitle != null && ch.groupTitle!.isNotEmpty) {
+          provGroups.add(ch.groupTitle!);
+        }
+      }
+      final sortedGroups = provGroups.toList()..sort();
+      final filteredGroups = query.isEmpty
+          ? sortedGroups
+          : sortedGroups.where((g) => g.toLowerCase().contains(query)).toList();
+
+      widgets.add(
+        _buildTreeSection(
+          'prov_${prov.id}',
+          prov.type == 'xtream' ? Icons.bolt_rounded : Icons.playlist_play_rounded,
+          '${prov.name} (${provChannels.length})',
+          [
+            // "All" for this provider
+            _buildTreeItem(
+              'All ${prov.name}',
+              'provider:${prov.id}',
+              Icons.grid_view_rounded,
+              indent: 1,
+              trailing: Text(
+                '${provChannels.length}',
+                style: const TextStyle(fontSize: 10, color: Colors.white38),
+              ),
+            ),
+            // Category groups within this provider
+            for (final group in filteredGroups)
+              _buildTreeItem(
+                group,
+                'provgroup:${prov.id}:$group',
+                Icons.folder_open_rounded,
+                indent: 2,
+                trailing: Text(
+                  '${provChannels.where((c) => c.groupTitle == group).length}',
+                  style: const TextStyle(fontSize: 10, color: Colors.white38),
+                ),
+              ),
+          ],
+        ),
+      );
+    }
+    return widgets;
   }
 
   Widget _buildTreeSection(String sectionKey, IconData icon, String label, List<Widget> children) {
