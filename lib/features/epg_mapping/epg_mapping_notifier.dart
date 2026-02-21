@@ -195,16 +195,25 @@ class EpgMappingNotifier extends StateNotifier<EpgMappingState> {
       );
     }
 
-    // Use first enabled source
-    final source = epgSources.firstWhere((s) => s.enabled,
-        orElse: () => epgSources.first);
-    final epgDbChannels = await _db.getEpgChannelsForSource(source.id);
-    final epgChannels = epgDbChannels.map((c) => EpgChannel(
-      id: c.channelId,
-      sourceId: source.id,
-      displayNames: [c.displayName],
-      iconUrl: c.iconUrl,
-    )).toList();
+    // Collect EPG channels from ALL enabled sources
+    final epgChannels = <EpgChannel>[];
+    for (final src in epgSources.where((s) => s.enabled)) {
+      final epgDbChannels = await _db.getEpgChannelsForSource(src.id);
+      epgChannels.addAll(epgDbChannels.map((c) => EpgChannel(
+        id: c.channelId,
+        sourceId: src.id,
+        displayNames: [c.displayName],
+        iconUrl: c.iconUrl,
+      )));
+    }
+
+    if (epgChannels.isEmpty) {
+      state = state.copyWith(isLoading: false);
+      return MappingStats(
+        totalChannels: 0, mapped: 0, suggested: 0, unmapped: 0,
+        elapsed: Duration.zero,
+      );
+    }
 
     // Get all provider channels
     final channels = state.entries
@@ -225,7 +234,7 @@ class EpgMappingNotifier extends StateNotifier<EpgMappingState> {
     final stats = _mapper.mapAll(
       channels: channels,
       epgChannels: epgChannels,
-      epgSourceId: source.id,
+      epgSourceId: epgChannels.first.sourceId,
       existingMappings: existingMappings,
       onMapping: (m) => newMappings.add(m),
     );

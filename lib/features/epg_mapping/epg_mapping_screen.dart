@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../data/models/epg.dart';
+import '../providers/provider_manager.dart';
 import 'epg_mapping_notifier.dart';
 import '../../core/fuzzy_match.dart';
 
@@ -16,7 +17,15 @@ class _EpgMappingScreenState extends ConsumerState<EpgMappingScreen> {
   @override
   void initState() {
     super.initState();
-    Future.microtask(() => ref.read(epgMappingProvider.notifier).load());
+    Future.microtask(() async {
+      final notifier = ref.read(epgMappingProvider.notifier);
+      await notifier.load();
+      // Auto-run mapper if there are unmapped channels and EPG data exists
+      final s = ref.read(epgMappingProvider);
+      if (s.unmappedCount > 0) {
+        await notifier.runAutoMapper();
+      }
+    });
   }
 
   @override
@@ -207,25 +216,73 @@ class _MappingTile extends StatelessWidget {
   }
 }
 
-class _ManualMappingDialog extends StatefulWidget {
+class _ManualMappingDialog extends ConsumerStatefulWidget {
   final ChannelMappingEntry entry;
 
   const _ManualMappingDialog({required this.entry});
 
   @override
-  State<_ManualMappingDialog> createState() => _ManualMappingDialogState();
+  ConsumerState<_ManualMappingDialog> createState() =>
+      _ManualMappingDialogState();
 }
 
-class _ManualMappingDialogState extends State<_ManualMappingDialog> {
+class _ManualMappingDialogState extends ConsumerState<_ManualMappingDialog> {
   final _searchController = TextEditingController();
+  List<MappingCandidate> _allEpgChannels = [];
+  bool _loading = true;
 
-  List<MappingCandidate> get _filteredSuggestions {
+  @override
+  void initState() {
+    super.initState();
+    _loadEpgChannels();
+  }
+
+  Future<void> _loadEpgChannels() async {
+    final db = ref.read(databaseProvider);
+    final sources = await db.getAllEpgSources();
+    final candidates = <MappingCandidate>[];
+    for (final src in sources) {
+      if (!src.enabled) continue;
+      final chs = await db.getEpgChannelsForSource(src.id);
+      for (final ch in chs) {
+        candidates.add(MappingCandidate(
+          epgChannelId: ch.channelId,
+          epgSourceId: src.id,
+          epgDisplayName: ch.displayName,
+          confidence: 0,
+          matchReasons: [src.name],
+        ));
+      }
+    }
+    if (mounted) setState(() { _allEpgChannels = candidates; _loading = false; });
+  }
+
+  List<MappingCandidate> get _filteredResults {
     final query = _searchController.text;
-    final suggestions = widget.entry.suggestions;
-    if (query.isEmpty) return suggestions;
+    // Merge suggestions (high confidence) + all EPG channels
+    final merged = <String, MappingCandidate>{};
+    for (final s in widget.entry.suggestions) {
+      merged[s.epgChannelId] = s;
+    }
+    for (final c in _allEpgChannels) {
+      merged.putIfAbsent(c.epgChannelId, () => c);
+    }
+    final all = merged.values.toList();
+
+    if (query.isEmpty) {
+      // Show suggestions first, then rest
+      final suggestions = widget.entry.suggestions.toSet();
+      all.sort((a, b) {
+        final aS = suggestions.contains(a) ? 0 : 1;
+        final bS = suggestions.contains(b) ? 0 : 1;
+        if (aS != bS) return aS.compareTo(bS);
+        return a.epgDisplayName.compareTo(b.epgDisplayName);
+      });
+      return all;
+    }
 
     final scored = <(MappingCandidate, double)>[];
-    for (final s in suggestions) {
+    for (final s in all) {
       final fields = [s.epgDisplayName, s.epgChannelId];
       final score = fuzzyMatch(query, fields);
       final tokens = tokenizeQuery(query);
@@ -239,7 +296,7 @@ class _ManualMappingDialogState extends State<_ManualMappingDialog> {
 
   @override
   Widget build(BuildContext context) {
-    final filteredSuggestions = _filteredSuggestions;
+    final results = _filteredResults;
     return AlertDialog(
       title: Text('Map: ${widget.entry.channel.name}'),
       content: SizedBox(
@@ -264,6 +321,7 @@ class _ManualMappingDialogState extends State<_ManualMappingDialog> {
             // Search EPG channels
             TextField(
               controller: _searchController,
+              autofocus: true,
               decoration: const InputDecoration(
                 hintText: 'Search EPG channels...',
                 prefixIcon: Icon(Icons.search),
@@ -273,28 +331,36 @@ class _ManualMappingDialogState extends State<_ManualMappingDialog> {
             ),
             const SizedBox(height: 8),
 
-            // Suggestions
-            if (filteredSuggestions.isNotEmpty) ...[
-              const Text(
-                'Suggestions:',
-                style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+            if (_loading)
+              const Center(child: Padding(
+                padding: EdgeInsets.all(16),
+                child: CircularProgressIndicator(),
+              ))
+            else if (results.isNotEmpty) ...[
+              Text(
+                '${results.length} EPG channels',
+                style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
               ),
               const SizedBox(height: 4),
             ],
 
             Expanded(
-              child: filteredSuggestions.isEmpty
-                  ? const Center(
-                      child: Text(
-                        'No EPG channels available.\nAdd an EPG source first.',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(color: Colors.white38),
-                      ),
-                    )
-                  : ListView.builder(
-                      itemCount: filteredSuggestions.length,
-                      itemBuilder: (context, index) {
-                        final s = filteredSuggestions[index];
+              child: _loading
+                  ? const SizedBox.shrink()
+                  : results.isEmpty
+                      ? Center(
+                          child: Text(
+                            _allEpgChannels.isEmpty
+                                ? 'No EPG channels available.\nAdd an EPG source and refresh first.'
+                                : 'No matches found.',
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(color: Colors.white38),
+                          ),
+                        )
+                      : ListView.builder(
+                          itemCount: results.length,
+                          itemBuilder: (context, index) {
+                            final s = results[index];
                         return ListTile(
                           dense: true,
                           title: Text(s.epgDisplayName),

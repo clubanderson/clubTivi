@@ -181,10 +181,18 @@ class EpgAutoMapper {
   }
 
   /// Clean channel name for matching.
-  /// Strips provider prefixes like "US: ", "UK: ", "USA |", etc.
+  /// Handles pipe-separated names like "NY | New York | ABC 7 WABC"
+  /// by using the most specific (last) segment.
   String _cleanChannelName(String name) {
-    // Remove common prefixes: "US: ", "UK |", "USA - ", country codes
-    var cleaned = name.replaceAll(
+    // Split on pipe separators and use the last (most specific) segment
+    final segments = name.split(RegExp(r'\s*\|\s*'));
+    var cleaned = segments.last.trim();
+    if (cleaned.isEmpty && segments.length > 1) {
+      cleaned = segments[segments.length - 2].trim();
+    }
+
+    // Remove common prefixes: "US: ", "UK:", "USA - ", country codes
+    cleaned = cleaned.replaceAll(
       RegExp(r'^[A-Z]{2,3}\s*[:|/\-]\s*', caseSensitive: false),
       '',
     );
@@ -232,13 +240,16 @@ class EpgAutoMapper {
 
         // Exact (case-insensitive)
         if (normalizedInput == normalizedEpg) {
-          bestScore = 0.90;
+          bestScore = 0.95;
           break;
         }
 
-        // Jaro-Winkler similarity
-        final jw = normalizedInput.similarityTo(normalizedEpg);
-        if (jw > bestScore) bestScore = jw;
+        // Contains match (one name contains the other)
+        if (normalizedInput.contains(normalizedEpg) ||
+            normalizedEpg.contains(normalizedInput)) {
+          final containsScore = 0.80;
+          if (containsScore > bestScore) bestScore = containsScore;
+        }
 
         // Token overlap (word set comparison)
         final inputTokens = normalizedInput.split(RegExp(r'\s+')).toSet();
@@ -247,17 +258,17 @@ class EpgAutoMapper {
           final intersection = inputTokens.intersection(epgTokens).length;
           final union = inputTokens.union(epgTokens).length;
           final jaccard = intersection / union;
-          // Weight Jaccard higher for multi-word names
-          final tokenScore = jaccard * 0.85;
-          if (tokenScore > bestScore) bestScore = tokenScore;
+          if (jaccard > bestScore) bestScore = jaccard;
         }
+
+        // Jaro-Winkler similarity
+        final jw = normalizedInput.similarityTo(normalizedEpg);
+        if (jw > bestScore) bestScore = jw;
       }
 
-      // Scale score to the fuzzy range (0.6–0.9)
-      final scaledScore = 0.6 + (bestScore * 0.3);
-
-      if (scaledScore >= suggestThreshold) {
-        results.add((epgCh, scaledScore.clamp(0.0, 0.90)));
+      // Only include if score is genuinely high
+      if (bestScore >= 0.55) {
+        results.add((epgCh, bestScore.clamp(0.0, 0.95)));
       }
     }
 
