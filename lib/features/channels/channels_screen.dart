@@ -642,7 +642,7 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    if (_isLoading) {
+    if (_isLoading && _allChannels.isEmpty) {
       return const Scaffold(
         body: Center(child: CircularProgressIndicator()),
       );
@@ -1341,28 +1341,36 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
           ? sortedGroups
           : sortedGroups.where((g) => g.toLowerCase().contains(query)).toList();
 
-      widgets.add(
-        _buildTreeSection(
-          'prov_${prov.id}',
-          prov.type == 'xtream' ? Icons.bolt_rounded : Icons.playlist_play_rounded,
-          prov.name,
-          [
-            _buildTreeItem(
-              'All ${prov.name}',
-              'provider:${prov.id}',
-              Icons.grid_view_rounded,
-              indent: 1,
-            ),
-            for (final group in filteredGroups)
-              _buildTreeItem(
-                group,
-                'provgroup:${prov.id}:$group',
-                Icons.folder_open_rounded,
-                indent: 2,
-              ),
-          ],
-        ),
-      );
+      // No subcategories — show as a flat link
+      if (filteredGroups.isEmpty) {
+        widgets.add(
+          _buildTreeItem(
+            prov.name,
+            'provider:${prov.id}',
+            prov.type == 'xtream' ? Icons.bolt_rounded : Icons.playlist_play_rounded,
+            indent: 0,
+          ),
+        );
+      } else {
+        // Has subcategories — show as expandable tree
+        widgets.add(
+          _buildTreeSection(
+            'prov_${prov.id}',
+            prov.type == 'xtream' ? Icons.bolt_rounded : Icons.playlist_play_rounded,
+            prov.name,
+            [
+              for (final group in filteredGroups)
+                _buildTreeItem(
+                  group,
+                  'provgroup:${prov.id}:$group',
+                  Icons.folder_open_rounded,
+                  indent: 1,
+                ),
+            ],
+            filterKey: 'provider:${prov.id}',
+          ),
+        );
+      }
     }
     return widgets;
   }

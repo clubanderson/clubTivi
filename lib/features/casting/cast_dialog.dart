@@ -39,8 +39,8 @@ class _CastDialogState extends State<_CastDialog> {
       if (mounted) setState(() => _devices = devices);
     });
     await _castService.startDiscovery();
-    // Stop auto-scanning after 15 seconds
-    Future.delayed(const Duration(seconds: 15), () {
+    // Stop auto-scanning after 30 seconds
+    Future.delayed(const Duration(seconds: 30), () {
       if (mounted) setState(() => _scanning = false);
     });
   }
