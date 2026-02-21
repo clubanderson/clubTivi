@@ -44,7 +44,7 @@ class _ChannelInfoOverlayState extends State<ChannelInfoOverlay>
   Timer? _autoHideTimer;
 
   // Buffering sparkline data (last 30 points).
-  final List<bool> _bufferHistory = List.filled(30, false);
+  final List<bool> _bufferHistory = List.filled(30, false, growable: true);
   StreamSubscription<bool>? _bufferingSub;
   Timer? _sparklineTimer;
 
