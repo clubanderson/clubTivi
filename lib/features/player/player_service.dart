@@ -16,7 +16,15 @@ class PlayerService {
   static const bufferStallThreshold = Duration(seconds: 3);
 
   Player get player {
-    _player ??= Player();
+    if (_player == null) {
+      _player = Player(
+        configuration: const PlayerConfiguration(
+          logLevel: MPVLogLevel.warn,
+        ),
+      );
+      // media_kit/mpv handles eac3, ac3, aac natively — no extra config needed
+      _player!.setVolume(100);
+    }
     return _player!;
   }
 
