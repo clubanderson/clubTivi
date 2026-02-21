@@ -65,6 +65,10 @@ class AppDatabase extends _$AppDatabase {
     });
   }
 
+  Future<void> renameChannel(String channelId, String providerId, String newName) =>
+      (update(channels)..where((t) => t.id.equals(channelId)))
+          .write(ChannelsCompanion(name: Value(newName)));
+
   Future<void> toggleFavorite(String channelId) async {
     final channel =
         await (select(channels)..where((t) => t.id.equals(channelId)))

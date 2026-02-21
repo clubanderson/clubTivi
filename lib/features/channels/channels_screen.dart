@@ -1015,6 +1015,122 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
   // ---------------------------------------------------------------------------
 
   /// Bottom sheet to add/remove a channel from favorite lists.
+  Future<void> _renameChannel(db.Channel channel) async {
+    final controller = TextEditingController(text: channel.name);
+    final result = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Rename Channel'),
+        content: TextFormField(
+          controller: controller,
+          autofocus: true,
+          decoration: const InputDecoration(labelText: 'Channel Name'),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, controller.text.trim()),
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    if (result != null && result.isNotEmpty && result != channel.name) {
+      final database = ref.read(databaseProvider);
+      await database.renameChannel(channel.id, channel.providerId, result);
+      await _loadChannels();
+    }
+  }
+
+  /// Show inline EPG mapping dialog for a single channel.
+  Future<void> _showInlineEpgMapping(db.Channel channel) async {
+    final database = ref.read(databaseProvider);
+    // Load all EPG channels from all enabled sources
+    final sources = await database.getAllEpgSources();
+    final candidates = <_EpgCandidate>[];
+    for (final src in sources) {
+      if (!src.enabled) continue;
+      final chs = await database.getEpgChannelsForSource(src.id);
+      for (final ch in chs) {
+        candidates.add(_EpgCandidate(ch.channelId, ch.displayName, src.id, src.name));
+      }
+    }
+
+    if (!mounted) return;
+    final searchCtrl = TextEditingController();
+    final result = await showDialog<_EpgCandidate>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) {
+          final query = searchCtrl.text.toLowerCase();
+          final filtered = query.isEmpty
+              ? candidates
+              : candidates.where((c) =>
+                  c.displayName.toLowerCase().contains(query) ||
+                  c.channelId.toLowerCase().contains(query)).toList();
+          return AlertDialog(
+            title: Text('Map: ${channel.name}'),
+            content: SizedBox(
+              width: 400,
+              height: 400,
+              child: Column(
+                children: [
+                  TextField(
+                    controller: searchCtrl,
+                    autofocus: true,
+                    decoration: const InputDecoration(
+                      hintText: 'Search EPG channels...',
+                      prefixIcon: Icon(Icons.search),
+                      isDense: true,
+                    ),
+                    onChanged: (_) => setDialogState(() {}),
+                  ),
+                  const SizedBox(height: 8),
+                  Text('${filtered.length} EPG channels',
+                      style: const TextStyle(fontSize: 12, color: Colors.white54)),
+                  const SizedBox(height: 4),
+                  Expanded(
+                    child: ListView.builder(
+                      itemCount: filtered.length,
+                      itemBuilder: (_, i) {
+                        final c = filtered[i];
+                        return ListTile(
+                          dense: true,
+                          title: Text(c.displayName),
+                          subtitle: Text('${c.channelId} • ${c.sourceName}',
+                              style: const TextStyle(fontSize: 10)),
+                          onTap: () => Navigator.pop(ctx, c),
+                        );
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+            ],
+          );
+        },
+      ),
+    );
+    searchCtrl.dispose();
+
+    if (result != null && mounted) {
+      await database.upsertMapping(db.EpgMappingsCompanion.insert(
+        channelId: channel.id,
+        providerId: channel.providerId,
+        epgChannelId: result.channelId,
+        epgSourceId: result.sourceId,
+        confidence: const Value(1.0),
+        source: const Value('manual'),
+        locked: const Value(true),
+      ));
+      await _loadChannels(); // Refresh to pick up new mapping
+    }
+  }
+
   Future<void> _showFavoriteListSheet(db.Channel channel) async {
     final database = ref.read(databaseProvider);
     final listsForChannel = await database.getListsForChannel(channel.id);
@@ -1400,21 +1516,63 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
             itemCount: _filteredChannels.length,
             itemBuilder: (context, index) {
               final channel = _filteredChannels[index];
+              final isFav = _favoritedChannelIds.contains(channel.id);
               return SizedBox(
                 height: 48,
                 child: Row(
                   children: [
-                    // Channel label
-                    SizedBox(
-                      width: 120,
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 8),
-                        child: Text(
-                          channel.name,
-                          style: const TextStyle(
-                              fontSize: 11, color: Colors.white70),
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
+                    // Channel label with logo + right-click menu
+                    GestureDetector(
+                      onSecondaryTapUp: (details) => _showGuideChannelMenu(
+                        channel, details.globalPosition,
+                      ),
+                      onTap: () => _selectChannel(index),
+                      child: SizedBox(
+                        width: 140,
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 4),
+                          child: Row(
+                            children: [
+                              // Channel logo
+                              ClipRRect(
+                                borderRadius: BorderRadius.circular(4),
+                                child: channel.tvgLogo != null && channel.tvgLogo!.isNotEmpty
+                                    ? Image.network(
+                                        channel.tvgLogo!,
+                                        width: 28,
+                                        height: 28,
+                                        fit: BoxFit.contain,
+                                        errorBuilder: (_, __, ___) => Container(
+                                          width: 28, height: 28,
+                                          color: const Color(0xFF16213E),
+                                          child: const Icon(Icons.tv, size: 14, color: Colors.white24),
+                                        ),
+                                      )
+                                    : Container(
+                                        width: 28, height: 28,
+                                        color: const Color(0xFF16213E),
+                                        child: const Icon(Icons.tv, size: 14, color: Colors.white24),
+                                      ),
+                              ),
+                              const SizedBox(width: 4),
+                              Expanded(
+                                child: Column(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      channel.name,
+                                      style: const TextStyle(fontSize: 11, color: Colors.white70),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                    if (isFav)
+                                      const Icon(Icons.star_rounded, color: Colors.amber, size: 12),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
                       ),
                     ),
@@ -1431,6 +1589,118 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
         ),
       ],
     );
+  }
+
+  void _showGuideChannelMenu(db.Channel channel, Offset position) {
+    final isFav = _favoritedChannelIds.contains(channel.id);
+    final overlay = Overlay.of(context).context.findRenderObject() as RenderBox;
+    showMenu<String>(
+      context: context,
+      position: RelativeRect.fromLTRB(
+        position.dx, position.dy,
+        overlay.size.width - position.dx,
+        overlay.size.height - position.dy,
+      ),
+      items: [
+        PopupMenuItem(
+          value: 'play',
+          child: Row(children: [
+            const Icon(Icons.play_arrow, size: 18),
+            const SizedBox(width: 8),
+            const Text('Play'),
+          ]),
+        ),
+        PopupMenuItem(
+          value: 'fullscreen',
+          child: Row(children: [
+            const Icon(Icons.fullscreen, size: 18),
+            const SizedBox(width: 8),
+            const Text('Fullscreen'),
+          ]),
+        ),
+        const PopupMenuDivider(),
+        PopupMenuItem(
+          value: 'favorite',
+          child: Row(children: [
+            Icon(isFav ? Icons.star : Icons.star_border, size: 18, color: Colors.amber),
+            const SizedBox(width: 8),
+            Text(isFav ? 'Remove from Favorites' : 'Add to Favorites...'),
+          ]),
+        ),
+        PopupMenuItem(
+          value: 'epg_map',
+          child: Row(children: [
+            const Icon(Icons.link, size: 18),
+            const SizedBox(width: 8),
+            const Text('Map to EPG...'),
+          ]),
+        ),
+        const PopupMenuDivider(),
+        PopupMenuItem(
+          value: 'reminder',
+          child: Row(children: [
+            const Icon(Icons.alarm, size: 18),
+            const SizedBox(width: 8),
+            const Text('Set Reminder'),
+          ]),
+        ),
+        PopupMenuItem(
+          value: 'record',
+          child: Row(children: [
+            const Icon(Icons.fiber_manual_record, size: 18, color: Colors.red),
+            const SizedBox(width: 8),
+            const Text('Record'),
+          ]),
+        ),
+        const PopupMenuDivider(),
+        PopupMenuItem(
+          value: 'rename',
+          child: Row(children: [
+            const Icon(Icons.edit, size: 18),
+            const SizedBox(width: 8),
+            const Text('Rename Channel'),
+          ]),
+        ),
+        PopupMenuItem(
+          value: 'debug',
+          child: Row(children: [
+            const Icon(Icons.bug_report, size: 18),
+            const SizedBox(width: 8),
+            const Text('Debug Info'),
+          ]),
+        ),
+      ],
+    ).then((value) {
+      if (value == null || !mounted) return;
+      switch (value) {
+        case 'play':
+          final idx = _filteredChannels.indexOf(channel);
+          if (idx >= 0) _selectChannel(idx);
+        case 'fullscreen':
+          final idx = _filteredChannels.indexOf(channel);
+          if (idx >= 0) { _selectChannel(idx); _goFullscreen(channel); }
+        case 'favorite':
+          _showFavoriteListSheet(channel);
+        case 'epg_map':
+          _showInlineEpgMapping(channel);
+        case 'reminder':
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Reminders coming soon')),
+          );
+        case 'record':
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Recording coming soon')),
+          );
+        case 'rename':
+          _renameChannel(channel);
+        case 'debug':
+          final ps = ref.read(playerServiceProvider);
+          showDialog(
+            context: context,
+            builder: (_) => ChannelDebugDialog(channel: channel, playerService: ps),
+          );
+      }
+    });
   }
 
   Widget _buildGuideRowProgrammes(db.Channel channel,
@@ -1534,4 +1804,13 @@ class _FilterChip {
   final String filterKey;
   final IconData? icon;
   const _FilterChip(this.label, this.filterKey, this.icon);
+}
+
+/// Helper for inline EPG mapping dialog.
+class _EpgCandidate {
+  final String channelId;
+  final String displayName;
+  final String sourceId;
+  final String sourceName;
+  const _EpgCandidate(this.channelId, this.displayName, this.sourceId, this.sourceName);
 }
