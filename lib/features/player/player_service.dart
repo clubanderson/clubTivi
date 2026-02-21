@@ -27,6 +27,7 @@ class PlayerService {
     _isBuffering = false;
     _bufferStartTime = null;
     await player.open(Media(url));
+    await player.setVolume(100.0);
   }
 
   /// Stop playback.
