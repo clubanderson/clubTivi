@@ -16,8 +16,13 @@ class TmdbClient {
     _dio.options
       ..baseUrl = _baseUrl
       ..connectTimeout = const Duration(seconds: 10)
-      ..receiveTimeout = const Duration(seconds: 15)
-      ..queryParameters = {'api_key': apiKey};
+      ..receiveTimeout = const Duration(seconds: 15);
+    _dio.interceptors.add(InterceptorsWrapper(
+      onRequest: (options, handler) {
+        options.queryParameters['api_key'] = apiKey;
+        handler.next(options);
+      },
+    ));
   }
 
   /// Build a full image URL from a TMDB file path
