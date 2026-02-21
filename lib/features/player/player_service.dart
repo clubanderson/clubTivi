@@ -11,7 +11,6 @@ class PlayerService {
   bool _isBuffering = false;
   DateTime? _bufferStartTime;
   StreamSubscription<Tracks>? _tracksSub;
-  bool _audioTrackSelected = false;
 
   /// Buffer stall threshold before triggering failover.
   static const bufferStallThreshold = Duration(seconds: 3);
@@ -30,19 +29,9 @@ class PlayerService {
   Future<void> play(String url) async {
     _isBuffering = false;
     _bufferStartTime = null;
-    _audioTrackSelected = false;
     _tracksSub?.cancel();
     await player.open(Media(url));
     await player.setVolume(100.0);
-
-    // Auto-select first real audio track once, then stop listening.
-    _tracksSub = player.stream.tracks.listen((tracks) {
-      if (!_audioTrackSelected && tracks.audio.length > 1) {
-        _audioTrackSelected = true;
-        player.setAudioTrack(tracks.audio[1]);
-        _tracksSub?.cancel();
-      }
-    });
   }
 
   /// Whether audio tracks are available on the current stream.

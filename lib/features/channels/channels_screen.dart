@@ -63,7 +63,11 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
     final epgService = ref.read(epgRefreshServiceProvider);
     await epgService.addDefaultSources();
     // Refresh in background — don't block the UI
-    epgService.refreshAllSources().catchError((_) {});
+    epgService.refreshAllSources().then((_) {
+      debugPrint('[EPG] Background refresh complete');
+    }).catchError((e) {
+      debugPrint('[EPG] Background refresh failed: $e');
+    });
   }
 
   @override

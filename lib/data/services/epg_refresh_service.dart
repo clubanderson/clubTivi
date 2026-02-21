@@ -3,6 +3,7 @@ import 'dart:convert';
 
 import 'package:drift/drift.dart';
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 
@@ -21,6 +22,7 @@ class EpgRefreshService {
   Future<void> refreshSource(String sourceId) async {
     final sources = await _db.getAllEpgSources();
     final source = sources.firstWhere((s) => s.id == sourceId);
+    debugPrint('[EPG] Refreshing source: ${source.name} (${source.url})');
 
     // Download XMLTV data
     final dio = Dio();
@@ -31,17 +33,20 @@ class EpgRefreshService {
       );
 
       final bytes = response.data!;
+      debugPrint('[EPG] Downloaded ${bytes.length} bytes');
 
       // Decompress if gzipped
       List<int> decompressed;
       try {
         decompressed = gzip.decode(bytes);
+        debugPrint('[EPG] Decompressed to ${decompressed.length} bytes');
       } catch (_) {
         decompressed = bytes;
       }
 
       final xmlContent = utf8.decode(decompressed, allowMalformed: true);
       final result = _parser.parse(xmlContent, sourceId: sourceId);
+      debugPrint('[EPG] Parsed ${result.channels.length} channels, ${result.programmes.length} programmes');
 
       // Store channels
       final channelCompanions = result.channels.map((c) {
@@ -86,7 +91,7 @@ class EpgRefreshService {
       try {
         await refreshSource(source.id);
       } catch (e) {
-        // Continue with next source on failure
+        debugPrint('[EPG] Error refreshing ${source.name}: $e');
       }
     }
   }
