@@ -863,10 +863,12 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
 
         return Material(
           color: Colors.transparent,
-          child: InkWell(
-            onTap: () => _selectChannel(index),
-            onDoubleTap: () => _goFullscreen(channel),
-            onLongPress: () => _showFavoriteListSheet(channel),
+          child: GestureDetector(
+            onSecondaryTapUp: (_) => _showFavoriteListSheet(channel),
+            child: InkWell(
+              onTap: () => _selectChannel(index),
+              onDoubleTap: () => _goFullscreen(channel),
+              onLongPress: () => _showFavoriteListSheet(channel),
             borderRadius: BorderRadius.circular(8),
             child: Container(
               padding:
@@ -975,6 +977,7 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
                 ],
               ),
             ),
+          ),
           ),
         );
       },
