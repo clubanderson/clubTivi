@@ -61,7 +61,7 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
 
   // Sidebar state
   bool _sidebarExpanded = true;
-  Set<String> _expandedSections = {'providers', 'favorites'};
+  Set<String> _expandedSections = {'providersList', 'favorites', 'groups'};
   final _sidebarSearchController = TextEditingController();
   String _sidebarSearchQuery = '';
 
@@ -77,6 +77,9 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
   bool _showFailoverBanner = false;
   static const _kFailoverEnabled = 'failover_enabled';
   bool _failoverEnabled = true;
+
+  // Provider list for sidebar
+  List<db.Provider> _providers = [];
 
   // Favorite lists state
   List<db.FavoriteList> _favoriteLists = [];
@@ -283,6 +286,7 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
     if (!mounted) return;
     setState(() {
       _allChannels = allChannels;
+      _providers = providers;
       _groups = groups;
       _nowPlaying = nowPlaying;
       _epgMappings = epgMap;
@@ -347,6 +351,10 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
         final listId = _selectedGroup.substring(4);
         _applyFavoriteListFilter(listId);
         return;
+      } else if (_selectedGroup.startsWith('provider:')) {
+        final providerId = _selectedGroup.substring(9);
+        channels =
+            channels.where((c) => c.providerId == providerId).toList();
       } else if (_selectedGroup != 'All') {
         channels =
             channels.where((c) => c.groupTitle == _selectedGroup).toList();
@@ -1173,8 +1181,12 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
     final filteredFavs = q.isEmpty
         ? _favoriteLists
         : _favoriteLists.where((l) => l.name.toLowerCase().contains(q)).toList();
+    final filteredProviders = q.isEmpty
+        ? _providers
+        : _providers.where((p) => p.name.toLowerCase().contains(q)).toList();
     final showAll = q.isEmpty || 'all'.contains(q);
     final showFavSection = q.isEmpty || filteredFavs.isNotEmpty || 'favorites'.contains(q);
+    final showProvSection = q.isEmpty || filteredProviders.isNotEmpty || 'providers'.contains(q);
 
     return ListView(
       padding: const EdgeInsets.symmetric(vertical: 4),
@@ -1196,11 +1208,34 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
                 _buildTreeAction('New List…', Icons.add_rounded, () => _showManageFavoritesDialog(), indent: 1),
             ],
           ),
-        if (showFavSection || filteredGroups.isNotEmpty)
+        if (showFavSection || showProvSection)
+          const Divider(height: 1, color: Colors.white10),
+        if (showProvSection)
+          _buildTreeSection(
+            'providersList',
+            Icons.dns_rounded,
+            'Providers (${filteredProviders.length})',
+            [
+              for (final prov in filteredProviders)
+                _buildTreeItem(
+                  prov.name,
+                  'provider:${prov.id}',
+                  prov.type == 'xtream' ? Icons.bolt_rounded : Icons.playlist_play_rounded,
+                  indent: 1,
+                  trailing: Text(
+                    '${_allChannels.where((c) => c.providerId == prov.id).length}',
+                    style: const TextStyle(fontSize: 10, color: Colors.white38),
+                  ),
+                ),
+              if (q.isEmpty)
+                _buildTreeAction('Add Provider…', Icons.add_rounded, () => context.push('/providers'), indent: 1),
+            ],
+          ),
+        if (showProvSection || filteredGroups.isNotEmpty)
           const Divider(height: 1, color: Colors.white10),
         if (filteredGroups.isNotEmpty)
           _buildTreeSection(
-            'providers',
+            'groups',
             Icons.folder_rounded,
             'Groups (${filteredGroups.length})',
             [
@@ -1260,7 +1295,7 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
     );
   }
 
-  Widget _buildTreeItem(String label, String filterKey, IconData? icon, {int indent = 0, VoidCallback? onSecondaryTap}) {
+  Widget _buildTreeItem(String label, String filterKey, IconData? icon, {int indent = 0, VoidCallback? onSecondaryTap, Widget? trailing}) {
     final isSelected = _selectedGroup == filterKey;
     return GestureDetector(
       onSecondaryTap: onSecondaryTap,
@@ -1295,6 +1330,7 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
                   overflow: TextOverflow.ellipsis,
                 ),
               ),
+              if (trailing != null) trailing,
             ],
           ),
         ),

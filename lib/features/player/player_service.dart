@@ -23,7 +23,7 @@ class PlayerService {
     if (_player == null) {
       _player = Player(
         configuration: const PlayerConfiguration(
-          logLevel: MPVLogLevel.warn,
+          logLevel: MPVLogLevel.v,
         ),
       );
       _initPlayer(_player!);
@@ -34,16 +34,13 @@ class PlayerService {
   Future<void> _initPlayer(Player p) async {
     final np = p.platform;
     if (np is native_player.NativePlayer) {
-      // Exclude AudioToolbox hardware decoders that silently fail on eac3/ac3
+      // Force software audio decoding — exclude AudioToolbox decoders
+      // that silently produce no output for eac3/ac3 surround
       await np.setProperty('ad', '-eac3_at,-ac3_at');
-      // Downmix surround to stereo for compatibility
+      // Downmix surround to stereo for output compatibility
       await np.setProperty('audio-channels', 'stereo');
-      // Disable SPDIF/passthrough (forces software decode+output)
+      // Disable SPDIF passthrough
       await np.setProperty('audio-spdif', '');
-      // Explicitly use coreaudio with stereo downmix
-      await np.setProperty('ao', 'coreaudio');
-      // Select first audio track automatically
-      await np.setProperty('aid', 'auto');
       // Volume
       await np.setProperty('volume', '100');
       await np.setProperty('mute', 'no');
