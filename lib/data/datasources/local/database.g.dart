@@ -4222,6 +4222,1170 @@ class FavoriteListChannelsCompanion
   }
 }
 
+class $EpgRemindersTable extends EpgReminders
+    with TableInfo<$EpgRemindersTable, EpgReminder> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $EpgRemindersTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<String> id = GeneratedColumn<String>(
+    'id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _epgChannelIdMeta = const VerificationMeta(
+    'epgChannelId',
+  );
+  @override
+  late final GeneratedColumn<String> epgChannelId = GeneratedColumn<String>(
+    'epg_channel_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _channelIdMeta = const VerificationMeta(
+    'channelId',
+  );
+  @override
+  late final GeneratedColumn<String> channelId = GeneratedColumn<String>(
+    'channel_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _programmeTitleMeta = const VerificationMeta(
+    'programmeTitle',
+  );
+  @override
+  late final GeneratedColumn<String> programmeTitle = GeneratedColumn<String>(
+    'programme_title',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _programmeStartMeta = const VerificationMeta(
+    'programmeStart',
+  );
+  @override
+  late final GeneratedColumn<DateTime> programmeStart =
+      GeneratedColumn<DateTime>(
+        'programme_start',
+        aliasedName,
+        false,
+        type: DriftSqlType.dateTime,
+        requiredDuringInsert: true,
+      );
+  static const VerificationMeta _programmeStopMeta = const VerificationMeta(
+    'programmeStop',
+  );
+  @override
+  late final GeneratedColumn<DateTime> programmeStop =
+      GeneratedColumn<DateTime>(
+        'programme_stop',
+        aliasedName,
+        false,
+        type: DriftSqlType.dateTime,
+        requiredDuringInsert: true,
+      );
+  static const VerificationMeta _minutesBeforeMeta = const VerificationMeta(
+    'minutesBefore',
+  );
+  @override
+  late final GeneratedColumn<int> minutesBefore = GeneratedColumn<int>(
+    'minutes_before',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(5),
+  );
+  static const VerificationMeta _firedMeta = const VerificationMeta('fired');
+  @override
+  late final GeneratedColumn<bool> fired = GeneratedColumn<bool>(
+    'fired',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("fired" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
+  static const VerificationMeta _createdAtMeta = const VerificationMeta(
+    'createdAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> createdAt = GeneratedColumn<DateTime>(
+    'created_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+    defaultValue: currentDateAndTime,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    epgChannelId,
+    channelId,
+    programmeTitle,
+    programmeStart,
+    programmeStop,
+    minutesBefore,
+    fired,
+    createdAt,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'epg_reminders';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<EpgReminder> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    } else if (isInserting) {
+      context.missing(_idMeta);
+    }
+    if (data.containsKey('epg_channel_id')) {
+      context.handle(
+        _epgChannelIdMeta,
+        epgChannelId.isAcceptableOrUnknown(
+          data['epg_channel_id']!,
+          _epgChannelIdMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_epgChannelIdMeta);
+    }
+    if (data.containsKey('channel_id')) {
+      context.handle(
+        _channelIdMeta,
+        channelId.isAcceptableOrUnknown(data['channel_id']!, _channelIdMeta),
+      );
+    }
+    if (data.containsKey('programme_title')) {
+      context.handle(
+        _programmeTitleMeta,
+        programmeTitle.isAcceptableOrUnknown(
+          data['programme_title']!,
+          _programmeTitleMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_programmeTitleMeta);
+    }
+    if (data.containsKey('programme_start')) {
+      context.handle(
+        _programmeStartMeta,
+        programmeStart.isAcceptableOrUnknown(
+          data['programme_start']!,
+          _programmeStartMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_programmeStartMeta);
+    }
+    if (data.containsKey('programme_stop')) {
+      context.handle(
+        _programmeStopMeta,
+        programmeStop.isAcceptableOrUnknown(
+          data['programme_stop']!,
+          _programmeStopMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_programmeStopMeta);
+    }
+    if (data.containsKey('minutes_before')) {
+      context.handle(
+        _minutesBeforeMeta,
+        minutesBefore.isAcceptableOrUnknown(
+          data['minutes_before']!,
+          _minutesBeforeMeta,
+        ),
+      );
+    }
+    if (data.containsKey('fired')) {
+      context.handle(
+        _firedMeta,
+        fired.isAcceptableOrUnknown(data['fired']!, _firedMeta),
+      );
+    }
+    if (data.containsKey('created_at')) {
+      context.handle(
+        _createdAtMeta,
+        createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  EpgReminder map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return EpgReminder(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}id'],
+      )!,
+      epgChannelId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}epg_channel_id'],
+      )!,
+      channelId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}channel_id'],
+      ),
+      programmeTitle: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}programme_title'],
+      )!,
+      programmeStart: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}programme_start'],
+      )!,
+      programmeStop: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}programme_stop'],
+      )!,
+      minutesBefore: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}minutes_before'],
+      )!,
+      fired: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}fired'],
+      )!,
+      createdAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}created_at'],
+      )!,
+    );
+  }
+
+  @override
+  $EpgRemindersTable createAlias(String alias) {
+    return $EpgRemindersTable(attachedDatabase, alias);
+  }
+}
+
+class EpgReminder extends DataClass implements Insertable<EpgReminder> {
+  final String id;
+  final String epgChannelId;
+  final String? channelId;
+  final String programmeTitle;
+  final DateTime programmeStart;
+  final DateTime programmeStop;
+  final int minutesBefore;
+  final bool fired;
+  final DateTime createdAt;
+  const EpgReminder({
+    required this.id,
+    required this.epgChannelId,
+    this.channelId,
+    required this.programmeTitle,
+    required this.programmeStart,
+    required this.programmeStop,
+    required this.minutesBefore,
+    required this.fired,
+    required this.createdAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<String>(id);
+    map['epg_channel_id'] = Variable<String>(epgChannelId);
+    if (!nullToAbsent || channelId != null) {
+      map['channel_id'] = Variable<String>(channelId);
+    }
+    map['programme_title'] = Variable<String>(programmeTitle);
+    map['programme_start'] = Variable<DateTime>(programmeStart);
+    map['programme_stop'] = Variable<DateTime>(programmeStop);
+    map['minutes_before'] = Variable<int>(minutesBefore);
+    map['fired'] = Variable<bool>(fired);
+    map['created_at'] = Variable<DateTime>(createdAt);
+    return map;
+  }
+
+  EpgRemindersCompanion toCompanion(bool nullToAbsent) {
+    return EpgRemindersCompanion(
+      id: Value(id),
+      epgChannelId: Value(epgChannelId),
+      channelId: channelId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(channelId),
+      programmeTitle: Value(programmeTitle),
+      programmeStart: Value(programmeStart),
+      programmeStop: Value(programmeStop),
+      minutesBefore: Value(minutesBefore),
+      fired: Value(fired),
+      createdAt: Value(createdAt),
+    );
+  }
+
+  factory EpgReminder.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return EpgReminder(
+      id: serializer.fromJson<String>(json['id']),
+      epgChannelId: serializer.fromJson<String>(json['epgChannelId']),
+      channelId: serializer.fromJson<String?>(json['channelId']),
+      programmeTitle: serializer.fromJson<String>(json['programmeTitle']),
+      programmeStart: serializer.fromJson<DateTime>(json['programmeStart']),
+      programmeStop: serializer.fromJson<DateTime>(json['programmeStop']),
+      minutesBefore: serializer.fromJson<int>(json['minutesBefore']),
+      fired: serializer.fromJson<bool>(json['fired']),
+      createdAt: serializer.fromJson<DateTime>(json['createdAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<String>(id),
+      'epgChannelId': serializer.toJson<String>(epgChannelId),
+      'channelId': serializer.toJson<String?>(channelId),
+      'programmeTitle': serializer.toJson<String>(programmeTitle),
+      'programmeStart': serializer.toJson<DateTime>(programmeStart),
+      'programmeStop': serializer.toJson<DateTime>(programmeStop),
+      'minutesBefore': serializer.toJson<int>(minutesBefore),
+      'fired': serializer.toJson<bool>(fired),
+      'createdAt': serializer.toJson<DateTime>(createdAt),
+    };
+  }
+
+  EpgReminder copyWith({
+    String? id,
+    String? epgChannelId,
+    Value<String?> channelId = const Value.absent(),
+    String? programmeTitle,
+    DateTime? programmeStart,
+    DateTime? programmeStop,
+    int? minutesBefore,
+    bool? fired,
+    DateTime? createdAt,
+  }) => EpgReminder(
+    id: id ?? this.id,
+    epgChannelId: epgChannelId ?? this.epgChannelId,
+    channelId: channelId.present ? channelId.value : this.channelId,
+    programmeTitle: programmeTitle ?? this.programmeTitle,
+    programmeStart: programmeStart ?? this.programmeStart,
+    programmeStop: programmeStop ?? this.programmeStop,
+    minutesBefore: minutesBefore ?? this.minutesBefore,
+    fired: fired ?? this.fired,
+    createdAt: createdAt ?? this.createdAt,
+  );
+  EpgReminder copyWithCompanion(EpgRemindersCompanion data) {
+    return EpgReminder(
+      id: data.id.present ? data.id.value : this.id,
+      epgChannelId: data.epgChannelId.present
+          ? data.epgChannelId.value
+          : this.epgChannelId,
+      channelId: data.channelId.present ? data.channelId.value : this.channelId,
+      programmeTitle: data.programmeTitle.present
+          ? data.programmeTitle.value
+          : this.programmeTitle,
+      programmeStart: data.programmeStart.present
+          ? data.programmeStart.value
+          : this.programmeStart,
+      programmeStop: data.programmeStop.present
+          ? data.programmeStop.value
+          : this.programmeStop,
+      minutesBefore: data.minutesBefore.present
+          ? data.minutesBefore.value
+          : this.minutesBefore,
+      fired: data.fired.present ? data.fired.value : this.fired,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('EpgReminder(')
+          ..write('id: $id, ')
+          ..write('epgChannelId: $epgChannelId, ')
+          ..write('channelId: $channelId, ')
+          ..write('programmeTitle: $programmeTitle, ')
+          ..write('programmeStart: $programmeStart, ')
+          ..write('programmeStop: $programmeStop, ')
+          ..write('minutesBefore: $minutesBefore, ')
+          ..write('fired: $fired, ')
+          ..write('createdAt: $createdAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    id,
+    epgChannelId,
+    channelId,
+    programmeTitle,
+    programmeStart,
+    programmeStop,
+    minutesBefore,
+    fired,
+    createdAt,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is EpgReminder &&
+          other.id == this.id &&
+          other.epgChannelId == this.epgChannelId &&
+          other.channelId == this.channelId &&
+          other.programmeTitle == this.programmeTitle &&
+          other.programmeStart == this.programmeStart &&
+          other.programmeStop == this.programmeStop &&
+          other.minutesBefore == this.minutesBefore &&
+          other.fired == this.fired &&
+          other.createdAt == this.createdAt);
+}
+
+class EpgRemindersCompanion extends UpdateCompanion<EpgReminder> {
+  final Value<String> id;
+  final Value<String> epgChannelId;
+  final Value<String?> channelId;
+  final Value<String> programmeTitle;
+  final Value<DateTime> programmeStart;
+  final Value<DateTime> programmeStop;
+  final Value<int> minutesBefore;
+  final Value<bool> fired;
+  final Value<DateTime> createdAt;
+  final Value<int> rowid;
+  const EpgRemindersCompanion({
+    this.id = const Value.absent(),
+    this.epgChannelId = const Value.absent(),
+    this.channelId = const Value.absent(),
+    this.programmeTitle = const Value.absent(),
+    this.programmeStart = const Value.absent(),
+    this.programmeStop = const Value.absent(),
+    this.minutesBefore = const Value.absent(),
+    this.fired = const Value.absent(),
+    this.createdAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  EpgRemindersCompanion.insert({
+    required String id,
+    required String epgChannelId,
+    this.channelId = const Value.absent(),
+    required String programmeTitle,
+    required DateTime programmeStart,
+    required DateTime programmeStop,
+    this.minutesBefore = const Value.absent(),
+    this.fired = const Value.absent(),
+    this.createdAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  }) : id = Value(id),
+       epgChannelId = Value(epgChannelId),
+       programmeTitle = Value(programmeTitle),
+       programmeStart = Value(programmeStart),
+       programmeStop = Value(programmeStop);
+  static Insertable<EpgReminder> custom({
+    Expression<String>? id,
+    Expression<String>? epgChannelId,
+    Expression<String>? channelId,
+    Expression<String>? programmeTitle,
+    Expression<DateTime>? programmeStart,
+    Expression<DateTime>? programmeStop,
+    Expression<int>? minutesBefore,
+    Expression<bool>? fired,
+    Expression<DateTime>? createdAt,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (epgChannelId != null) 'epg_channel_id': epgChannelId,
+      if (channelId != null) 'channel_id': channelId,
+      if (programmeTitle != null) 'programme_title': programmeTitle,
+      if (programmeStart != null) 'programme_start': programmeStart,
+      if (programmeStop != null) 'programme_stop': programmeStop,
+      if (minutesBefore != null) 'minutes_before': minutesBefore,
+      if (fired != null) 'fired': fired,
+      if (createdAt != null) 'created_at': createdAt,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  EpgRemindersCompanion copyWith({
+    Value<String>? id,
+    Value<String>? epgChannelId,
+    Value<String?>? channelId,
+    Value<String>? programmeTitle,
+    Value<DateTime>? programmeStart,
+    Value<DateTime>? programmeStop,
+    Value<int>? minutesBefore,
+    Value<bool>? fired,
+    Value<DateTime>? createdAt,
+    Value<int>? rowid,
+  }) {
+    return EpgRemindersCompanion(
+      id: id ?? this.id,
+      epgChannelId: epgChannelId ?? this.epgChannelId,
+      channelId: channelId ?? this.channelId,
+      programmeTitle: programmeTitle ?? this.programmeTitle,
+      programmeStart: programmeStart ?? this.programmeStart,
+      programmeStop: programmeStop ?? this.programmeStop,
+      minutesBefore: minutesBefore ?? this.minutesBefore,
+      fired: fired ?? this.fired,
+      createdAt: createdAt ?? this.createdAt,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<String>(id.value);
+    }
+    if (epgChannelId.present) {
+      map['epg_channel_id'] = Variable<String>(epgChannelId.value);
+    }
+    if (channelId.present) {
+      map['channel_id'] = Variable<String>(channelId.value);
+    }
+    if (programmeTitle.present) {
+      map['programme_title'] = Variable<String>(programmeTitle.value);
+    }
+    if (programmeStart.present) {
+      map['programme_start'] = Variable<DateTime>(programmeStart.value);
+    }
+    if (programmeStop.present) {
+      map['programme_stop'] = Variable<DateTime>(programmeStop.value);
+    }
+    if (minutesBefore.present) {
+      map['minutes_before'] = Variable<int>(minutesBefore.value);
+    }
+    if (fired.present) {
+      map['fired'] = Variable<bool>(fired.value);
+    }
+    if (createdAt.present) {
+      map['created_at'] = Variable<DateTime>(createdAt.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('EpgRemindersCompanion(')
+          ..write('id: $id, ')
+          ..write('epgChannelId: $epgChannelId, ')
+          ..write('channelId: $channelId, ')
+          ..write('programmeTitle: $programmeTitle, ')
+          ..write('programmeStart: $programmeStart, ')
+          ..write('programmeStop: $programmeStop, ')
+          ..write('minutesBefore: $minutesBefore, ')
+          ..write('fired: $fired, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $ScheduledRecordingsTable extends ScheduledRecordings
+    with TableInfo<$ScheduledRecordingsTable, ScheduledRecording> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $ScheduledRecordingsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<String> id = GeneratedColumn<String>(
+    'id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _epgChannelIdMeta = const VerificationMeta(
+    'epgChannelId',
+  );
+  @override
+  late final GeneratedColumn<String> epgChannelId = GeneratedColumn<String>(
+    'epg_channel_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _channelIdMeta = const VerificationMeta(
+    'channelId',
+  );
+  @override
+  late final GeneratedColumn<String> channelId = GeneratedColumn<String>(
+    'channel_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _programmeTitleMeta = const VerificationMeta(
+    'programmeTitle',
+  );
+  @override
+  late final GeneratedColumn<String> programmeTitle = GeneratedColumn<String>(
+    'programme_title',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _programmeStartMeta = const VerificationMeta(
+    'programmeStart',
+  );
+  @override
+  late final GeneratedColumn<DateTime> programmeStart =
+      GeneratedColumn<DateTime>(
+        'programme_start',
+        aliasedName,
+        false,
+        type: DriftSqlType.dateTime,
+        requiredDuringInsert: true,
+      );
+  static const VerificationMeta _programmeStopMeta = const VerificationMeta(
+    'programmeStop',
+  );
+  @override
+  late final GeneratedColumn<DateTime> programmeStop =
+      GeneratedColumn<DateTime>(
+        'programme_stop',
+        aliasedName,
+        false,
+        type: DriftSqlType.dateTime,
+        requiredDuringInsert: true,
+      );
+  static const VerificationMeta _statusMeta = const VerificationMeta('status');
+  @override
+  late final GeneratedColumn<String> status = GeneratedColumn<String>(
+    'status',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant('scheduled'),
+  );
+  static const VerificationMeta _outputPathMeta = const VerificationMeta(
+    'outputPath',
+  );
+  @override
+  late final GeneratedColumn<String> outputPath = GeneratedColumn<String>(
+    'output_path',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _createdAtMeta = const VerificationMeta(
+    'createdAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> createdAt = GeneratedColumn<DateTime>(
+    'created_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+    defaultValue: currentDateAndTime,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    epgChannelId,
+    channelId,
+    programmeTitle,
+    programmeStart,
+    programmeStop,
+    status,
+    outputPath,
+    createdAt,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'scheduled_recordings';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<ScheduledRecording> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    } else if (isInserting) {
+      context.missing(_idMeta);
+    }
+    if (data.containsKey('epg_channel_id')) {
+      context.handle(
+        _epgChannelIdMeta,
+        epgChannelId.isAcceptableOrUnknown(
+          data['epg_channel_id']!,
+          _epgChannelIdMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_epgChannelIdMeta);
+    }
+    if (data.containsKey('channel_id')) {
+      context.handle(
+        _channelIdMeta,
+        channelId.isAcceptableOrUnknown(data['channel_id']!, _channelIdMeta),
+      );
+    }
+    if (data.containsKey('programme_title')) {
+      context.handle(
+        _programmeTitleMeta,
+        programmeTitle.isAcceptableOrUnknown(
+          data['programme_title']!,
+          _programmeTitleMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_programmeTitleMeta);
+    }
+    if (data.containsKey('programme_start')) {
+      context.handle(
+        _programmeStartMeta,
+        programmeStart.isAcceptableOrUnknown(
+          data['programme_start']!,
+          _programmeStartMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_programmeStartMeta);
+    }
+    if (data.containsKey('programme_stop')) {
+      context.handle(
+        _programmeStopMeta,
+        programmeStop.isAcceptableOrUnknown(
+          data['programme_stop']!,
+          _programmeStopMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_programmeStopMeta);
+    }
+    if (data.containsKey('status')) {
+      context.handle(
+        _statusMeta,
+        status.isAcceptableOrUnknown(data['status']!, _statusMeta),
+      );
+    }
+    if (data.containsKey('output_path')) {
+      context.handle(
+        _outputPathMeta,
+        outputPath.isAcceptableOrUnknown(data['output_path']!, _outputPathMeta),
+      );
+    }
+    if (data.containsKey('created_at')) {
+      context.handle(
+        _createdAtMeta,
+        createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  ScheduledRecording map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return ScheduledRecording(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}id'],
+      )!,
+      epgChannelId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}epg_channel_id'],
+      )!,
+      channelId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}channel_id'],
+      ),
+      programmeTitle: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}programme_title'],
+      )!,
+      programmeStart: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}programme_start'],
+      )!,
+      programmeStop: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}programme_stop'],
+      )!,
+      status: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}status'],
+      )!,
+      outputPath: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}output_path'],
+      ),
+      createdAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}created_at'],
+      )!,
+    );
+  }
+
+  @override
+  $ScheduledRecordingsTable createAlias(String alias) {
+    return $ScheduledRecordingsTable(attachedDatabase, alias);
+  }
+}
+
+class ScheduledRecording extends DataClass
+    implements Insertable<ScheduledRecording> {
+  final String id;
+  final String epgChannelId;
+  final String? channelId;
+  final String programmeTitle;
+  final DateTime programmeStart;
+  final DateTime programmeStop;
+  final String status;
+  final String? outputPath;
+  final DateTime createdAt;
+  const ScheduledRecording({
+    required this.id,
+    required this.epgChannelId,
+    this.channelId,
+    required this.programmeTitle,
+    required this.programmeStart,
+    required this.programmeStop,
+    required this.status,
+    this.outputPath,
+    required this.createdAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<String>(id);
+    map['epg_channel_id'] = Variable<String>(epgChannelId);
+    if (!nullToAbsent || channelId != null) {
+      map['channel_id'] = Variable<String>(channelId);
+    }
+    map['programme_title'] = Variable<String>(programmeTitle);
+    map['programme_start'] = Variable<DateTime>(programmeStart);
+    map['programme_stop'] = Variable<DateTime>(programmeStop);
+    map['status'] = Variable<String>(status);
+    if (!nullToAbsent || outputPath != null) {
+      map['output_path'] = Variable<String>(outputPath);
+    }
+    map['created_at'] = Variable<DateTime>(createdAt);
+    return map;
+  }
+
+  ScheduledRecordingsCompanion toCompanion(bool nullToAbsent) {
+    return ScheduledRecordingsCompanion(
+      id: Value(id),
+      epgChannelId: Value(epgChannelId),
+      channelId: channelId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(channelId),
+      programmeTitle: Value(programmeTitle),
+      programmeStart: Value(programmeStart),
+      programmeStop: Value(programmeStop),
+      status: Value(status),
+      outputPath: outputPath == null && nullToAbsent
+          ? const Value.absent()
+          : Value(outputPath),
+      createdAt: Value(createdAt),
+    );
+  }
+
+  factory ScheduledRecording.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return ScheduledRecording(
+      id: serializer.fromJson<String>(json['id']),
+      epgChannelId: serializer.fromJson<String>(json['epgChannelId']),
+      channelId: serializer.fromJson<String?>(json['channelId']),
+      programmeTitle: serializer.fromJson<String>(json['programmeTitle']),
+      programmeStart: serializer.fromJson<DateTime>(json['programmeStart']),
+      programmeStop: serializer.fromJson<DateTime>(json['programmeStop']),
+      status: serializer.fromJson<String>(json['status']),
+      outputPath: serializer.fromJson<String?>(json['outputPath']),
+      createdAt: serializer.fromJson<DateTime>(json['createdAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<String>(id),
+      'epgChannelId': serializer.toJson<String>(epgChannelId),
+      'channelId': serializer.toJson<String?>(channelId),
+      'programmeTitle': serializer.toJson<String>(programmeTitle),
+      'programmeStart': serializer.toJson<DateTime>(programmeStart),
+      'programmeStop': serializer.toJson<DateTime>(programmeStop),
+      'status': serializer.toJson<String>(status),
+      'outputPath': serializer.toJson<String?>(outputPath),
+      'createdAt': serializer.toJson<DateTime>(createdAt),
+    };
+  }
+
+  ScheduledRecording copyWith({
+    String? id,
+    String? epgChannelId,
+    Value<String?> channelId = const Value.absent(),
+    String? programmeTitle,
+    DateTime? programmeStart,
+    DateTime? programmeStop,
+    String? status,
+    Value<String?> outputPath = const Value.absent(),
+    DateTime? createdAt,
+  }) => ScheduledRecording(
+    id: id ?? this.id,
+    epgChannelId: epgChannelId ?? this.epgChannelId,
+    channelId: channelId.present ? channelId.value : this.channelId,
+    programmeTitle: programmeTitle ?? this.programmeTitle,
+    programmeStart: programmeStart ?? this.programmeStart,
+    programmeStop: programmeStop ?? this.programmeStop,
+    status: status ?? this.status,
+    outputPath: outputPath.present ? outputPath.value : this.outputPath,
+    createdAt: createdAt ?? this.createdAt,
+  );
+  ScheduledRecording copyWithCompanion(ScheduledRecordingsCompanion data) {
+    return ScheduledRecording(
+      id: data.id.present ? data.id.value : this.id,
+      epgChannelId: data.epgChannelId.present
+          ? data.epgChannelId.value
+          : this.epgChannelId,
+      channelId: data.channelId.present ? data.channelId.value : this.channelId,
+      programmeTitle: data.programmeTitle.present
+          ? data.programmeTitle.value
+          : this.programmeTitle,
+      programmeStart: data.programmeStart.present
+          ? data.programmeStart.value
+          : this.programmeStart,
+      programmeStop: data.programmeStop.present
+          ? data.programmeStop.value
+          : this.programmeStop,
+      status: data.status.present ? data.status.value : this.status,
+      outputPath: data.outputPath.present
+          ? data.outputPath.value
+          : this.outputPath,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('ScheduledRecording(')
+          ..write('id: $id, ')
+          ..write('epgChannelId: $epgChannelId, ')
+          ..write('channelId: $channelId, ')
+          ..write('programmeTitle: $programmeTitle, ')
+          ..write('programmeStart: $programmeStart, ')
+          ..write('programmeStop: $programmeStop, ')
+          ..write('status: $status, ')
+          ..write('outputPath: $outputPath, ')
+          ..write('createdAt: $createdAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    id,
+    epgChannelId,
+    channelId,
+    programmeTitle,
+    programmeStart,
+    programmeStop,
+    status,
+    outputPath,
+    createdAt,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is ScheduledRecording &&
+          other.id == this.id &&
+          other.epgChannelId == this.epgChannelId &&
+          other.channelId == this.channelId &&
+          other.programmeTitle == this.programmeTitle &&
+          other.programmeStart == this.programmeStart &&
+          other.programmeStop == this.programmeStop &&
+          other.status == this.status &&
+          other.outputPath == this.outputPath &&
+          other.createdAt == this.createdAt);
+}
+
+class ScheduledRecordingsCompanion extends UpdateCompanion<ScheduledRecording> {
+  final Value<String> id;
+  final Value<String> epgChannelId;
+  final Value<String?> channelId;
+  final Value<String> programmeTitle;
+  final Value<DateTime> programmeStart;
+  final Value<DateTime> programmeStop;
+  final Value<String> status;
+  final Value<String?> outputPath;
+  final Value<DateTime> createdAt;
+  final Value<int> rowid;
+  const ScheduledRecordingsCompanion({
+    this.id = const Value.absent(),
+    this.epgChannelId = const Value.absent(),
+    this.channelId = const Value.absent(),
+    this.programmeTitle = const Value.absent(),
+    this.programmeStart = const Value.absent(),
+    this.programmeStop = const Value.absent(),
+    this.status = const Value.absent(),
+    this.outputPath = const Value.absent(),
+    this.createdAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  ScheduledRecordingsCompanion.insert({
+    required String id,
+    required String epgChannelId,
+    this.channelId = const Value.absent(),
+    required String programmeTitle,
+    required DateTime programmeStart,
+    required DateTime programmeStop,
+    this.status = const Value.absent(),
+    this.outputPath = const Value.absent(),
+    this.createdAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  }) : id = Value(id),
+       epgChannelId = Value(epgChannelId),
+       programmeTitle = Value(programmeTitle),
+       programmeStart = Value(programmeStart),
+       programmeStop = Value(programmeStop);
+  static Insertable<ScheduledRecording> custom({
+    Expression<String>? id,
+    Expression<String>? epgChannelId,
+    Expression<String>? channelId,
+    Expression<String>? programmeTitle,
+    Expression<DateTime>? programmeStart,
+    Expression<DateTime>? programmeStop,
+    Expression<String>? status,
+    Expression<String>? outputPath,
+    Expression<DateTime>? createdAt,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (epgChannelId != null) 'epg_channel_id': epgChannelId,
+      if (channelId != null) 'channel_id': channelId,
+      if (programmeTitle != null) 'programme_title': programmeTitle,
+      if (programmeStart != null) 'programme_start': programmeStart,
+      if (programmeStop != null) 'programme_stop': programmeStop,
+      if (status != null) 'status': status,
+      if (outputPath != null) 'output_path': outputPath,
+      if (createdAt != null) 'created_at': createdAt,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  ScheduledRecordingsCompanion copyWith({
+    Value<String>? id,
+    Value<String>? epgChannelId,
+    Value<String?>? channelId,
+    Value<String>? programmeTitle,
+    Value<DateTime>? programmeStart,
+    Value<DateTime>? programmeStop,
+    Value<String>? status,
+    Value<String?>? outputPath,
+    Value<DateTime>? createdAt,
+    Value<int>? rowid,
+  }) {
+    return ScheduledRecordingsCompanion(
+      id: id ?? this.id,
+      epgChannelId: epgChannelId ?? this.epgChannelId,
+      channelId: channelId ?? this.channelId,
+      programmeTitle: programmeTitle ?? this.programmeTitle,
+      programmeStart: programmeStart ?? this.programmeStart,
+      programmeStop: programmeStop ?? this.programmeStop,
+      status: status ?? this.status,
+      outputPath: outputPath ?? this.outputPath,
+      createdAt: createdAt ?? this.createdAt,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<String>(id.value);
+    }
+    if (epgChannelId.present) {
+      map['epg_channel_id'] = Variable<String>(epgChannelId.value);
+    }
+    if (channelId.present) {
+      map['channel_id'] = Variable<String>(channelId.value);
+    }
+    if (programmeTitle.present) {
+      map['programme_title'] = Variable<String>(programmeTitle.value);
+    }
+    if (programmeStart.present) {
+      map['programme_start'] = Variable<DateTime>(programmeStart.value);
+    }
+    if (programmeStop.present) {
+      map['programme_stop'] = Variable<DateTime>(programmeStop.value);
+    }
+    if (status.present) {
+      map['status'] = Variable<String>(status.value);
+    }
+    if (outputPath.present) {
+      map['output_path'] = Variable<String>(outputPath.value);
+    }
+    if (createdAt.present) {
+      map['created_at'] = Variable<DateTime>(createdAt.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('ScheduledRecordingsCompanion(')
+          ..write('id: $id, ')
+          ..write('epgChannelId: $epgChannelId, ')
+          ..write('channelId: $channelId, ')
+          ..write('programmeTitle: $programmeTitle, ')
+          ..write('programmeStart: $programmeStart, ')
+          ..write('programmeStop: $programmeStop, ')
+          ..write('status: $status, ')
+          ..write('outputPath: $outputPath, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$AppDatabase extends GeneratedDatabase {
   _$AppDatabase(QueryExecutor e) : super(e);
   $AppDatabaseManager get managers => $AppDatabaseManager(this);
@@ -4235,6 +5399,9 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   late final $FavoriteListsTable favoriteLists = $FavoriteListsTable(this);
   late final $FavoriteListChannelsTable favoriteListChannels =
       $FavoriteListChannelsTable(this);
+  late final $EpgRemindersTable epgReminders = $EpgRemindersTable(this);
+  late final $ScheduledRecordingsTable scheduledRecordings =
+      $ScheduledRecordingsTable(this);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -4249,6 +5416,8 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     channelGroups,
     favoriteLists,
     favoriteListChannels,
+    epgReminders,
+    scheduledRecordings,
   ];
 }
 
@@ -7960,6 +9129,594 @@ typedef $$FavoriteListChannelsTableProcessedTableManager =
       FavoriteListChannel,
       PrefetchHooks Function({bool listId, bool channelId})
     >;
+typedef $$EpgRemindersTableCreateCompanionBuilder =
+    EpgRemindersCompanion Function({
+      required String id,
+      required String epgChannelId,
+      Value<String?> channelId,
+      required String programmeTitle,
+      required DateTime programmeStart,
+      required DateTime programmeStop,
+      Value<int> minutesBefore,
+      Value<bool> fired,
+      Value<DateTime> createdAt,
+      Value<int> rowid,
+    });
+typedef $$EpgRemindersTableUpdateCompanionBuilder =
+    EpgRemindersCompanion Function({
+      Value<String> id,
+      Value<String> epgChannelId,
+      Value<String?> channelId,
+      Value<String> programmeTitle,
+      Value<DateTime> programmeStart,
+      Value<DateTime> programmeStop,
+      Value<int> minutesBefore,
+      Value<bool> fired,
+      Value<DateTime> createdAt,
+      Value<int> rowid,
+    });
+
+class $$EpgRemindersTableFilterComposer
+    extends Composer<_$AppDatabase, $EpgRemindersTable> {
+  $$EpgRemindersTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get epgChannelId => $composableBuilder(
+    column: $table.epgChannelId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get channelId => $composableBuilder(
+    column: $table.channelId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get programmeTitle => $composableBuilder(
+    column: $table.programmeTitle,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get programmeStart => $composableBuilder(
+    column: $table.programmeStart,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get programmeStop => $composableBuilder(
+    column: $table.programmeStop,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get minutesBefore => $composableBuilder(
+    column: $table.minutesBefore,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get fired => $composableBuilder(
+    column: $table.fired,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$EpgRemindersTableOrderingComposer
+    extends Composer<_$AppDatabase, $EpgRemindersTable> {
+  $$EpgRemindersTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get epgChannelId => $composableBuilder(
+    column: $table.epgChannelId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get channelId => $composableBuilder(
+    column: $table.channelId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get programmeTitle => $composableBuilder(
+    column: $table.programmeTitle,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get programmeStart => $composableBuilder(
+    column: $table.programmeStart,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get programmeStop => $composableBuilder(
+    column: $table.programmeStop,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get minutesBefore => $composableBuilder(
+    column: $table.minutesBefore,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get fired => $composableBuilder(
+    column: $table.fired,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$EpgRemindersTableAnnotationComposer
+    extends Composer<_$AppDatabase, $EpgRemindersTable> {
+  $$EpgRemindersTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get epgChannelId => $composableBuilder(
+    column: $table.epgChannelId,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get channelId =>
+      $composableBuilder(column: $table.channelId, builder: (column) => column);
+
+  GeneratedColumn<String> get programmeTitle => $composableBuilder(
+    column: $table.programmeTitle,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get programmeStart => $composableBuilder(
+    column: $table.programmeStart,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get programmeStop => $composableBuilder(
+    column: $table.programmeStop,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get minutesBefore => $composableBuilder(
+    column: $table.minutesBefore,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<bool> get fired =>
+      $composableBuilder(column: $table.fired, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get createdAt =>
+      $composableBuilder(column: $table.createdAt, builder: (column) => column);
+}
+
+class $$EpgRemindersTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $EpgRemindersTable,
+          EpgReminder,
+          $$EpgRemindersTableFilterComposer,
+          $$EpgRemindersTableOrderingComposer,
+          $$EpgRemindersTableAnnotationComposer,
+          $$EpgRemindersTableCreateCompanionBuilder,
+          $$EpgRemindersTableUpdateCompanionBuilder,
+          (
+            EpgReminder,
+            BaseReferences<_$AppDatabase, $EpgRemindersTable, EpgReminder>,
+          ),
+          EpgReminder,
+          PrefetchHooks Function()
+        > {
+  $$EpgRemindersTableTableManager(_$AppDatabase db, $EpgRemindersTable table)
+    : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$EpgRemindersTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$EpgRemindersTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$EpgRemindersTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<String> id = const Value.absent(),
+                Value<String> epgChannelId = const Value.absent(),
+                Value<String?> channelId = const Value.absent(),
+                Value<String> programmeTitle = const Value.absent(),
+                Value<DateTime> programmeStart = const Value.absent(),
+                Value<DateTime> programmeStop = const Value.absent(),
+                Value<int> minutesBefore = const Value.absent(),
+                Value<bool> fired = const Value.absent(),
+                Value<DateTime> createdAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => EpgRemindersCompanion(
+                id: id,
+                epgChannelId: epgChannelId,
+                channelId: channelId,
+                programmeTitle: programmeTitle,
+                programmeStart: programmeStart,
+                programmeStop: programmeStop,
+                minutesBefore: minutesBefore,
+                fired: fired,
+                createdAt: createdAt,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String id,
+                required String epgChannelId,
+                Value<String?> channelId = const Value.absent(),
+                required String programmeTitle,
+                required DateTime programmeStart,
+                required DateTime programmeStop,
+                Value<int> minutesBefore = const Value.absent(),
+                Value<bool> fired = const Value.absent(),
+                Value<DateTime> createdAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => EpgRemindersCompanion.insert(
+                id: id,
+                epgChannelId: epgChannelId,
+                channelId: channelId,
+                programmeTitle: programmeTitle,
+                programmeStart: programmeStart,
+                programmeStop: programmeStop,
+                minutesBefore: minutesBefore,
+                fired: fired,
+                createdAt: createdAt,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$EpgRemindersTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $EpgRemindersTable,
+      EpgReminder,
+      $$EpgRemindersTableFilterComposer,
+      $$EpgRemindersTableOrderingComposer,
+      $$EpgRemindersTableAnnotationComposer,
+      $$EpgRemindersTableCreateCompanionBuilder,
+      $$EpgRemindersTableUpdateCompanionBuilder,
+      (
+        EpgReminder,
+        BaseReferences<_$AppDatabase, $EpgRemindersTable, EpgReminder>,
+      ),
+      EpgReminder,
+      PrefetchHooks Function()
+    >;
+typedef $$ScheduledRecordingsTableCreateCompanionBuilder =
+    ScheduledRecordingsCompanion Function({
+      required String id,
+      required String epgChannelId,
+      Value<String?> channelId,
+      required String programmeTitle,
+      required DateTime programmeStart,
+      required DateTime programmeStop,
+      Value<String> status,
+      Value<String?> outputPath,
+      Value<DateTime> createdAt,
+      Value<int> rowid,
+    });
+typedef $$ScheduledRecordingsTableUpdateCompanionBuilder =
+    ScheduledRecordingsCompanion Function({
+      Value<String> id,
+      Value<String> epgChannelId,
+      Value<String?> channelId,
+      Value<String> programmeTitle,
+      Value<DateTime> programmeStart,
+      Value<DateTime> programmeStop,
+      Value<String> status,
+      Value<String?> outputPath,
+      Value<DateTime> createdAt,
+      Value<int> rowid,
+    });
+
+class $$ScheduledRecordingsTableFilterComposer
+    extends Composer<_$AppDatabase, $ScheduledRecordingsTable> {
+  $$ScheduledRecordingsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get epgChannelId => $composableBuilder(
+    column: $table.epgChannelId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get channelId => $composableBuilder(
+    column: $table.channelId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get programmeTitle => $composableBuilder(
+    column: $table.programmeTitle,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get programmeStart => $composableBuilder(
+    column: $table.programmeStart,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get programmeStop => $composableBuilder(
+    column: $table.programmeStop,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get status => $composableBuilder(
+    column: $table.status,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get outputPath => $composableBuilder(
+    column: $table.outputPath,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$ScheduledRecordingsTableOrderingComposer
+    extends Composer<_$AppDatabase, $ScheduledRecordingsTable> {
+  $$ScheduledRecordingsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get epgChannelId => $composableBuilder(
+    column: $table.epgChannelId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get channelId => $composableBuilder(
+    column: $table.channelId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get programmeTitle => $composableBuilder(
+    column: $table.programmeTitle,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get programmeStart => $composableBuilder(
+    column: $table.programmeStart,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get programmeStop => $composableBuilder(
+    column: $table.programmeStop,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get status => $composableBuilder(
+    column: $table.status,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get outputPath => $composableBuilder(
+    column: $table.outputPath,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$ScheduledRecordingsTableAnnotationComposer
+    extends Composer<_$AppDatabase, $ScheduledRecordingsTable> {
+  $$ScheduledRecordingsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get epgChannelId => $composableBuilder(
+    column: $table.epgChannelId,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get channelId =>
+      $composableBuilder(column: $table.channelId, builder: (column) => column);
+
+  GeneratedColumn<String> get programmeTitle => $composableBuilder(
+    column: $table.programmeTitle,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get programmeStart => $composableBuilder(
+    column: $table.programmeStart,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get programmeStop => $composableBuilder(
+    column: $table.programmeStop,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get status =>
+      $composableBuilder(column: $table.status, builder: (column) => column);
+
+  GeneratedColumn<String> get outputPath => $composableBuilder(
+    column: $table.outputPath,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get createdAt =>
+      $composableBuilder(column: $table.createdAt, builder: (column) => column);
+}
+
+class $$ScheduledRecordingsTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $ScheduledRecordingsTable,
+          ScheduledRecording,
+          $$ScheduledRecordingsTableFilterComposer,
+          $$ScheduledRecordingsTableOrderingComposer,
+          $$ScheduledRecordingsTableAnnotationComposer,
+          $$ScheduledRecordingsTableCreateCompanionBuilder,
+          $$ScheduledRecordingsTableUpdateCompanionBuilder,
+          (
+            ScheduledRecording,
+            BaseReferences<
+              _$AppDatabase,
+              $ScheduledRecordingsTable,
+              ScheduledRecording
+            >,
+          ),
+          ScheduledRecording,
+          PrefetchHooks Function()
+        > {
+  $$ScheduledRecordingsTableTableManager(
+    _$AppDatabase db,
+    $ScheduledRecordingsTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$ScheduledRecordingsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$ScheduledRecordingsTableOrderingComposer(
+                $db: db,
+                $table: table,
+              ),
+          createComputedFieldComposer: () =>
+              $$ScheduledRecordingsTableAnnotationComposer(
+                $db: db,
+                $table: table,
+              ),
+          updateCompanionCallback:
+              ({
+                Value<String> id = const Value.absent(),
+                Value<String> epgChannelId = const Value.absent(),
+                Value<String?> channelId = const Value.absent(),
+                Value<String> programmeTitle = const Value.absent(),
+                Value<DateTime> programmeStart = const Value.absent(),
+                Value<DateTime> programmeStop = const Value.absent(),
+                Value<String> status = const Value.absent(),
+                Value<String?> outputPath = const Value.absent(),
+                Value<DateTime> createdAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => ScheduledRecordingsCompanion(
+                id: id,
+                epgChannelId: epgChannelId,
+                channelId: channelId,
+                programmeTitle: programmeTitle,
+                programmeStart: programmeStart,
+                programmeStop: programmeStop,
+                status: status,
+                outputPath: outputPath,
+                createdAt: createdAt,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String id,
+                required String epgChannelId,
+                Value<String?> channelId = const Value.absent(),
+                required String programmeTitle,
+                required DateTime programmeStart,
+                required DateTime programmeStop,
+                Value<String> status = const Value.absent(),
+                Value<String?> outputPath = const Value.absent(),
+                Value<DateTime> createdAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => ScheduledRecordingsCompanion.insert(
+                id: id,
+                epgChannelId: epgChannelId,
+                channelId: channelId,
+                programmeTitle: programmeTitle,
+                programmeStart: programmeStart,
+                programmeStop: programmeStop,
+                status: status,
+                outputPath: outputPath,
+                createdAt: createdAt,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$ScheduledRecordingsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $ScheduledRecordingsTable,
+      ScheduledRecording,
+      $$ScheduledRecordingsTableFilterComposer,
+      $$ScheduledRecordingsTableOrderingComposer,
+      $$ScheduledRecordingsTableAnnotationComposer,
+      $$ScheduledRecordingsTableCreateCompanionBuilder,
+      $$ScheduledRecordingsTableUpdateCompanionBuilder,
+      (
+        ScheduledRecording,
+        BaseReferences<
+          _$AppDatabase,
+          $ScheduledRecordingsTable,
+          ScheduledRecording
+        >,
+      ),
+      ScheduledRecording,
+      PrefetchHooks Function()
+    >;
 
 class $AppDatabaseManager {
   final _$AppDatabase _db;
@@ -7982,4 +9739,8 @@ class $AppDatabaseManager {
       $$FavoriteListsTableTableManager(_db, _db.favoriteLists);
   $$FavoriteListChannelsTableTableManager get favoriteListChannels =>
       $$FavoriteListChannelsTableTableManager(_db, _db.favoriteListChannels);
+  $$EpgRemindersTableTableManager get epgReminders =>
+      $$EpgRemindersTableTableManager(_db, _db.epgReminders);
+  $$ScheduledRecordingsTableTableManager get scheduledRecordings =>
+      $$ScheduledRecordingsTableTableManager(_db, _db.scheduledRecordings);
 }

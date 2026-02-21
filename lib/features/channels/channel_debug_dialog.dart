@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:media_kit/media_kit.dart';
 
 import '../../data/datasources/local/database.dart' as db;
 import '../player/player_service.dart';
@@ -11,19 +12,22 @@ import '../player/player_service.dart';
 class ChannelDebugDialog extends StatefulWidget {
   final db.Channel channel;
   final PlayerService playerService;
+  final String? mappedEpgId;
 
   const ChannelDebugDialog({
     super.key,
     required this.channel,
     required this.playerService,
+    this.mappedEpgId,
   });
 
   /// Convenience launcher.
   static void show(
     BuildContext context,
     db.Channel channel,
-    PlayerService playerService,
-  ) {
+    PlayerService playerService, {
+    String? mappedEpgId,
+  }) {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -34,6 +38,7 @@ class ChannelDebugDialog extends StatefulWidget {
       builder: (_) => ChannelDebugDialog(
         channel: channel,
         playerService: playerService,
+        mappedEpgId: mappedEpgId,
       ),
     );
   }
@@ -151,9 +156,11 @@ class _ChannelDebugDialogState extends State<ChannelDebugDialog> {
                 _labelValue('Group', ch.groupTitle ?? '—'),
                 _labelValue(
                     'TVG ID / EPG',
-                    (ch.tvgId != null && ch.tvgId!.isNotEmpty)
-                        ? ch.tvgId!
-                        : 'Unmapped'),
+                    widget.mappedEpgId != null && widget.mappedEpgId!.isNotEmpty
+                        ? '${widget.mappedEpgId!} (mapped)'
+                        : (ch.tvgId != null && ch.tvgId!.isNotEmpty)
+                            ? ch.tvgId!
+                            : 'Unmapped'),
                 _labelValue('Stream Type', ch.streamType),
                 const SizedBox(height: 4),
                 Row(
@@ -236,27 +243,147 @@ class _ChannelDebugDialogState extends State<ChannelDebugDialog> {
                   },
                 ),
 
-                // Audio tracks
-                Builder(builder: (_) {
-                  final audioTracks = player.state.tracks.audio;
-                  final currentAudio = player.state.track.audio;
-                  return _labelValue(
-                    'Audio Tracks',
-                    '${audioTracks.length} total'
-                        ' — current: ${currentAudio.title ?? currentAudio.id}',
-                  );
-                }),
+                // Audio tracks — list each with details
+                StreamBuilder<Tracks>(
+                  stream: player.stream.tracks,
+                  initialData: player.state.tracks,
+                  builder: (_, tracksSnap) {
+                    final audioTracks = tracksSnap.data?.audio ?? [];
+                    final currentAudio = player.state.track.audio;
+                    if (audioTracks.isEmpty) {
+                      return _labelValue('Audio Tracks', 'None detected');
+                    }
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _labelValue('Audio Tracks', '${audioTracks.length} total'),
+                        ...audioTracks.map((t) {
+                          final isCurrent = t.id == currentAudio.id;
+                          final label = [
+                            if (t.title != null && t.title!.isNotEmpty) t.title!,
+                            if (t.language != null && t.language!.isNotEmpty) '(${t.language})',
+                            'id: ${t.id}',
+                          ].join(' ');
+                          return Padding(
+                            padding: const EdgeInsets.only(left: 12, top: 2),
+                            child: Row(
+                              children: [
+                                Icon(
+                                  isCurrent ? Icons.volume_up_rounded : Icons.volume_mute_rounded,
+                                  size: 12,
+                                  color: isCurrent ? Colors.greenAccent : Colors.white24,
+                                ),
+                                const SizedBox(width: 6),
+                                Expanded(
+                                  child: Text(
+                                    label,
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      color: isCurrent ? Colors.greenAccent : Colors.white54,
+                                      fontWeight: isCurrent ? FontWeight.bold : FontWeight.normal,
+                                    ),
+                                  ),
+                                ),
+                                SizedBox(
+                                  width: 50,
+                                  child: isCurrent
+                                    ? const Text('Active', style: TextStyle(fontSize: 10, color: Colors.greenAccent))
+                                    : GestureDetector(
+                                        onTap: () async {
+                                          await player.setAudioTrack(t);
+                                          await Future.delayed(const Duration(milliseconds: 300));
+                                          if (mounted) setState(() {});
+                                        },
+                                        child: Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                          decoration: BoxDecoration(
+                                            color: Colors.blueAccent.withValues(alpha: 0.2),
+                                            borderRadius: BorderRadius.circular(4),
+                                          ),
+                                          child: const Text('Select', style: TextStyle(fontSize: 10, color: Colors.blueAccent)),
+                                        ),
+                                      ),
+                                ),
+                              ],
+                            ),
+                          );
+                        }),
+                        const SizedBox(height: 4),
+                      ],
+                    );
+                  },
+                ),
 
-                // Video tracks
-                Builder(builder: (_) {
-                  final videoTracks = player.state.tracks.video;
-                  final currentVideo = player.state.track.video;
-                  return _labelValue(
-                    'Video Tracks',
-                    '${videoTracks.length} total'
-                        ' — current: ${currentVideo.title ?? currentVideo.id}',
-                  );
-                }),
+                // Video tracks — list each with details
+                StreamBuilder<Tracks>(
+                  stream: player.stream.tracks,
+                  initialData: player.state.tracks,
+                  builder: (_, tracksSnap) {
+                    final videoTracks = tracksSnap.data?.video ?? [];
+                    final currentVideo = player.state.track.video;
+                    if (videoTracks.isEmpty) {
+                      return _labelValue('Video Tracks', 'None detected');
+                    }
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _labelValue('Video Tracks', '${videoTracks.length} total'),
+                        ...videoTracks.map((t) {
+                          final isCurrent = t.id == currentVideo.id;
+                          final label = [
+                            if (t.title != null && t.title!.isNotEmpty) t.title!,
+                            if (t.language != null && t.language!.isNotEmpty) '(${t.language})',
+                            'id: ${t.id}',
+                          ].join(' ');
+                          return Padding(
+                            padding: const EdgeInsets.only(left: 12, top: 2),
+                            child: Row(
+                              children: [
+                                Icon(
+                                  isCurrent ? Icons.videocam_rounded : Icons.videocam_off_rounded,
+                                  size: 12,
+                                  color: isCurrent ? Colors.greenAccent : Colors.white24,
+                                ),
+                                const SizedBox(width: 6),
+                                Expanded(
+                                  child: Text(
+                                    label,
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      color: isCurrent ? Colors.greenAccent : Colors.white54,
+                                      fontWeight: isCurrent ? FontWeight.bold : FontWeight.normal,
+                                    ),
+                                  ),
+                                ),
+                                SizedBox(
+                                  width: 50,
+                                  child: isCurrent
+                                    ? const Text('Active', style: TextStyle(fontSize: 10, color: Colors.greenAccent))
+                                    : GestureDetector(
+                                        onTap: () async {
+                                          await player.setVideoTrack(t);
+                                          await Future.delayed(const Duration(milliseconds: 300));
+                                          if (mounted) setState(() {});
+                                        },
+                                        child: Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                          decoration: BoxDecoration(
+                                            color: Colors.blueAccent.withValues(alpha: 0.2),
+                                            borderRadius: BorderRadius.circular(4),
+                                          ),
+                                          child: const Text('Select', style: TextStyle(fontSize: 10, color: Colors.blueAccent)),
+                                        ),
+                                      ),
+                                ),
+                              ],
+                            ),
+                          );
+                        }),
+                        const SizedBox(height: 4),
+                      ],
+                    );
+                  },
+                ),
 
                 // Playing / buffering state
                 StreamBuilder<bool>(

@@ -21,6 +21,8 @@ const _uuid = Uuid();
   ChannelGroups,
   FavoriteLists,
   FavoriteListChannels,
+  EpgReminders,
+  ScheduledRecordings,
 ])
 class AppDatabase extends _$AppDatabase {
   AppDatabase() : super(_openConnection());
@@ -28,7 +30,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.e);
 
   @override
-  int get schemaVersion => 2;
+  int get schemaVersion => 3;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -37,6 +39,10 @@ class AppDatabase extends _$AppDatabase {
           if (from < 2) {
             await m.createTable(favoriteLists);
             await m.createTable(favoriteListChannels);
+          }
+          if (from < 3) {
+            await m.createTable(epgReminders);
+            await m.createTable(scheduledRecordings);
           }
         },
       );
@@ -268,6 +274,49 @@ class AppDatabase extends _$AppDatabase {
     final rows = await select(favoriteListChannels).get();
     return rows.map((r) => r.channelId).toSet();
   }
+
+  // --- Reminder queries ---
+
+  Future<void> addReminder(EpgRemindersCompanion entry) =>
+      into(epgReminders).insertOnConflictUpdate(entry);
+
+  Future<void> deleteReminder(String id) =>
+      (delete(epgReminders)..where((t) => t.id.equals(id))).go();
+
+  Future<List<EpgReminder>> getActiveReminders() =>
+      (select(epgReminders)..where((t) => t.fired.equals(false))).get();
+
+  Future<List<EpgReminder>> getRemindersForTimeRange(DateTime start, DateTime end) =>
+      (select(epgReminders)
+            ..where((t) => t.programmeStart.isBiggerOrEqualValue(start) &
+                t.programmeStart.isSmallerOrEqualValue(end)))
+          .get();
+
+  Future<void> markReminderFired(String id) =>
+      (update(epgReminders)..where((t) => t.id.equals(id)))
+          .write(const EpgRemindersCompanion(fired: Value(true)));
+
+  // --- Scheduled Recording queries ---
+
+  Future<void> addScheduledRecording(ScheduledRecordingsCompanion entry) =>
+      into(scheduledRecordings).insertOnConflictUpdate(entry);
+
+  Future<void> deleteScheduledRecording(String id) =>
+      (delete(scheduledRecordings)..where((t) => t.id.equals(id))).go();
+
+  Future<List<ScheduledRecording>> getAllScheduledRecordings() =>
+      select(scheduledRecordings).get();
+
+  Future<List<ScheduledRecording>> getScheduledRecordingsForTimeRange(
+          DateTime start, DateTime end) =>
+      (select(scheduledRecordings)
+            ..where((t) => t.programmeStart.isBiggerOrEqualValue(start) &
+                t.programmeStart.isSmallerOrEqualValue(end)))
+          .get();
+
+  Future<void> updateRecordingStatus(String id, String status) =>
+      (update(scheduledRecordings)..where((t) => t.id.equals(id)))
+          .write(ScheduledRecordingsCompanion(status: Value(status)));
 }
 
 LazyDatabase _openConnection() {

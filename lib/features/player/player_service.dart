@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:media_kit/media_kit.dart';
+import 'package:media_kit/src/player/native/player/real.dart' as native_player;
 import 'package:media_kit_video/media_kit_video.dart';
 
 /// Manages video playback with stream failover support.
@@ -16,7 +17,20 @@ class PlayerService {
   static const bufferStallThreshold = Duration(seconds: 3);
 
   Player get player {
-    _player ??= Player();
+    if (_player == null) {
+      _player = Player(
+        configuration: const PlayerConfiguration(
+          logLevel: MPVLogLevel.warn,
+        ),
+      );
+      _player!.setVolume(100);
+      // Enable software audio decoding for eac3/ac3/dts support
+      final nativePlayer = _player!.platform;
+      if (nativePlayer is native_player.NativePlayer) {
+        nativePlayer.setProperty('ad', '*');
+        nativePlayer.setProperty('audio-channels', 'stereo');
+      }
+    }
     return _player!;
   }
 

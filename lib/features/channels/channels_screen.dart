@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:drift/drift.dart' show Value;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -37,15 +38,17 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
 
   /// Maps channel ID → mapped EPG channel ID (from epg_mappings table)
   Map<String, String> _epgMappings = {};
+  Set<String> _validEpgChannelIds = {};
   bool _showGuideView = true;
   final _searchController = TextEditingController();
   final _searchFocusNode = FocusNode();
   final _channelListController = ScrollController();
-  final _guideScrollController = ScrollController();
+  late final ScrollController _guideScrollController;
 
   // Overlay state
   bool _showOverlay = false;
   Timer? _overlayTimer;
+  Timer? _nowPlayingTimer;
   final _focusNode = FocusNode();
 
   // Volume state
@@ -67,6 +70,14 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
   Timer? _topBarTimer;
   bool _mouseInTopBar = false;
 
+  // Failover suggestion
+  StreamSubscription<bool>? _bufferingSub;
+  Timer? _failoverTimer;
+  db.Channel? _failoverSuggestion;
+  bool _showFailoverBanner = false;
+  static const _kFailoverEnabled = 'failover_enabled';
+  bool _failoverEnabled = true;
+
   // Favorite lists state
   List<db.FavoriteList> _favoriteLists = [];
   Set<String> _favoritedChannelIds = {};
@@ -78,9 +89,99 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
   @override
   void initState() {
     super.initState();
+    _guideScrollController = ScrollController();
     _loadChannels();
     _ensureEpgSources();
     _startTopBarFade();
+    _initFailoverListener();
+    // Refresh now-playing every 60 seconds so the info panel stays current
+    _nowPlayingTimer = Timer.periodic(const Duration(seconds: 60), (_) => _refreshNowPlaying());
+  }
+
+  Future<void> _refreshNowPlaying() async {
+    if (!mounted) return;
+    final database = ref.read(databaseProvider);
+    final epgChannelIds = <String>{};
+    for (final c in _allChannels) {
+      final mapped = _epgMappings[c.id];
+      if (mapped != null && mapped.isNotEmpty) {
+        epgChannelIds.add(mapped);
+      } else if (c.tvgId != null && c.tvgId!.isNotEmpty && _validEpgChannelIds.contains(c.tvgId)) {
+        epgChannelIds.add(c.tvgId!);
+      }
+    }
+    if (epgChannelIds.isEmpty) return;
+    final nowPlaying = await database.getNowPlaying(epgChannelIds.toList());
+    if (!mounted) return;
+    setState(() {
+      _nowPlaying = nowPlaying;
+    });
+  }
+
+  void _initFailoverListener() async {
+    final prefs = await SharedPreferences.getInstance();
+    _failoverEnabled = prefs.getBool(_kFailoverEnabled) ?? true;
+    final playerService = ref.read(playerServiceProvider);
+    _bufferingSub = playerService.bufferingStream.listen((buffering) {
+      if (!_failoverEnabled) return;
+      if (buffering) {
+        // Start a 5-second timer — if still buffering, suggest alternative
+        _failoverTimer?.cancel();
+        _failoverTimer = Timer(const Duration(seconds: 5), () {
+          if (!mounted) return;
+          _suggestAlternative();
+        });
+      } else {
+        _failoverTimer?.cancel();
+        if (_showFailoverBanner) {
+          setState(() => _showFailoverBanner = false);
+        }
+      }
+    });
+  }
+
+  void _suggestAlternative() {
+    if (_selectedIndex < 0 || _selectedIndex >= _filteredChannels.length) return;
+    final current = _filteredChannels[_selectedIndex];
+    // Find an alternative: same group, different channel
+    final alternatives = _allChannels
+        .where((c) => c.id != current.id && c.groupTitle == current.groupTitle)
+        .toList();
+    if (alternatives.isEmpty) {
+      // Fallback: try channels with similar name keywords
+      final words = current.name.toLowerCase().split(RegExp(r'[\s|]+'))
+          .where((w) => w.length > 2).toList();
+      final nameMatches = _allChannels
+          .where((c) => c.id != current.id &&
+              words.any((w) => c.name.toLowerCase().contains(w)))
+          .toList();
+      if (nameMatches.isEmpty) return;
+      alternatives.addAll(nameMatches);
+    }
+    // Pick first alternative (could be randomized or ranked)
+    setState(() {
+      _failoverSuggestion = alternatives.first;
+      _showFailoverBanner = true;
+    });
+  }
+
+  void _acceptFailover() {
+    if (_failoverSuggestion == null) return;
+    final idx = _filteredChannels.indexWhere((c) => c.id == _failoverSuggestion!.id);
+    if (idx >= 0) {
+      _selectChannel(idx);
+    } else {
+      // Channel not in current filter — play directly
+      final playerService = ref.read(playerServiceProvider);
+      playerService.play(_failoverSuggestion!.streamUrl);
+      setState(() {
+        _previewChannel = _failoverSuggestion;
+      });
+    }
+    setState(() {
+      _showFailoverBanner = false;
+      _failoverSuggestion = null;
+    });
   }
 
   void _startTopBarFade() {
@@ -116,8 +217,11 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
     _channelListController.dispose();
     _guideScrollController.dispose();
     _overlayTimer?.cancel();
+    _nowPlayingTimer?.cancel();
     _volumeOverlayTimer?.cancel();
     _topBarTimer?.cancel();
+    _failoverTimer?.cancel();
+    _bufferingSub?.cancel();
     _focusNode.dispose();
     super.dispose();
   }
@@ -144,17 +248,26 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
     final mappings = await database.getAllMappings();
     final epgMap = <String, String>{};
     for (final m in mappings) {
-      // Programmes are stored with prefixed ID: ${sourceId}_${epgChannelId}
       epgMap[m.channelId] = '${m.epgSourceId}_${m.epgChannelId}';
     }
 
-    // Load now-playing EPG data using mapped IDs (fall back to tvgId)
+    // Load valid EPG channel IDs from all sources
+    final epgSources = await database.getAllEpgSources();
+    final validIds = <String>{};
+    for (final src in epgSources) {
+      final chs = await database.getEpgChannelsForSource(src.id);
+      for (final ch in chs) {
+        validIds.add(ch.id); // prefixed: sourceId_channelId
+      }
+    }
+
+    // Load now-playing EPG data using mapped IDs (fall back to tvgId only if valid)
     final epgChannelIds = <String>{};
     for (final c in allChannels) {
       final mapped = epgMap[c.id];
       if (mapped != null && mapped.isNotEmpty) {
         epgChannelIds.add(mapped);
-      } else if (c.tvgId != null && c.tvgId!.isNotEmpty) {
+      } else if (c.tvgId != null && c.tvgId!.isNotEmpty && validIds.contains(c.tvgId)) {
         epgChannelIds.add(c.tvgId!);
       }
     }
@@ -173,6 +286,7 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
       _groups = groups;
       _nowPlaying = nowPlaying;
       _epgMappings = epgMap;
+      _validEpgChannelIds = validIds;
       _favoriteLists = favLists;
       _favoritedChannelIds = favChannelIds;
       _isLoading = false;
@@ -343,11 +457,13 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
   // EPG helpers
   // ---------------------------------------------------------------------------
 
-  /// Get the effective EPG channel ID: mapped ID takes priority over tvgId.
+  /// Get the effective EPG channel ID: mapped ID takes priority, tvgId only if valid.
   String? _getEpgId(db.Channel channel) {
     final mapped = _epgMappings[channel.id];
     if (mapped != null && mapped.isNotEmpty) return mapped;
-    if (channel.tvgId != null && channel.tvgId!.isNotEmpty) return channel.tvgId;
+    if (channel.tvgId != null && channel.tvgId!.isNotEmpty && _validEpgChannelIds.contains(channel.tvgId)) {
+      return channel.tvgId;
+    }
     return null;
   }
 
@@ -517,6 +633,8 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
                       child: Column(
                         children: [
                           _buildPreviewRow(),
+                          if (_showFailoverBanner && _failoverSuggestion != null)
+                            _buildFailoverBanner(),
                           Expanded(child: _showGuideView ? _buildGuideView() : _buildChannelList()),
                         ],
                       ),
@@ -873,7 +991,7 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
                               SizedBox(
                                 height: 28, width: 28,
                                 child: IconButton(
-                                  onPressed: () => ChannelDebugDialog.show(context, _previewChannel!, playerService),
+                                  onPressed: () => ChannelDebugDialog.show(context, _previewChannel!, playerService, mappedEpgId: _getEpgId(_previewChannel!)),
                                   icon: const Icon(Icons.info_outline, size: 16),
                                   padding: EdgeInsets.zero,
                                   color: Colors.white70,
@@ -902,6 +1020,37 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
           ],
         ),
       ),
+    );
+  }
+
+  /// Extract quality tag (UHD/4K/FHD/HD/SD) from channel name and return a badge widget.
+  Widget? _qualityBadge(String name) {
+    final upper = name.toUpperCase();
+    String? label;
+    Color? color;
+    if (upper.contains('4K') || upper.contains('UHD')) {
+      label = 'UHD';
+      color = const Color(0xFF9B59B6);
+    } else if (upper.contains('FHD') || upper.contains('FULLHD') || upper.contains('FULL HD')) {
+      label = 'FHD';
+      color = const Color(0xFF2ECC71);
+    } else if (RegExp(r'\bHD\b').hasMatch(upper)) {
+      label = 'HD';
+      color = const Color(0xFF3498DB);
+    } else if (RegExp(r'\bSD\b').hasMatch(upper)) {
+      label = 'SD';
+      color = const Color(0xFF95A5A6);
+    }
+    if (label == null) return null;
+    return Container(
+      margin: const EdgeInsets.only(left: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+      decoration: BoxDecoration(
+        color: color!.withValues(alpha: 0.25),
+        borderRadius: BorderRadius.circular(3),
+        border: Border.all(color: color.withValues(alpha: 0.6), width: 0.5),
+      ),
+      child: Text(label, style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: color)),
     );
   }
 
@@ -1039,9 +1188,10 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
             'Favorites',
             [
               if (q.isEmpty || 'favorites'.contains(q))
-                _buildTreeItem('★ All Favorites', 'Favorites', Icons.star_rounded, indent: 1),
+                _buildTreeItem('All Favorites', 'Favorites', Icons.star_rounded, indent: 1),
               for (final list in filteredFavs)
-                _buildTreeItem('★ ${list.name}', 'fav:${list.id}', Icons.star_outline_rounded, indent: 1),
+                _buildTreeItem(list.name, 'fav:${list.id}', Icons.star_outline_rounded, indent: 1,
+                    onSecondaryTap: () => _renameFavoriteList(list)),
               if (q.isEmpty)
                 _buildTreeAction('New List…', Icons.add_rounded, () => _showManageFavoritesDialog(), indent: 1),
             ],
@@ -1110,40 +1260,43 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
     );
   }
 
-  Widget _buildTreeItem(String label, String filterKey, IconData? icon, {int indent = 0}) {
+  Widget _buildTreeItem(String label, String filterKey, IconData? icon, {int indent = 0, VoidCallback? onSecondaryTap}) {
     final isSelected = _selectedGroup == filterKey;
-    return InkWell(
-      onTap: () {
-        setState(() {
-          _selectedGroup = filterKey;
-          _applyFilters();
-        });
-        _saveSession();
-      },
-      child: Container(
-        height: 30,
-        padding: EdgeInsets.only(left: 12.0 + (indent * 16.0), right: 8),
-        color: isSelected ? Colors.white.withValues(alpha: 0.1) : Colors.transparent,
-        alignment: Alignment.centerLeft,
-        child: Row(
-          children: [
-            if (icon != null) ...[
-              Icon(icon, size: 13,
-                  color: isSelected ? Colors.amber : Colors.white38),
-              const SizedBox(width: 6),
-            ],
-            Expanded(
-              child: Text(
-                label,
-                style: TextStyle(
-                  fontSize: 12,
-                  color: isSelected ? Colors.white : Colors.white60,
-                  fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+    return GestureDetector(
+      onSecondaryTap: onSecondaryTap,
+      child: InkWell(
+        onTap: () {
+          setState(() {
+            _selectedGroup = filterKey;
+            _applyFilters();
+          });
+          _saveSession();
+        },
+        child: Container(
+          height: 30,
+          padding: EdgeInsets.only(left: 12.0 + (indent * 16.0), right: 8),
+          color: isSelected ? Colors.white.withValues(alpha: 0.1) : Colors.transparent,
+          alignment: Alignment.centerLeft,
+          child: Row(
+            children: [
+              if (icon != null) ...[
+                Icon(icon, size: 13,
+                    color: isSelected ? Colors.amber : Colors.white38),
+                const SizedBox(width: 6),
+              ],
+              Expanded(
+                child: Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: isSelected ? Colors.white : Colors.white60,
+                    fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+                  ),
+                  overflow: TextOverflow.ellipsis,
                 ),
-                overflow: TextOverflow.ellipsis,
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -1259,16 +1412,24 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
-                          channel.name,
-                          style: TextStyle(
-                            color: isSelected
-                                ? Colors.white
-                                : Colors.white70,
-                            fontWeight: FontWeight.bold,
-                            fontSize: 13,
-                          ),
-                          overflow: TextOverflow.ellipsis,
+                        Row(
+                          children: [
+                            Flexible(
+                              child: Text(
+                                channel.name,
+                                style: TextStyle(
+                                  color: isSelected
+                                      ? Colors.white
+                                      : Colors.white70,
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 13,
+                                ),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                            if (_qualityBadge(channel.name) != null)
+                              _qualityBadge(channel.name)!,
+                          ],
                         ),
                         if (channel.groupTitle != null &&
                             channel.groupTitle!.isNotEmpty)
@@ -1775,36 +1936,41 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
 
     final database = ref.read(databaseProvider);
     final today = DateTime.now();
-    final dayStart = DateTime(today.year, today.month, today.day);
-    final dayEnd = dayStart.add(const Duration(days: 1));
+    final dayStart = DateTime.now().subtract(const Duration(hours: 3));
+    final dayEnd = DateTime(today.year, today.month, today.day).add(const Duration(days: 1));
+
+    final totalMinutes = dayEnd.difference(dayStart).inMinutes;
+    final totalWidth = totalMinutes * _pixelsPerMinute;
 
     return Column(
       children: [
-        // Time ruler
+        // Time ruler row
         SizedBox(
           height: 28,
           child: Row(
             children: [
-              const SizedBox(width: 120),
+              const SizedBox(width: 200),
               Expanded(
                 child: SingleChildScrollView(
                   controller: _guideScrollController,
                   scrollDirection: Axis.horizontal,
-                  child: Row(
-                    children: List.generate(24, (hour) {
-                      final width = 60 * _pixelsPerMinute;
-                      return SizedBox(
-                        width: width,
-                        child: Padding(
-                          padding: const EdgeInsets.only(left: 4),
-                          child: Text(
-                            '${hour.toString().padLeft(2, '0')}:00',
-                            style: const TextStyle(
-                                fontSize: 10, color: Colors.white38),
+                  child: SizedBox(
+                    width: totalWidth,
+                    child: Row(
+                      children: List.generate(24, (hour) {
+                        final width = 60 * _pixelsPerMinute;
+                        return SizedBox(
+                          width: width,
+                          child: Padding(
+                            padding: const EdgeInsets.only(left: 4),
+                            child: Text(
+                              '${hour.toString().padLeft(2, '0')}:00',
+                              style: const TextStyle(fontSize: 10, color: Colors.white38),
+                            ),
                           ),
-                        ),
-                      );
-                    }),
+                        );
+                      }),
+                    ),
                   ),
                 ),
               ),
@@ -1812,86 +1978,112 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
           ),
         ),
         const Divider(height: 1, color: Colors.white12),
-        // Channel rows
+        // Channel rows — single ListView, each item has name + programmes
         Expanded(
-          child: ListView.builder(
-            itemCount: _filteredChannels.length,
-            itemBuilder: (context, index) {
-              final channel = _filteredChannels[index];
-              final isFav = _favoritedChannelIds.contains(channel.id);
-              return GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTap: () => _selectChannel(index),
-                onSecondaryTapUp: (details) => _showGuideChannelMenu(
-                  channel, details.globalPosition,
-                ),
-                child: Container(
-                  height: 48,
-                  decoration: const BoxDecoration(
-                    border: Border(bottom: BorderSide(color: Colors.white10, width: 0.5)),
-                  ),
-                  child: Row(
-                    children: [
-                      // Channel label with logo
-                      Container(
-                        width: 200,
+          child: GestureDetector(
+            onHorizontalDragUpdate: (details) {
+              if (_guideScrollController.hasClients) {
+                final newOffset = (_guideScrollController.offset - details.delta.dx)
+                    .clamp(0.0, _guideScrollController.position.maxScrollExtent);
+                _guideScrollController.jumpTo(newOffset);
+              }
+            },
+            child: ListenableBuilder(
+              listenable: _guideScrollController,
+              builder: (context, _) {
+                final hOffset = _guideScrollController.hasClients
+                    ? _guideScrollController.offset
+                    : 0.0;
+                return ListView.builder(
+                  itemCount: _filteredChannels.length,
+                  itemBuilder: (context, index) {
+                    final channel = _filteredChannels[index];
+                    final isFav = _favoritedChannelIds.contains(channel.id);
+                    return GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTap: () => _selectChannel(index),
+                      onSecondaryTapUp: (details) => _showGuideChannelMenu(
+                        channel, details.globalPosition,
+                      ),
+                      child: Container(
+                        height: 48,
                         decoration: const BoxDecoration(
-                          border: Border(right: BorderSide(color: Colors.white10, width: 0.5)),
+                          border: Border(bottom: BorderSide(color: Colors.white10, width: 0.5)),
                         ),
-                        padding: const EdgeInsets.symmetric(horizontal: 4),
                         child: Row(
                           children: [
-                            // Channel logo
-                            ClipRRect(
-                              borderRadius: BorderRadius.circular(4),
-                              child: channel.tvgLogo != null && channel.tvgLogo!.isNotEmpty
-                                  ? Image.network(
-                                      channel.tvgLogo!,
-                                      width: 28,
-                                      height: 28,
-                                      fit: BoxFit.contain,
-                                      errorBuilder: (_, __, ___) => Container(
-                                        width: 28, height: 28,
-                                        color: const Color(0xFF16213E),
-                                        child: const Icon(Icons.tv, size: 14, color: Colors.white24),
-                                      ),
-                                    )
-                                  : Container(
-                                      width: 28, height: 28,
-                                      color: const Color(0xFF16213E),
-                                      child: const Icon(Icons.tv, size: 14, color: Colors.white24),
-                                    ),
-                            ),
-                            const SizedBox(width: 4),
-                            Expanded(
-                              child: Column(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                crossAxisAlignment: CrossAxisAlignment.start,
+                            // Fixed channel name
+                            Container(
+                              width: 200,
+                              decoration: const BoxDecoration(
+                                border: Border(right: BorderSide(color: Colors.white10, width: 0.5)),
+                              ),
+                              padding: const EdgeInsets.symmetric(horizontal: 4),
+                              child: Row(
                                 children: [
-                                  Text(
-                                    channel.name,
-                                    style: const TextStyle(fontSize: 11, color: Colors.white70),
-                                    maxLines: 2,
-                                    overflow: TextOverflow.ellipsis,
+                                  ClipRRect(
+                                    borderRadius: BorderRadius.circular(4),
+                                    child: channel.tvgLogo != null && channel.tvgLogo!.isNotEmpty
+                                        ? Image.network(
+                                            channel.tvgLogo!,
+                                            width: 28, height: 28, fit: BoxFit.contain,
+                                            errorBuilder: (_, __, ___) => Container(
+                                              width: 28, height: 28,
+                                              color: const Color(0xFF16213E),
+                                              child: const Icon(Icons.tv, size: 14, color: Colors.white24),
+                                            ),
+                                          )
+                                        : Container(
+                                            width: 28, height: 28,
+                                            color: const Color(0xFF16213E),
+                                            child: const Icon(Icons.tv, size: 14, color: Colors.white24),
+                                          ),
                                   ),
-                                  if (isFav)
-                                    const Icon(Icons.star_rounded, color: Colors.amber, size: 12),
+                                  const SizedBox(width: 4),
+                                  Expanded(
+                                    child: Column(
+                                      mainAxisAlignment: MainAxisAlignment.center,
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          channel.name,
+                                          style: const TextStyle(fontSize: 11, color: Colors.white70),
+                                          maxLines: 2,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                        if (isFav)
+                                          const Icon(Icons.star_rounded, color: Colors.amber, size: 12),
+                                      ],
+                                    ),
+                                  ),
                                 ],
+                              ),
+                            ),
+                            // Programme blocks — clipped + translated
+                            Expanded(
+                              child: LayoutBuilder(
+                                builder: (context, constraints) {
+                                  return ClipRect(
+                                    child: OverflowBox(
+                                      alignment: Alignment.centerLeft,
+                                      maxWidth: totalWidth,
+                                      child: Transform.translate(
+                                        offset: Offset(-hOffset, 0),
+                                        child: _buildGuideRowProgrammes(channel, database, dayStart, dayEnd),
+                                      ),
+                                    ),
+                                  );
+                                },
                               ),
                             ),
                           ],
                         ),
                       ),
-                      // Programme blocks
-                      Expanded(
-                        child: _buildGuideRowProgrammes(
-                            channel, database, dayStart, dayEnd),
-                      ),
-                    ],
-                  ),
-                ),
-              );
-            },
+                    );
+                  },
+                );
+              },
+            ),
           ),
         ),
       ],
@@ -2004,7 +2196,7 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
           final ps = ref.read(playerServiceProvider);
           showDialog(
             context: context,
-            builder: (_) => ChannelDebugDialog(channel: channel, playerService: ps),
+            builder: (_) => ChannelDebugDialog(channel: channel, playerService: ps, mappedEpgId: _getEpgId(channel)),
           );
       }
     });
@@ -2014,21 +2206,12 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
       db.AppDatabase database, DateTime dayStart, DateTime dayEnd) {
     final epgId = _getEpgId(channel);
     if (epgId == null) {
-      return Container(
-        margin: const EdgeInsets.symmetric(vertical: 2),
-        decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.03),
-          borderRadius: BorderRadius.circular(4),
-        ),
-        child: const Center(
-          child:
-              Text('No EPG', style: TextStyle(fontSize: 10, color: Colors.white24)),
-        ),
+      return const Center(
+        child: Text('No EPG', style: TextStyle(fontSize: 10, color: Colors.white24)),
       );
     }
 
     return FutureBuilder<List<db.EpgProgramme>>(
-      // TODO: Consider a batch load for all channels to avoid per-row queries
       future: database.getProgrammes(
         epgChannelId: epgId,
         start: dayStart,
@@ -2036,72 +2219,131 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
       ),
       builder: (context, snapshot) {
         if (!snapshot.hasData || snapshot.data!.isEmpty) {
-          return Container(
-            margin: const EdgeInsets.symmetric(vertical: 2),
-            color: Colors.white.withValues(alpha: 0.03),
-            child: const Center(
-              child: Text('No EPG data',
-                  style: TextStyle(fontSize: 10, color: Colors.white24)),
-            ),
+          return const Center(
+            child: Text('No EPG data',
+                style: TextStyle(fontSize: 10, color: Colors.white24)),
           );
         }
 
         final programmes = snapshot.data!;
         final now = DateTime.now();
 
-        return NotificationListener<ScrollNotification>(
-          onNotification: (notification) {
-            // Sync scroll with the time ruler
-            if (notification is ScrollUpdateNotification &&
-                _guideScrollController.hasClients) {
-              _guideScrollController.jumpTo(notification.metrics.pixels);
-            }
-            return false;
-          },
-          child: SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            controller: ScrollController(
-              initialScrollOffset: _guideScrollController.hasClients
-                  ? _guideScrollController.offset
-                  : 0,
-            ),
-            child: Row(
-              children: programmes.map((prog) {
-                final durationMin =
-                    prog.stop.difference(prog.start).inMinutes.clamp(1, 1440);
-                final width = durationMin * _pixelsPerMinute;
-                final isCurrent =
-                    now.isAfter(prog.start) && now.isBefore(prog.stop);
-                return Container(
-                  width: width,
-                  height: 44,
-                  margin: const EdgeInsets.symmetric(vertical: 2, horizontal: 0.5),
-                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-                  decoration: BoxDecoration(
-                    color: isCurrent
-                        ? const Color(0xFF6C5CE7).withValues(alpha: 0.3)
-                        : const Color(0xFF16213E),
-                    borderRadius: BorderRadius.circular(3),
-                    border: isCurrent
-                        ? Border.all(color: const Color(0xFF6C5CE7), width: 1)
-                        : null,
-                  ),
-                  child: Text(
-                    prog.title,
-                    style: TextStyle(
-                      fontSize: 10,
-                      color: isCurrent ? Colors.white : Colors.white54,
-                    ),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                );
-              }).toList(),
-            ),
-          ),
+        return Row(
+          children: programmes.map((prog) {
+            final durationMin =
+                prog.stop.difference(prog.start).inMinutes.clamp(1, 1440);
+            final width = durationMin * _pixelsPerMinute;
+            final isCurrent =
+                now.isAfter(prog.start) && now.isBefore(prog.stop);
+            return Container(
+              width: width,
+              height: 44,
+              margin: const EdgeInsets.symmetric(vertical: 2, horizontal: 0.5),
+              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+              decoration: BoxDecoration(
+                color: isCurrent
+                    ? const Color(0xFF6C5CE7).withValues(alpha: 0.3)
+                    : const Color(0xFF16213E),
+                borderRadius: BorderRadius.circular(3),
+                border: isCurrent
+                    ? Border.all(color: const Color(0xFF6C5CE7), width: 1)
+                    : null,
+              ),
+              child: Text(
+                prog.title,
+                style: TextStyle(
+                  fontSize: 10,
+                  color: isCurrent ? Colors.white : Colors.white54,
+                ),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+            );
+          }).toList(),
         );
       },
     );
+  }
+
+  Widget _buildFailoverBanner() {
+    final suggestion = _failoverSuggestion!;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      color: Colors.orange.withValues(alpha: 0.15),
+      child: Row(
+        children: [
+          const Icon(Icons.swap_horiz_rounded, size: 16, color: Colors.orangeAccent),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text.rich(
+              TextSpan(
+                style: const TextStyle(fontSize: 12, color: Colors.white70),
+                children: [
+                  const TextSpan(text: 'Buffering detected. Try '),
+                  TextSpan(
+                    text: suggestion.name,
+                    style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
+                  ),
+                  const TextSpan(text: '?'),
+                ],
+              ),
+            ),
+          ),
+          TextButton(
+            onPressed: _acceptFailover,
+            style: TextButton.styleFrom(
+              foregroundColor: Colors.orangeAccent,
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              minimumSize: const Size(0, 28),
+            ),
+            child: const Text('Switch', style: TextStyle(fontSize: 11)),
+          ),
+          IconButton(
+            icon: const Icon(Icons.close_rounded, size: 14, color: Colors.white38),
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(maxWidth: 24, maxHeight: 24),
+            onPressed: () => setState(() {
+              _showFailoverBanner = false;
+              _failoverSuggestion = null;
+            }),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _renameFavoriteList(db.FavoriteList list) async {
+    final controller = TextEditingController(text: list.name);
+    final newName = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF1A1A2E),
+        title: const Text('Rename List', style: TextStyle(color: Colors.white)),
+        content: SizedBox(
+          width: 300,
+          child: TextFormField(
+            controller: controller,
+            autofocus: true,
+            style: const TextStyle(color: Colors.white),
+            decoration: const InputDecoration(hintText: 'List name', hintStyle: TextStyle(color: Colors.white38)),
+            onFieldSubmitted: (v) => Navigator.pop(ctx, v.trim()),
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, controller.text.trim()),
+            child: const Text('Rename'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    if (newName != null && newName.isNotEmpty && newName != list.name) {
+      final database = ref.read(databaseProvider);
+      await database.renameFavoriteList(list.id, newName);
+      _loadChannels();
+    }
   }
 }
 
