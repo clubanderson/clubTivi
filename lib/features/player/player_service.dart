@@ -38,7 +38,8 @@ class PlayerService {
       // surround streams on macOS — force FFmpeg software decoders instead
       await np.setProperty('ad', '-ac3_at,-eac3_at,-aac_at');
       // Force audio through resampling filter to ensure compatible output
-      await np.setProperty('af', 'aformat=sample_fmts=s16:channel_layouts=stereo');
+      // Must use lavfi=[] wrapper for ffmpeg filters in mpv
+      await np.setProperty('af', 'lavfi=[aformat=channel_layouts=stereo]');
       // Downmix surround to stereo for output compatibility
       await np.setProperty('audio-channels', 'stereo');
       // Normalize volume when downmixing surround to stereo
