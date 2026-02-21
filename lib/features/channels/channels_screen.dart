@@ -46,6 +46,8 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
   final _searchFocusNode = FocusNode();
   final _channelListController = ScrollController();
   late final ScrollController _guideScrollController;
+  Timer? _guideIdleTimer;
+  DateTime? _guideDayStart; // stored for snap-back calculation
 
   // Overlay state
   bool _showOverlay = false;
@@ -90,6 +92,10 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
   // Favorite lists state
   List<db.FavoriteList> _favoriteLists = [];
   Set<String> _favoritedChannelIds = {};
+
+  // Time format
+  bool _use24HourTime = false;
+  static const _kUse24HourTime = 'use_24_hour_time';
 
   // Persistence keys
   static const _kLastChannelId = 'last_channel_id';
@@ -163,26 +169,51 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
   void _suggestAlternative() {
     if (_selectedIndex < 0 || _selectedIndex >= _filteredChannels.length) return;
     final current = _filteredChannels[_selectedIndex];
-    // Find an alternative: same group, different channel
-    final alternatives = _allChannels
-        .where((c) => c.id != current.id && c.groupTitle == current.groupTitle)
+    final currentName = current.name.toLowerCase()
+        .replaceAll(RegExp(r'\b(hd|fhd|shd|sd|4k|uhd)\b', caseSensitive: false), '')
+        .replaceAll(RegExp(r'(us-?[a-z]*\|?|uk-?[a-z]*\|?|ca-?[a-z]*\|?|mx-?[a-z]*\|?)'), '')
+        .replaceAll(RegExp(r'[\s|()[\]]+'), ' ')
+        .trim();
+
+    // 1. Best: exact same normalized name on a different provider
+    final sameNameDiffProvider = _allChannels.where((c) =>
+        c.id != current.id &&
+        c.providerId != current.providerId &&
+        _normalizeName(c.name) == currentName).toList();
+
+    // 2. Good: exact same normalized name on the same provider (different stream)
+    final sameNameSameProvider = _allChannels.where((c) =>
+        c.id != current.id &&
+        c.providerId == current.providerId &&
+        _normalizeName(c.name) == currentName).toList();
+
+    // 3. Fallback: channels containing key words of the current name
+    final words = currentName.split(RegExp(r'\s+'))
+        .where((w) => w.length > 2).toList();
+    final fuzzyMatches = words.isEmpty ? <db.Channel>[] : _allChannels
+        .where((c) => c.id != current.id &&
+            words.every((w) => c.name.toLowerCase().contains(w)))
         .toList();
-    if (alternatives.isEmpty) {
-      // Fallback: try channels with similar name keywords
-      final words = current.name.toLowerCase().split(RegExp(r'[\s|]+'))
-          .where((w) => w.length > 2).toList();
-      final nameMatches = _allChannels
-          .where((c) => c.id != current.id &&
-              words.any((w) => c.name.toLowerCase().contains(w)))
-          .toList();
-      if (nameMatches.isEmpty) return;
-      alternatives.addAll(nameMatches);
-    }
-    // Pick first alternative (could be randomized or ranked)
+
+    final candidates = [
+      ...sameNameDiffProvider,
+      ...sameNameSameProvider,
+      ...fuzzyMatches,
+    ];
+    if (candidates.isEmpty) return;
+
     setState(() {
-      _failoverSuggestion = alternatives.first;
+      _failoverSuggestion = candidates.first;
       _showFailoverBanner = true;
     });
+  }
+
+  String _normalizeName(String name) {
+    return name.toLowerCase()
+        .replaceAll(RegExp(r'\b(hd|fhd|shd|sd|4k|uhd)\b', caseSensitive: false), '')
+        .replaceAll(RegExp(r'(us-?[a-z]*\|?|uk-?[a-z]*\|?|ca-?[a-z]*\|?|mx-?[a-z]*\|?)'), '')
+        .replaceAll(RegExp(r'[\s|()[\]]+'), ' ')
+        .trim();
   }
 
   void _acceptFailover() {
@@ -236,6 +267,7 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
     _sidebarSearchController.dispose();
     _channelListController.dispose();
     _guideScrollController.dispose();
+    _guideIdleTimer?.cancel();
     _overlayTimer?.cancel();
     _nowPlayingTimer?.cancel();
     _volumeOverlayTimer?.cancel();
@@ -334,6 +366,7 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
 
   Future<void> _restoreSession() async {
     final prefs = await SharedPreferences.getInstance();
+    _use24HourTime = prefs.getBool(_kUse24HourTime) ?? false;
     final lastGroup = prefs.getString(_kLastGroup);
     final lastChannelId = prefs.getString(_kLastChannelId);
 
@@ -552,6 +585,9 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
   }
 
   String _formatTime(DateTime dt) {
+    if (_use24HourTime) {
+      return '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
+    }
     final h = dt.hour > 12 ? dt.hour - 12 : (dt.hour == 0 ? 12 : dt.hour);
     final m = dt.minute.toString().padLeft(2, '0');
     final ampm = dt.hour >= 12 ? 'PM' : 'AM';
@@ -561,6 +597,23 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
   String? _programmeTimeRange(db.EpgProgramme? p) {
     if (p == null) return null;
     return '${_formatTime(p.start)} - ${_formatTime(p.stop)}';
+  }
+
+  void _resetGuideIdleTimer(DateTime dayStart) {
+    _guideIdleTimer?.cancel();
+    _guideIdleTimer = Timer(const Duration(seconds: 10), () {
+      if (!mounted || !_guideScrollController.hasClients) return;
+      final now = DateTime.now();
+      // Scroll to 30 minutes before now
+      final targetMin = now.difference(dayStart).inMinutes - 30;
+      final target = (targetMin * _pixelsPerMinute)
+          .clamp(0.0, _guideScrollController.position.maxScrollExtent);
+      _guideScrollController.animateTo(
+        target,
+        duration: const Duration(milliseconds: 400),
+        curve: Curves.easeOut,
+      );
+    });
   }
 
   // ---------------------------------------------------------------------------
@@ -2125,9 +2178,13 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
       }
     });
 
+    final now = DateTime.now();
+    final nowMinFromStart = now.difference(dayStart).inMinutes;
+    final nowOffset = nowMinFromStart * _pixelsPerMinute;
+
     return Column(
       children: [
-        // Time ruler row
+        // Time ruler row with "now" marker
         SizedBox(
           height: 28,
           child: Row(
@@ -2139,35 +2196,50 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
                   scrollDirection: Axis.horizontal,
                   child: SizedBox(
                     width: totalWidth,
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: () {
-                        final labels = <Widget>[];
-                        // Start at the next full hour on or after dayStart
-                        var t = DateTime(dayStart.year, dayStart.month, dayStart.day, dayStart.hour);
-                        if (t.isBefore(dayStart)) t = t.add(const Duration(hours: 1));
-                        // Leading gap before first label
-                        final leadingMin = t.difference(dayStart).inMinutes;
-                        if (leadingMin > 0) {
-                          labels.add(SizedBox(width: leadingMin * _pixelsPerMinute));
-                        }
-                        while (t.isBefore(dayEnd)) {
-                          final next = t.add(const Duration(hours: 1));
-                          final mins = (next.isBefore(dayEnd) ? 60 : dayEnd.difference(t).inMinutes).clamp(1, 60);
-                          labels.add(SizedBox(
-                            width: mins * _pixelsPerMinute,
-                            child: Padding(
-                              padding: const EdgeInsets.only(left: 4),
+                    child: Stack(
+                      children: [
+                        // Hour labels
+                        ...() {
+                          final labels = <Widget>[];
+                          var t = DateTime(dayStart.year, dayStart.month, dayStart.day, dayStart.hour);
+                          if (t.isBefore(dayStart)) t = t.add(const Duration(hours: 1));
+                          while (t.isBefore(dayEnd)) {
+                            final offsetMin = t.difference(dayStart).inMinutes;
+                            labels.add(Positioned(
+                              left: offsetMin * _pixelsPerMinute,
+                              top: 0,
+                              bottom: 0,
+                              child: Padding(
+                                padding: const EdgeInsets.only(left: 4),
+                                child: Align(
+                                  alignment: Alignment.centerLeft,
+                                  child: Text(
+                                    _formatTime(t),
+                                    style: const TextStyle(fontSize: 10, color: Colors.white38),
+                                  ),
+                                ),
+                              ),
+                            ));
+                            t = t.add(const Duration(hours: 1));
+                          }
+                          return labels;
+                        }(),
+                        // "Now" marker with time label
+                        Positioned(
+                          left: nowOffset - 18,
+                          top: 0,
+                          bottom: 0,
+                          child: SizedBox(
+                            width: 36,
+                            child: Center(
                               child: Text(
-                                '${t.hour.toString().padLeft(2, '0')}:00',
-                                style: const TextStyle(fontSize: 10, color: Colors.white38),
+                                _formatTime(now),
+                                style: const TextStyle(fontSize: 9, color: Colors.white, fontWeight: FontWeight.bold),
                               ),
                             ),
-                          ));
-                          t = next;
-                        }
-                        return labels;
-                      }(),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 ),
@@ -2185,119 +2257,137 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
                     .clamp(0.0, _guideScrollController.position.maxScrollExtent);
                 _guideScrollController.jumpTo(newOffset);
               }
+              _resetGuideIdleTimer(dayStart);
             },
+            onHorizontalDragEnd: (_) => _resetGuideIdleTimer(dayStart),
             child: ListenableBuilder(
               listenable: _guideScrollController,
               builder: (context, _) {
                 final hOffset = _guideScrollController.hasClients
                     ? _guideScrollController.offset
                     : 0.0;
-                return ListView.builder(
-                  itemCount: _filteredChannels.length,
-                  itemBuilder: (context, index) {
-                    final channel = _filteredChannels[index];
-                    final isFav = _favoritedChannelIds.contains(channel.id);
-                    final isSelected = index == _selectedIndex;
-                    return GestureDetector(
-                      behavior: HitTestBehavior.opaque,
-                      onTap: () => _selectChannel(index),
-                      onSecondaryTapUp: (details) => _showGuideChannelMenu(
-                        channel, details.globalPosition,
-                      ),
-                      child: Container(
-                        height: 48,
-                        decoration: BoxDecoration(
-                          color: isSelected
-                              ? const Color(0xFF6C5CE7).withValues(alpha: 0.25)
-                              : Colors.transparent,
-                          border: Border(
-                            bottom: const BorderSide(color: Colors.white10, width: 0.5),
-                            left: isSelected
-                                ? const BorderSide(color: Color(0xFF6C5CE7), width: 3)
-                                : BorderSide.none,
+                return Stack(
+                  children: [
+                    ListView.builder(
+                      itemCount: _filteredChannels.length,
+                      itemBuilder: (context, index) {
+                        final channel = _filteredChannels[index];
+                        final isFav = _favoritedChannelIds.contains(channel.id);
+                        final isSelected = index == _selectedIndex;
+                        return GestureDetector(
+                          behavior: HitTestBehavior.opaque,
+                          onTap: () => _selectChannel(index),
+                          onSecondaryTapUp: (details) => _showGuideChannelMenu(
+                            channel, details.globalPosition,
                           ),
-                        ),
-                        child: Row(
-                          children: [
-                            // Fixed channel name
-                            Container(
-                              width: 200,
-                              decoration: const BoxDecoration(
-                                border: Border(right: BorderSide(color: Colors.white10, width: 0.5)),
-                              ),
-                              padding: const EdgeInsets.symmetric(horizontal: 4),
-                              child: Row(
-                                children: [
-                                  ClipRRect(
-                                    borderRadius: BorderRadius.circular(4),
-                                    child: channel.tvgLogo != null && channel.tvgLogo!.isNotEmpty
-                                        ? Image.network(
-                                            channel.tvgLogo!,
-                                            width: 28, height: 28, fit: BoxFit.contain,
-                                            errorBuilder: (_, __, ___) => Container(
-                                              width: 28, height: 28,
-                                              color: const Color(0xFF16213E),
-                                              child: const Icon(Icons.tv, size: 14, color: Colors.white24),
-                                            ),
-                                          )
-                                        : Container(
-                                            width: 28, height: 28,
-                                            color: const Color(0xFF16213E),
-                                            child: const Icon(Icons.tv, size: 14, color: Colors.white24),
-                                          ),
-                                  ),
-                                  const SizedBox(width: 4),
-                                  Expanded(
-                                    child: Column(
-                                      mainAxisAlignment: MainAxisAlignment.center,
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
-                                        Text(
-                                          channel.name,
-                                          style: TextStyle(
-                                            fontSize: 11,
-                                            color: isSelected ? Colors.white : Colors.white70,
-                                            fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                                          ),
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
-                                        ),
-                                        Text(
-                                          _getProviderName(channel.providerId),
-                                          style: const TextStyle(fontSize: 9, color: Colors.white30),
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
-                                        ),
-                                        if (isFav)
-                                          const Icon(Icons.star_rounded, color: Colors.amber, size: 12),
-                                      ],
-                                    ),
-                                  ),
-                                ],
+                          child: Container(
+                            height: 48,
+                            decoration: BoxDecoration(
+                              color: isSelected
+                                  ? const Color(0xFF6C5CE7).withValues(alpha: 0.25)
+                                  : Colors.transparent,
+                              border: Border(
+                                bottom: const BorderSide(color: Colors.white10, width: 0.5),
+                                left: isSelected
+                                    ? const BorderSide(color: Color(0xFF6C5CE7), width: 3)
+                                    : BorderSide.none,
                               ),
                             ),
-                            // Programme blocks — clipped + translated
-                            Expanded(
-                              child: LayoutBuilder(
-                                builder: (context, constraints) {
-                                  return ClipRect(
-                                    child: OverflowBox(
-                                      alignment: Alignment.centerLeft,
-                                      maxWidth: totalWidth,
-                                      child: Transform.translate(
-                                        offset: Offset(-hOffset, 0),
-                                        child: _buildGuideRowProgrammes(channel, database, dayStart, dayEnd, totalMinutes: totalMinutes, totalWidth: totalWidth),
+                            child: Row(
+                              children: [
+                                // Fixed channel name
+                                Container(
+                                  width: 200,
+                                  decoration: const BoxDecoration(
+                                    border: Border(right: BorderSide(color: Colors.white10, width: 0.5)),
+                                  ),
+                                  padding: const EdgeInsets.symmetric(horizontal: 4),
+                                  child: Row(
+                                    children: [
+                                      ClipRRect(
+                                        borderRadius: BorderRadius.circular(4),
+                                        child: channel.tvgLogo != null && channel.tvgLogo!.isNotEmpty
+                                            ? Image.network(
+                                                channel.tvgLogo!,
+                                                width: 28, height: 28, fit: BoxFit.contain,
+                                                errorBuilder: (_, __, ___) => Container(
+                                                  width: 28, height: 28,
+                                                  color: const Color(0xFF16213E),
+                                                  child: const Icon(Icons.tv, size: 14, color: Colors.white24),
+                                                ),
+                                              )
+                                            : Container(
+                                                width: 28, height: 28,
+                                                color: const Color(0xFF16213E),
+                                                child: const Icon(Icons.tv, size: 14, color: Colors.white24),
+                                              ),
                                       ),
-                                    ),
-                                  );
-                                },
-                              ),
+                                      const SizedBox(width: 4),
+                                      Expanded(
+                                        child: Column(
+                                          mainAxisAlignment: MainAxisAlignment.center,
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            Text(
+                                              channel.name,
+                                              style: TextStyle(
+                                                fontSize: 11,
+                                                color: isSelected ? Colors.white : Colors.white70,
+                                                fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                                              ),
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                            ),
+                                            Text(
+                                              _getProviderName(channel.providerId),
+                                              style: const TextStyle(fontSize: 9, color: Colors.white30),
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                            ),
+                                            if (isFav)
+                                              const Icon(Icons.star_rounded, color: Colors.amber, size: 12),
+                                          ],
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                // Programme blocks — clipped + translated
+                                Expanded(
+                                  child: LayoutBuilder(
+                                    builder: (context, constraints) {
+                                      return ClipRect(
+                                        child: OverflowBox(
+                                          alignment: Alignment.centerLeft,
+                                          maxWidth: totalWidth,
+                                          child: Transform.translate(
+                                            offset: Offset(-hOffset, 0),
+                                            child: _buildGuideRowProgrammes(channel, database, dayStart, dayEnd, totalMinutes: totalMinutes, totalWidth: totalWidth),
+                                          ),
+                                        ),
+                                      );
+                                    },
+                                  ),
+                                ),
+                              ],
                             ),
-                          ],
+                          ),
+                        );
+                      },
+                    ),
+                    // "Now" vertical line overlay
+                    Positioned(
+                      left: 200 + nowOffset - hOffset,
+                      top: 0,
+                      bottom: 0,
+                      child: IgnorePointer(
+                        child: Container(
+                          width: 1.5,
+                          color: Colors.white.withValues(alpha: 0.4),
                         ),
                       ),
-                    );
-                  },
+                    ),
+                  ],
                 );
               },
             ),
