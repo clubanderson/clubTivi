@@ -2229,6 +2229,7 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
         final now = DateTime.now();
 
         return Row(
+          mainAxisSize: MainAxisSize.min,
           children: programmes.map((prog) {
             final durationMin =
                 prog.stop.difference(prog.start).inMinutes.clamp(1, 1440);
