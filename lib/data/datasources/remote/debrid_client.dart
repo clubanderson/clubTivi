@@ -101,23 +101,35 @@ class DebridClient {
     );
   }
 
-  /// Full flow: add magnet → select files → wait → get stream URL
-  Future<ResolvedStream?> resolveFromMagnet(String magnetLink) async {
+  /// Full flow: add magnet → select files → wait → get stream URL.
+  /// [onProgress] is called with status text during polling.
+  Future<ResolvedStream?> resolveFromMagnet(
+    String magnetLink, {
+    void Function(String status, int progress)? onProgress,
+  }) async {
     final torrentId = await addMagnet(magnetLink);
     await selectFiles(torrentId);
 
-    // Poll until ready (max 30 seconds)
-    for (var i = 0; i < 15; i++) {
+    // Poll until ready (max 90 seconds — 45 polls × 2s)
+    for (var i = 0; i < 45; i++) {
       await Future.delayed(const Duration(seconds: 2));
       final info = await getTorrentInfo(torrentId);
+      onProgress?.call(info.status, info.progress);
       if (info.status == 'downloaded' && info.links.isNotEmpty) {
         return unrestrictLink(info.links.first);
       }
-      if (info.status == 'error' || info.status == 'dead') {
-        return null;
+      if (info.status == 'error' || info.status == 'dead' ||
+          info.status == 'magnet_error') {
+        throw Exception('Debrid status: ${info.status}');
       }
     }
-    return null;
+    throw Exception('Timed out waiting for debrid (90s)');
+  }
+
+  /// Get a direct download URL for a magnet without playing it.
+  Future<String?> getDownloadUrl(String magnetLink) async {
+    final resolved = await resolveFromMagnet(magnetLink);
+    return resolved?.url;
   }
 
   /// Delete a torrent from the user's list
