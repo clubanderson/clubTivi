@@ -59,10 +59,13 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
   // Sidebar state
   bool _sidebarExpanded = true;
   Set<String> _expandedSections = {'providers', 'favorites'};
+  final _sidebarSearchController = TextEditingController();
+  String _sidebarSearchQuery = '';
 
   // Top bar auto-hide
   double _topBarOpacity = 1.0;
   Timer? _topBarTimer;
+  bool _mouseInTopBar = false;
 
   // Favorite lists state
   List<db.FavoriteList> _favoriteLists = [];
@@ -82,8 +85,9 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
 
   void _startTopBarFade() {
     _topBarTimer?.cancel();
+    if (_mouseInTopBar) return; // Don't fade while mouse is over the bar
     _topBarTimer = Timer(const Duration(seconds: 3), () {
-      if (mounted) setState(() => _topBarOpacity = 0.0);
+      if (mounted && !_mouseInTopBar) setState(() => _topBarOpacity = 0.0);
     });
   }
 
@@ -108,6 +112,7 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
   void dispose() {
     _searchController.dispose();
     _searchFocusNode.dispose();
+    _sidebarSearchController.dispose();
     _channelListController.dispose();
     _guideScrollController.dispose();
     _overlayTimer?.cancel();
@@ -469,7 +474,15 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
           child: Column(
             children: [
               MouseRegion(
-                onEnter: (_) => _showTopBar(),
+                onEnter: (_) {
+                  _mouseInTopBar = true;
+                  _topBarTimer?.cancel();
+                  setState(() => _topBarOpacity = 1.0);
+                },
+                onExit: (_) {
+                  _mouseInTopBar = false;
+                  _startTopBarFade();
+                },
                 child: AnimatedOpacity(
                   opacity: _topBarOpacity,
                   duration: const Duration(milliseconds: 600),
@@ -896,7 +909,44 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
               ),
             ),
           ),
-          const Divider(height: 1, color: Colors.white10),
+          if (_sidebarExpanded) ...[
+            // Search field
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              child: SizedBox(
+                height: 30,
+                child: TextFormField(
+                  controller: _sidebarSearchController,
+                  style: const TextStyle(color: Colors.white, fontSize: 12),
+                  decoration: InputDecoration(
+                    hintText: 'Search groups…',
+                    hintStyle: const TextStyle(color: Colors.white24, fontSize: 12),
+                    prefixIcon: const Icon(Icons.search_rounded, size: 14, color: Colors.white24),
+                    prefixIconConstraints: const BoxConstraints(minWidth: 30),
+                    suffixIcon: _sidebarSearchQuery.isNotEmpty
+                        ? GestureDetector(
+                            onTap: () {
+                              _sidebarSearchController.clear();
+                              setState(() => _sidebarSearchQuery = '');
+                            },
+                            child: const Icon(Icons.close_rounded, size: 14, color: Colors.white24),
+                          )
+                        : null,
+                    suffixIconConstraints: const BoxConstraints(minWidth: 30),
+                    filled: true,
+                    fillColor: Colors.white.withValues(alpha: 0.06),
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 8),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(6),
+                      borderSide: BorderSide.none,
+                    ),
+                  ),
+                  onChanged: (v) => setState(() => _sidebarSearchQuery = v.toLowerCase()),
+                ),
+              ),
+            ),
+            const Divider(height: 1, color: Colors.white10),
+          ],
           // Tree content
           Expanded(
             child: _sidebarExpanded ? _buildSidebarTree() : _buildCollapsedSidebar(),
@@ -944,35 +994,47 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
   }
 
   Widget _buildSidebarTree() {
+    final q = _sidebarSearchQuery;
+    final filteredGroups = q.isEmpty
+        ? _groups
+        : _groups.where((g) => g.toLowerCase().contains(q)).toList();
+    final filteredFavs = q.isEmpty
+        ? _favoriteLists
+        : _favoriteLists.where((l) => l.name.toLowerCase().contains(q)).toList();
+    final showAll = q.isEmpty || 'all'.contains(q);
+    final showFavSection = q.isEmpty || filteredFavs.isNotEmpty || 'favorites'.contains(q);
+
     return ListView(
       padding: const EdgeInsets.symmetric(vertical: 4),
       children: [
-        // All Channels
-        _buildTreeItem('All', 'All', Icons.grid_view_rounded, indent: 0),
-        // Favorites section
-        _buildTreeSection(
-          'favorites',
-          Icons.star_rounded,
-          'Favorites',
-          [
-            _buildTreeItem('★ All Favorites', 'Favorites', Icons.star_rounded, indent: 1),
-            for (final list in _favoriteLists)
-              _buildTreeItem('★ ${list.name}', 'fav:${list.id}', Icons.star_outline_rounded, indent: 1),
-            // Add list button
-            _buildTreeAction('New List…', Icons.add_rounded, () => _showManageFavoritesDialog(), indent: 1),
-          ],
-        ),
-        const Divider(height: 1, color: Colors.white10),
-        // Groups section
-        _buildTreeSection(
-          'providers',
-          Icons.folder_rounded,
-          'Groups (${_groups.length})',
-          [
-            for (final group in _groups)
-              _buildTreeItem(group, group, null, indent: 1),
-          ],
-        ),
+        if (showAll)
+          _buildTreeItem('All', 'All', Icons.grid_view_rounded, indent: 0),
+        if (showFavSection)
+          _buildTreeSection(
+            'favorites',
+            Icons.star_rounded,
+            'Favorites',
+            [
+              if (q.isEmpty || 'favorites'.contains(q))
+                _buildTreeItem('★ All Favorites', 'Favorites', Icons.star_rounded, indent: 1),
+              for (final list in filteredFavs)
+                _buildTreeItem('★ ${list.name}', 'fav:${list.id}', Icons.star_outline_rounded, indent: 1),
+              if (q.isEmpty)
+                _buildTreeAction('New List…', Icons.add_rounded, () => _showManageFavoritesDialog(), indent: 1),
+            ],
+          ),
+        if (showFavSection || filteredGroups.isNotEmpty)
+          const Divider(height: 1, color: Colors.white10),
+        if (filteredGroups.isNotEmpty)
+          _buildTreeSection(
+            'providers',
+            Icons.folder_rounded,
+            'Groups (${filteredGroups.length})',
+            [
+              for (final group in filteredGroups)
+                _buildTreeItem(group, group, null, indent: 1),
+            ],
+          ),
       ],
     );
   }
@@ -1745,7 +1807,7 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
                       ),
                       onTap: () => _selectChannel(index),
                       child: SizedBox(
-                        width: 140,
+                        width: 200,
                         child: Padding(
                           padding: const EdgeInsets.symmetric(horizontal: 4),
                           child: Row(
@@ -1780,7 +1842,7 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
                                     Text(
                                       channel.name,
                                       style: const TextStyle(fontSize: 11, color: Colors.white70),
-                                      maxLines: 1,
+                                      maxLines: 2,
                                       overflow: TextOverflow.ellipsis,
                                     ),
                                     if (isFav)
