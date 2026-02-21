@@ -5,7 +5,12 @@ import 'package:flutter/material.dart';
 
 import '../player/player_service.dart';
 
-/// Cable TV-style channel info banner that slides up when switching channels.
+/// Cable TV-style channel info banner that slides in when switching channels.
+///
+/// Set [position] to [OverlayPosition.top] (default) or
+/// [OverlayPosition.bottom].
+enum OverlayPosition { top, bottom }
+
 class ChannelInfoOverlay extends StatefulWidget {
   final int channelNumber;
   final String channelName;
@@ -17,6 +22,7 @@ class ChannelInfoOverlay extends StatefulWidget {
   final String? nextProgrammeTime;
   final PlayerService playerService;
   final VoidCallback? onDismissed;
+  final OverlayPosition position;
 
   const ChannelInfoOverlay({
     super.key,
@@ -30,6 +36,7 @@ class ChannelInfoOverlay extends StatefulWidget {
     this.nextProgrammeTime,
     required this.playerService,
     this.onDismissed,
+    this.position = OverlayPosition.top,
   });
 
   @override
@@ -49,9 +56,7 @@ class _ChannelInfoOverlayState extends State<ChannelInfoOverlay>
   Timer? _sparklineTimer;
 
   // Resolution info read from player state.
-  int? _videoWidth;
   int? _videoHeight;
-  StreamSubscription<int?>? _widthSub;
   StreamSubscription<int?>? _heightSub;
 
   @override
@@ -62,8 +67,9 @@ class _ChannelInfoOverlayState extends State<ChannelInfoOverlay>
       vsync: this,
       duration: const Duration(milliseconds: 300),
     );
+    final isTop = widget.position == OverlayPosition.top;
     _slideAnimation = Tween<Offset>(
-      begin: const Offset(0, 1),
+      begin: Offset(0, isTop ? -1 : 1),
       end: Offset.zero,
     ).animate(CurvedAnimation(
       parent: _animController,
@@ -95,10 +101,6 @@ class _ChannelInfoOverlayState extends State<ChannelInfoOverlay>
     });
 
     // Subscribe to video dimensions.
-    _widthSub =
-        widget.playerService.player.stream.width.listen((w) {
-      if (mounted) setState(() => _videoWidth = w);
-    });
     _heightSub =
         widget.playerService.player.stream.height.listen((h) {
       if (mounted) setState(() => _videoHeight = h);
@@ -136,7 +138,6 @@ class _ChannelInfoOverlayState extends State<ChannelInfoOverlay>
     _autoHideTimer?.cancel();
     _sparklineTimer?.cancel();
     _bufferingSub?.cancel();
-    _widthSub?.cancel();
     _heightSub?.cancel();
     _animController.dispose();
     super.dispose();
@@ -169,32 +170,111 @@ class _ChannelInfoOverlayState extends State<ChannelInfoOverlay>
 
   @override
   Widget build(BuildContext context) {
+    final isTop = widget.position == OverlayPosition.top;
     return Positioned(
       left: 0,
       right: 0,
-      bottom: 0,
+      top: isTop ? 0 : null,
+      bottom: isTop ? null : 0,
       child: SlideTransition(
         position: _slideAnimation,
         child: FadeTransition(
           opacity: _fadeAnimation,
           child: ClipRect(
             child: BackdropFilter(
-              filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+              filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
               child: Container(
-                height: 180,
                 decoration: BoxDecoration(
-                  color: Colors.black.withValues(alpha: 0.80),
+                  color: Colors.black.withValues(alpha: 0.75),
                 ),
                 padding:
-                    const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+                    const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                 child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
-                    _buildLeftSection(),
-                    const SizedBox(width: 20),
-                    Expanded(child: _buildCenterSection()),
-                    const SizedBox(width: 16),
-                    _buildRightSection(),
+                    // Channel number
+                    Text(
+                      '${widget.channelNumber}',
+                      style: const TextStyle(
+                        fontSize: 22,
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFF6C5CE7),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    // Logo
+                    if (widget.channelLogo != null &&
+                        widget.channelLogo!.isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(right: 10),
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(4),
+                          child: Image.network(
+                            widget.channelLogo!,
+                            width: 28,
+                            height: 28,
+                            fit: BoxFit.contain,
+                            errorBuilder: (c, e, s) =>
+                                const SizedBox.shrink(),
+                          ),
+                        ),
+                      ),
+                    // Channel name + programme
+                    Expanded(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Flexible(
+                                child: Text(
+                                  widget.channelName,
+                                  style: const TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.white,
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                              if (widget.groupTitle != null &&
+                                  widget.groupTitle!.isNotEmpty) ...[
+                                const SizedBox(width: 8),
+                                Text(
+                                  widget.groupTitle!,
+                                  style: const TextStyle(
+                                      fontSize: 10, color: Colors.white38),
+                                ),
+                              ],
+                            ],
+                          ),
+                          if (widget.currentProgramme != null)
+                            Padding(
+                              padding: const EdgeInsets.only(top: 2),
+                              child: Text(
+                                '${widget.currentProgramme!}${widget.currentProgrammeTime != null ? '  ${widget.currentProgrammeTime}' : ''}',
+                                style: const TextStyle(
+                                    fontSize: 11, color: Colors.white60),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    // Resolution badge
+                    if (_resolutionLabel().isNotEmpty)
+                      _badge(_resolutionLabel(), _resolutionColor()),
+                    const SizedBox(width: 6),
+                    // Sparkline
+                    SizedBox(
+                      width: 50,
+                      height: 20,
+                      child: CustomPaint(
+                          painter: _BufferingSparkline(_bufferHistory)),
+                    ),
                   ],
                 ),
               ),
@@ -202,153 +282,6 @@ class _ChannelInfoOverlayState extends State<ChannelInfoOverlay>
           ),
         ),
       ),
-    );
-  }
-
-  /// Channel number + logo.
-  Widget _buildLeftSection() {
-    return Column(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        Text(
-          '${widget.channelNumber}',
-          style: const TextStyle(
-            fontSize: 38,
-            fontWeight: FontWeight.bold,
-            color: Color(0xFF6C5CE7),
-            height: 1,
-          ),
-        ),
-        const SizedBox(height: 8),
-        if (widget.channelLogo != null && widget.channelLogo!.isNotEmpty)
-          ClipRRect(
-            borderRadius: BorderRadius.circular(8),
-            child: Image.network(
-              widget.channelLogo!,
-              width: 56,
-              height: 56,
-              fit: BoxFit.contain,
-              errorBuilder: (context, error, stack) => const SizedBox.shrink(),
-            ),
-          ),
-      ],
-    );
-  }
-
-  /// Channel name, current/next programme.
-  Widget _buildCenterSection() {
-    return Column(
-      mainAxisAlignment: MainAxisAlignment.center,
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          widget.channelName,
-          style: const TextStyle(
-            fontSize: 22,
-            fontWeight: FontWeight.bold,
-            color: Colors.white,
-          ),
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-        ),
-        if (widget.groupTitle != null && widget.groupTitle!.isNotEmpty) ...[
-          const SizedBox(height: 2),
-          Text(
-            widget.groupTitle!,
-            style: const TextStyle(fontSize: 12, color: Colors.white38),
-          ),
-        ],
-        if (widget.currentProgramme != null) ...[
-          const SizedBox(height: 8),
-          Row(
-            children: [
-              const Icon(Icons.play_circle_fill,
-                  size: 14, color: Color(0xFF6C5CE7)),
-              const SizedBox(width: 6),
-              Expanded(
-                child: Text(
-                  widget.currentProgramme!,
-                  style: const TextStyle(
-                    fontSize: 14,
-                    color: Colors.white,
-                    fontWeight: FontWeight.w500,
-                  ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-              if (widget.currentProgrammeTime != null)
-                Text(
-                  widget.currentProgrammeTime!,
-                  style:
-                      const TextStyle(fontSize: 12, color: Colors.white54),
-                ),
-            ],
-          ),
-        ],
-        if (widget.nextProgramme != null) ...[
-          const SizedBox(height: 4),
-          Row(
-            children: [
-              const Icon(Icons.skip_next_rounded,
-                  size: 14, color: Colors.white38),
-              const SizedBox(width: 6),
-              Expanded(
-                child: Text(
-                  widget.nextProgramme!,
-                  style:
-                      const TextStyle(fontSize: 13, color: Colors.white54),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-              if (widget.nextProgrammeTime != null)
-                Text(
-                  widget.nextProgrammeTime!,
-                  style:
-                      const TextStyle(fontSize: 12, color: Colors.white38),
-                ),
-            ],
-          ),
-        ],
-      ],
-    );
-  }
-
-  /// Resolution badges + buffering sparkline.
-  Widget _buildRightSection() {
-    final resLabel = _resolutionLabel();
-    return Column(
-      mainAxisAlignment: MainAxisAlignment.center,
-      crossAxisAlignment: CrossAxisAlignment.end,
-      children: [
-        if (resLabel.isNotEmpty)
-          Wrap(
-            spacing: 6,
-            runSpacing: 4,
-            children: [
-              _badge(resLabel, _resolutionColor()),
-              if (_videoWidth != null && _videoHeight != null)
-                _badge(
-                  '$_videoWidth×$_videoHeight',
-                  Colors.white24,
-                  textColor: Colors.white60,
-                ),
-            ],
-          ),
-        const SizedBox(height: 10),
-        // Buffering sparkline
-        SizedBox(
-          width: 100,
-          height: 30,
-          child: CustomPaint(painter: _BufferingSparkline(_bufferHistory)),
-        ),
-        const SizedBox(height: 2),
-        const Text(
-          'Buffer',
-          style: TextStyle(fontSize: 9, color: Colors.white30),
-        ),
-      ],
     );
   }
 

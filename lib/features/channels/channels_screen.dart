@@ -31,6 +31,7 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
   List<db.EpgProgramme> _nowPlaying = [];
   bool _isLoading = true;
   final _searchController = TextEditingController();
+  final _searchFocusNode = FocusNode();
   final _channelListController = ScrollController();
 
   // Overlay state
@@ -52,6 +53,7 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
   @override
   void dispose() {
     _searchController.dispose();
+    _searchFocusNode.dispose();
     _channelListController.dispose();
     _overlayTimer?.cancel();
     _volumeOverlayTimer?.cancel();
@@ -361,6 +363,7 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
                 height: 36,
                 child: TextField(
                   controller: _searchController,
+                  focusNode: _searchFocusNode,
                   autofocus: true,
                   style: const TextStyle(color: Colors.white, fontSize: 14),
                   decoration: InputDecoration(
@@ -384,6 +387,7 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
                           _searchController.clear();
                           _applyFilters();
                         });
+                        _focusNode.requestFocus();
                       },
                     ),
                   ),
@@ -401,7 +405,13 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
           IconButton(
             icon: const Icon(Icons.search_rounded, color: Colors.white70),
             tooltip: 'Search',
-            onPressed: () => setState(() => _showSearch = true),
+            onPressed: () {
+              setState(() => _showSearch = true);
+              // Ensure cursor focus goes to search field
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                _searchFocusNode.requestFocus();
+              });
+            },
           ),
           IconButton(
             icon: const Icon(Icons.tv_rounded, color: Colors.white70),
