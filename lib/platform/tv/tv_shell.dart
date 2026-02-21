@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-
-import '../../features/remote/input_manager.dart';
+import 'package:go_router/go_router.dart';
 
 /// 10-foot TV UI shell — optimized for remote control navigation.
 ///
@@ -22,7 +21,7 @@ class TvShell extends StatefulWidget {
 
 class _TvShellState extends State<TvShell> {
   int _selectedNav = 0;
-  bool _sidebarExpanded = false;
+  bool _sidebarFocused = false;
 
   static const _navItems = [
     _NavItem(icon: Icons.live_tv_rounded, label: 'Live TV', route: '/'),
@@ -32,16 +31,21 @@ class _TvShellState extends State<TvShell> {
     _NavItem(icon: Icons.settings_rounded, label: 'Settings', route: '/settings'),
   ];
 
+  void _navigateTo(int index) {
+    if (index == _selectedNav) return;
+    setState(() => _selectedNav = index);
+    context.go(_navItems[index].route);
+  }
+
   @override
   Widget build(BuildContext context) {
-    return InputHandler(
-      onAction: _handleAction,
-      child: Row(
-        children: [
-          // Sidebar nav
-          AnimatedContainer(
+    return Row(
+      children: [
+        // Sidebar nav — uses FocusTraversalGroup so D-pad stays within sidebar
+        FocusTraversalGroup(
+          child: AnimatedContainer(
             duration: const Duration(milliseconds: 200),
-            width: _sidebarExpanded ? 200 : 64,
+            width: _sidebarFocused ? 200 : 64,
             color: const Color(0xFF0D0D14),
             child: Column(
               children: [
@@ -49,7 +53,7 @@ class _TvShellState extends State<TvShell> {
                 // Logo
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 12),
-                  child: _sidebarExpanded
+                  child: _sidebarFocused
                       ? const Text(
                           'clubTivi',
                           style: TextStyle(
@@ -65,7 +69,7 @@ class _TvShellState extends State<TvShell> {
                         ),
                 ),
                 const SizedBox(height: 32),
-                // Nav items
+                // Nav items — each wrapped in Focus for D-pad
                 ...List.generate(_navItems.length, (index) {
                   final item = _navItems[index];
                   final selected = _selectedNav == index;
@@ -73,91 +77,125 @@ class _TvShellState extends State<TvShell> {
                     icon: item.icon,
                     label: item.label,
                     selected: selected,
-                    expanded: _sidebarExpanded,
-                    onTap: () => setState(() => _selectedNav = index),
+                    expanded: _sidebarFocused,
+                    autofocus: index == 0,
+                    onSelect: () => _navigateTo(index),
+                    onFocusChange: (hasFocus) {
+                      if (hasFocus) {
+                        setState(() => _sidebarFocused = true);
+                      }
+                    },
                   );
                 }),
               ],
             ),
           ),
-          // Content area
-          Expanded(child: widget.child),
-        ],
-      ),
+        ),
+        // Content area — separate FocusTraversalGroup
+        Expanded(
+          child: FocusTraversalGroup(
+            child: Focus(
+              onFocusChange: (hasFocus) {
+                if (hasFocus) {
+                  setState(() => _sidebarFocused = false);
+                }
+              },
+              canRequestFocus: false,
+              child: widget.child,
+            ),
+          ),
+        ),
+      ],
     );
-  }
-
-  void _handleAction(AppAction action) {
-    switch (action) {
-      case AppAction.navigateLeft:
-        if (!_sidebarExpanded) {
-          setState(() => _sidebarExpanded = true);
-        }
-      case AppAction.navigateRight:
-        if (_sidebarExpanded) {
-          setState(() => _sidebarExpanded = false);
-        }
-      case AppAction.navigateUp:
-        if (_sidebarExpanded && _selectedNav > 0) {
-          setState(() => _selectedNav--);
-        }
-      case AppAction.navigateDown:
-        if (_sidebarExpanded && _selectedNav < _navItems.length - 1) {
-          setState(() => _selectedNav++);
-        }
-      default:
-        break;
-    }
   }
 }
 
-class _TvNavButton extends StatelessWidget {
+class _TvNavButton extends StatefulWidget {
   final IconData icon;
   final String label;
   final bool selected;
   final bool expanded;
-  final VoidCallback onTap;
+  final bool autofocus;
+  final VoidCallback onSelect;
+  final ValueChanged<bool> onFocusChange;
 
   const _TvNavButton({
     required this.icon,
     required this.label,
     required this.selected,
     required this.expanded,
-    required this.onTap,
+    this.autofocus = false,
+    required this.onSelect,
+    required this.onFocusChange,
   });
 
   @override
+  State<_TvNavButton> createState() => _TvNavButtonState();
+}
+
+class _TvNavButtonState extends State<_TvNavButton> {
+  bool _focused = false;
+
+  @override
   Widget build(BuildContext context) {
+    final isHighlighted = widget.selected || _focused;
+
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-      child: Material(
-        color: selected
-            ? const Color(0xFF6C5CE7).withValues(alpha: 0.2)
-            : Colors.transparent,
-        borderRadius: BorderRadius.circular(12),
-        child: InkWell(
-          borderRadius: BorderRadius.circular(12),
-          onTap: onTap,
-          child: Container(
+      child: Focus(
+        autofocus: widget.autofocus,
+        onFocusChange: (hasFocus) {
+          setState(() => _focused = hasFocus);
+          widget.onFocusChange(hasFocus);
+        },
+        onKeyEvent: (node, event) {
+          if (event is KeyDownEvent &&
+              (event.logicalKey == LogicalKeyboardKey.select ||
+                  event.logicalKey == LogicalKeyboardKey.enter ||
+                  event.logicalKey == LogicalKeyboardKey.gameButtonA)) {
+            widget.onSelect();
+            return KeyEventResult.handled;
+          }
+          return KeyEventResult.ignored;
+        },
+        child: GestureDetector(
+          onTap: widget.onSelect,
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 150),
             height: 48,
             padding: const EdgeInsets.symmetric(horizontal: 12),
+            decoration: BoxDecoration(
+              color: isHighlighted
+                  ? const Color(0xFF6C5CE7).withValues(alpha: 0.2)
+                  : Colors.transparent,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: _focused
+                    ? const Color(0xFF6C5CE7)
+                    : Colors.transparent,
+                width: 2,
+              ),
+            ),
             child: Row(
               children: [
                 Icon(
-                  icon,
-                  color: selected ? const Color(0xFF6C5CE7) : Colors.white54,
+                  widget.icon,
+                  color: isHighlighted
+                      ? const Color(0xFF6C5CE7)
+                      : Colors.white54,
                   size: 24,
                 ),
-                if (expanded) ...[
+                if (widget.expanded) ...[
                   const SizedBox(width: 12),
                   Expanded(
                     child: Text(
-                      label,
+                      widget.label,
                       style: TextStyle(
-                        color: selected ? Colors.white : Colors.white54,
+                        color: isHighlighted ? Colors.white : Colors.white54,
                         fontSize: 15,
-                        fontWeight:
-                            selected ? FontWeight.w600 : FontWeight.normal,
+                        fontWeight: isHighlighted
+                            ? FontWeight.w600
+                            : FontWeight.normal,
                       ),
                       overflow: TextOverflow.ellipsis,
                     ),

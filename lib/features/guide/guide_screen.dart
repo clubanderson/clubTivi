@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/fuzzy_match.dart';
@@ -18,6 +19,7 @@ class _GuideScreenState extends ConsumerState<GuideScreen> {
   final _scrollController = ScrollController();
   String _searchQuery = '';
   final _searchController = TextEditingController();
+  final _focusNode = FocusNode();
 
   /// Pixels per minute for the timeline.
   static const _pixelsPerMinute = 4.0;
@@ -38,14 +40,36 @@ class _GuideScreenState extends ConsumerState<GuideScreen> {
   void dispose() {
     _scrollController.dispose();
     _searchController.dispose();
+    _focusNode.dispose();
     super.dispose();
+  }
+
+  void _handleKeyEvent(KeyEvent event) {
+    if (event is! KeyDownEvent) return;
+    if (event.logicalKey == LogicalKeyboardKey.arrowLeft) {
+      _scrollController.animateTo(
+        (_scrollController.offset - 200).clamp(0.0, _scrollController.position.maxScrollExtent),
+        duration: const Duration(milliseconds: 200),
+        curve: Curves.easeOut,
+      );
+    } else if (event.logicalKey == LogicalKeyboardKey.arrowRight) {
+      _scrollController.animateTo(
+        (_scrollController.offset + 200).clamp(0.0, _scrollController.position.maxScrollExtent),
+        duration: const Duration(milliseconds: 200),
+        curve: Curves.easeOut,
+      );
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     final database = ref.watch(databaseProvider);
 
-    return Scaffold(
+    return KeyboardListener(
+      focusNode: _focusNode,
+      autofocus: true,
+      onKeyEvent: _handleKeyEvent,
+      child: Scaffold(
       appBar: AppBar(
         title: const Text('Program Guide'),
         actions: [
@@ -160,6 +184,7 @@ class _GuideScreenState extends ConsumerState<GuideScreen> {
           );
         },
       ),
+    ),
     );
   }
 

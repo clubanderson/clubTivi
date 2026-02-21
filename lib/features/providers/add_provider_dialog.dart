@@ -4,27 +4,25 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'provider_manager.dart';
 
-/// Shows the Add Provider bottom sheet. Returns `true` if a provider was added.
+/// Shows the Add Provider dialog.
+/// Uses a full-screen page (navigable via D-pad) instead of a bottom sheet.
 Future<bool?> showAddProviderDialog(BuildContext context) {
-  return showModalBottomSheet<bool>(
-    context: context,
-    isScrollControlled: true,
-    backgroundColor: const Color(0xFF1A1A2E),
-    shape: const RoundedRectangleBorder(
-      borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+  return Navigator.of(context).push<bool>(
+    MaterialPageRoute(
+      fullscreenDialog: true,
+      builder: (_) => const _AddProviderPage(),
     ),
-    builder: (_) => const _AddProviderSheet(),
   );
 }
 
-class _AddProviderSheet extends ConsumerStatefulWidget {
-  const _AddProviderSheet();
+class _AddProviderPage extends ConsumerStatefulWidget {
+  const _AddProviderPage();
 
   @override
-  ConsumerState<_AddProviderSheet> createState() => _AddProviderSheetState();
+  ConsumerState<_AddProviderPage> createState() => _AddProviderPageState();
 }
 
-class _AddProviderSheetState extends ConsumerState<_AddProviderSheet>
+class _AddProviderPageState extends ConsumerState<_AddProviderPage>
     with SingleTickerProviderStateMixin {
   late final TabController _tabController;
   final _m3uFormKey = GlobalKey<FormState>();
@@ -165,52 +163,34 @@ class _AddProviderSheetState extends ConsumerState<_AddProviderSheet>
 
   @override
   Widget build(BuildContext context) {
-    const accent = Color(0xFF6C5CE7);
-
-    return Padding(
-      padding: EdgeInsets.only(
-        bottom: MediaQuery.of(context).viewInsets.bottom,
+    return Scaffold(
+      backgroundColor: const Color(0xFF0A0A0F),
+      appBar: AppBar(
+        leading: IconButton(
+          icon: const Icon(Icons.close),
+          onPressed: () => Navigator.of(context).pop(),
+        ),
+        title: const Text('Add Provider'),
       ),
-      child: SizedBox(
-        height: 480,
-        child: Column(
-          children: [
-            const SizedBox(height: 8),
-            Container(
-              width: 40,
-              height: 4,
-              decoration: BoxDecoration(
-                color: Colors.white24,
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-            const SizedBox(height: 16),
-            const Text(
-              'Add Provider',
-              style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 12),
-            TabBar(
+      body: Column(
+        children: [
+          TabBar(
+            controller: _tabController,
+            tabs: const [
+              Tab(text: 'M3U Playlist'),
+              Tab(text: 'Xtream Codes'),
+            ],
+          ),
+          Expanded(
+            child: TabBarView(
               controller: _tabController,
-              indicatorColor: accent,
-              labelColor: accent,
-              unselectedLabelColor: Colors.white54,
-              tabs: const [
-                Tab(text: 'M3U Playlist'),
-                Tab(text: 'Xtream Codes'),
+              children: [
+                _buildM3uTab(),
+                _buildXtreamTab(),
               ],
             ),
-            Expanded(
-              child: TabBarView(
-                controller: _tabController,
-                children: [
-                  _buildM3uTab(),
-                  _buildXtreamTab(),
-                ],
-              ),
-            ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
@@ -218,39 +198,45 @@ class _AddProviderSheetState extends ConsumerState<_AddProviderSheet>
   Widget _buildM3uTab() {
     return Form(
       key: _m3uFormKey,
-      child: ListView(
-        padding: const EdgeInsets.all(20),
-        children: [
-          TextFormField(
-            controller: _m3uName,
-            decoration: const InputDecoration(
-              labelText: 'Provider Name',
-              hintText: 'e.g. My IPTV',
-              border: OutlineInputBorder(),
+      child: FocusTraversalGroup(
+        child: ListView(
+          padding: const EdgeInsets.all(20),
+          children: [
+            TextFormField(
+              controller: _m3uName,
+              autofocus: true,
+              decoration: const InputDecoration(
+                labelText: 'Provider Name',
+                hintText: 'e.g. My IPTV',
+              ),
+              validator: _validateRequired,
+              textInputAction: TextInputAction.next,
             ),
-            validator: _validateRequired,
-            textInputAction: TextInputAction.next,
-          ),
-          const SizedBox(height: 16),
-          TextFormField(
-            controller: _m3uUrl,
-            decoration: InputDecoration(
-              labelText: 'M3U URL',
-              hintText: 'http://...',
-              border: const OutlineInputBorder(),
-              suffixIcon: IconButton(
-                icon: const Icon(Icons.paste),
-                tooltip: 'Paste',
+            const SizedBox(height: 16),
+            TextFormField(
+              controller: _m3uUrl,
+              decoration: const InputDecoration(
+                labelText: 'M3U URL',
+                hintText: 'http://...',
+              ),
+              validator: _validateUrl,
+              keyboardType: TextInputType.url,
+              textInputAction: TextInputAction.done,
+              onFieldSubmitted: (_) => _submitM3u(),
+            ),
+            const SizedBox(height: 8),
+            Align(
+              alignment: Alignment.centerRight,
+              child: TextButton.icon(
                 onPressed: () => _pasteUrl(_m3uUrl),
+                icon: const Icon(Icons.paste, size: 18),
+                label: const Text('Paste URL'),
               ),
             ),
-            validator: _validateUrl,
-            keyboardType: TextInputType.url,
-            textInputAction: TextInputAction.done,
-          ),
-          const SizedBox(height: 24),
-          _buildSubmitButton(onPressed: _submitM3u),
-        ],
+            const SizedBox(height: 16),
+            _buildSubmitButton(onPressed: _submitM3u),
+          ],
+        ),
       ),
     );
   }
@@ -258,55 +244,54 @@ class _AddProviderSheetState extends ConsumerState<_AddProviderSheet>
   Widget _buildXtreamTab() {
     return Form(
       key: _xtreamFormKey,
-      child: ListView(
-        padding: const EdgeInsets.all(20),
-        children: [
-          TextFormField(
-            controller: _xtreamName,
-            decoration: const InputDecoration(
-              labelText: 'Provider Name',
-              hintText: 'e.g. My Xtream',
-              border: OutlineInputBorder(),
+      child: FocusTraversalGroup(
+        child: ListView(
+          padding: const EdgeInsets.all(20),
+          children: [
+            TextFormField(
+              controller: _xtreamName,
+              decoration: const InputDecoration(
+                labelText: 'Provider Name',
+                hintText: 'e.g. My Xtream',
+              ),
+              validator: _validateRequired,
+              textInputAction: TextInputAction.next,
             ),
-            validator: _validateRequired,
-            textInputAction: TextInputAction.next,
-          ),
-          const SizedBox(height: 16),
-          TextFormField(
-            controller: _xtreamUrl,
-            decoration: const InputDecoration(
-              labelText: 'Server URL',
-              hintText: 'http://...',
-              border: OutlineInputBorder(),
+            const SizedBox(height: 16),
+            TextFormField(
+              controller: _xtreamUrl,
+              decoration: const InputDecoration(
+                labelText: 'Server URL',
+                hintText: 'http://...',
+              ),
+              validator: _validateUrl,
+              keyboardType: TextInputType.url,
+              textInputAction: TextInputAction.next,
             ),
-            validator: _validateUrl,
-            keyboardType: TextInputType.url,
-            textInputAction: TextInputAction.next,
-          ),
-          const SizedBox(height: 16),
-          TextFormField(
-            controller: _xtreamUser,
-            decoration: const InputDecoration(
-              labelText: 'Username',
-              border: OutlineInputBorder(),
+            const SizedBox(height: 16),
+            TextFormField(
+              controller: _xtreamUser,
+              decoration: const InputDecoration(
+                labelText: 'Username',
+              ),
+              validator: _validateRequired,
+              textInputAction: TextInputAction.next,
             ),
-            validator: _validateRequired,
-            textInputAction: TextInputAction.next,
-          ),
-          const SizedBox(height: 16),
-          TextFormField(
-            controller: _xtreamPass,
-            decoration: const InputDecoration(
-              labelText: 'Password',
-              border: OutlineInputBorder(),
+            const SizedBox(height: 16),
+            TextFormField(
+              controller: _xtreamPass,
+              decoration: const InputDecoration(
+                labelText: 'Password',
+              ),
+              obscureText: true,
+              validator: _validateRequired,
+              textInputAction: TextInputAction.done,
+              onFieldSubmitted: (_) => _submitXtream(),
             ),
-            obscureText: true,
-            validator: _validateRequired,
-            textInputAction: TextInputAction.done,
-          ),
-          const SizedBox(height: 24),
-          _buildSubmitButton(onPressed: _submitXtream),
-        ],
+            const SizedBox(height: 24),
+            _buildSubmitButton(onPressed: _submitXtream),
+          ],
+        ),
       ),
     );
   }

@@ -22,39 +22,49 @@ class ProvidersScreen extends ConsumerWidget {
       appBar: AppBar(
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
-          onPressed: () => context.pop(),
+          onPressed: () => context.go('/'),
         ),
         title: const Text('IPTV Providers'),
       ),
       body: providersAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, _) => Center(child: Text('Error: $e')),
-        data: (providers) => ListView(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-          children: [
-            if (providers.isNotEmpty) ...[
-              const _SectionHeader(title: 'Your Providers'),
-              ...providers.map((p) => _ProviderCard(provider: p)),
-              const SizedBox(height: 24),
+        data: (providers) => FocusTraversalGroup(
+          child: ListView(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            children: [
+              // Add Provider button at top — reachable via D-pad
+              Padding(
+                padding: const EdgeInsets.only(bottom: 16),
+                child: FilledButton.icon(
+                  autofocus: providers.isEmpty,
+                  onPressed: () => showAddProviderDialog(context),
+                  icon: const Icon(Icons.add),
+                  label: const Text('Add Provider'),
+                  style: FilledButton.styleFrom(
+                    minimumSize: const Size(double.infinity, 52),
+                  ),
+                ),
+              ),
+              if (providers.isNotEmpty) ...[
+                const _SectionHeader(title: 'Your Providers'),
+                ...providers.map((p) => _ProviderCard(provider: p)),
+                const SizedBox(height: 24),
+              ],
+              const _SectionHeader(title: 'Free TV Providers'),
+              const SizedBox(height: 8),
+              const Text(
+                'Select to add free ad-supported channels',
+                style: TextStyle(color: Colors.white38, fontSize: 13),
+              ),
+              const SizedBox(height: 12),
+              ...FreeTvProvider.all.map((fp) => _FreeTvProviderTile(
+                    freeProvider: fp,
+                    isAdded: providers.any((p) => p.id == fp.id),
+                  )),
             ],
-            const _SectionHeader(title: 'Free TV Providers'),
-            const SizedBox(height: 8),
-            const Text(
-              'Tap to add free ad-supported channels',
-              style: TextStyle(color: Colors.white38, fontSize: 13),
-            ),
-            const SizedBox(height: 12),
-            ...FreeTvProvider.all.map((fp) => _FreeTvProviderTile(
-                  freeProvider: fp,
-                  isAdded: providers.any((p) => p.id == fp.id),
-                )),
-          ],
+          ),
         ),
-      ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => showAddProviderDialog(context),
-        icon: const Icon(Icons.add),
-        label: const Text('Add Provider'),
       ),
     );
   }

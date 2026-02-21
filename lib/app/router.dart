@@ -1,5 +1,6 @@
 import 'package:go_router/go_router.dart';
 
+import '../core/platform_info.dart';
 import '../features/channels/channels_screen.dart';
 import '../features/guide/guide_screen.dart';
 import '../features/player/player_screen.dart';
@@ -8,11 +9,12 @@ import '../features/epg_mapping/epg_mapping_screen.dart';
 import '../features/settings/settings_screen.dart';
 import '../features/shows/shows_screen.dart';
 import '../features/shows/show_detail_screen.dart';
+import '../platform/tv/tv_shell.dart';
 import '../data/models/show.dart';
 
-final router = GoRouter(
-  initialLocation: '/',
-  routes: [
+GoRouter createRouter() {
+  // Routes that live inside the TV sidebar shell
+  final sidebarRoutes = [
     GoRoute(
       path: '/',
       builder: (context, state) => const ChannelsScreen(),
@@ -21,6 +23,22 @@ final router = GoRouter(
       path: '/guide',
       builder: (context, state) => const GuideScreen(),
     ),
+    GoRoute(
+      path: '/providers',
+      builder: (context, state) => const ProvidersScreen(),
+    ),
+    GoRoute(
+      path: '/epg-mapping',
+      builder: (context, state) => const EpgMappingScreen(),
+    ),
+    GoRoute(
+      path: '/settings',
+      builder: (context, state) => const SettingsScreen(),
+    ),
+  ];
+
+  // Routes outside the shell (player, shows detail, etc.)
+  final standaloneRoutes = [
     GoRoute(
       path: '/player',
       builder: (context, state) {
@@ -40,18 +58,6 @@ final router = GoRouter(
       },
     ),
     GoRoute(
-      path: '/providers',
-      builder: (context, state) => const ProvidersScreen(),
-    ),
-    GoRoute(
-      path: '/epg-mapping',
-      builder: (context, state) => const EpgMappingScreen(),
-    ),
-    GoRoute(
-      path: '/settings',
-      builder: (context, state) => const SettingsScreen(),
-    ),
-    GoRoute(
       path: '/shows',
       builder: (context, state) => const ShowsScreen(),
     ),
@@ -63,5 +69,30 @@ final router = GoRouter(
         return ShowDetailScreen(traktId: traktId, initialShow: show);
       },
     ),
-  ],
-);
+  ];
+
+  if (PlatformInfo.isTV) {
+    return GoRouter(
+      initialLocation: '/',
+      routes: [
+        ShellRoute(
+          builder: (context, state, child) => TvShell(child: child),
+          routes: sidebarRoutes,
+        ),
+        ...standaloneRoutes,
+      ],
+    );
+  }
+
+  // Non-TV: flat routes (original behavior)
+  return GoRouter(
+    initialLocation: '/',
+    routes: [
+      ...sidebarRoutes,
+      ...standaloneRoutes,
+    ],
+  );
+}
+
+/// Global router instance — initialized lazily.
+late final GoRouter router = createRouter();

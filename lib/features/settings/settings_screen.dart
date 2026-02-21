@@ -125,12 +125,14 @@ class SettingsScreen extends ConsumerWidget {
         ),
         title: const Text('Settings'),
       ),
-      body: ListView(
-        children: [
+      body: FocusTraversalGroup(
+        child: ListView(
+          children: [
           _SettingsSection(
             title: 'EPG',
             children: [
               ListTile(
+                autofocus: true,
                 leading: const Icon(Icons.source_rounded),
                 title: const Text('EPG Sources'),
                 subtitle: const Text('Manage XMLTV feeds (epg.best, etc.)'),
@@ -234,6 +236,7 @@ class SettingsScreen extends ConsumerWidget {
           ),
           _ShowsApiKeysSection(),
         ],
+        ),
       ),
     );
   }

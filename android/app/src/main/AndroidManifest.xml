@@ -1,8 +1,14 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Android TV: touchscreen is optional (TV has no touchscreen) -->
+    <uses-feature android:name="android.hardware.touchscreen" android:required="false"/>
+    <!-- Android TV: declare Leanback support (required="false" so phone/tablet still works) -->
+    <uses-feature android:name="android.software.leanback" android:required="false"/>
+
     <application
         android:label="clubtivi"
         android:name="${applicationName}"
-        android:icon="@mipmap/ic_launcher">
+        android:icon="@mipmap/ic_launcher"
+        android:banner="@mipmap/ic_launcher">
         <activity
             android:name=".MainActivity"
             android:exported="true"
@@ -23,6 +29,8 @@
             <intent-filter>
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
+                <!-- Android TV: show in TV launcher -->
+                <category android:name="android.intent.category.LEANBACK_LAUNCHER"/>
             </intent-filter>
         </activity>
         <!-- Don't delete the meta-data below.
