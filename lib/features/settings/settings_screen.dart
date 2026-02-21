@@ -6,6 +6,7 @@ import '../../data/datasources/local/database.dart' as db;
 import '../../data/services/epg_refresh_service.dart';
 import '../providers/provider_manager.dart';
 import 'add_epg_source_dialog.dart';
+import '../shows/shows_providers.dart';
 
 class SettingsScreen extends ConsumerWidget {
   const SettingsScreen({super.key});
@@ -96,6 +97,7 @@ class SettingsScreen extends ConsumerWidget {
               ),
             ],
           ),
+          _ShowsApiKeysSection(),
         ],
       ),
     );
@@ -305,6 +307,118 @@ class _EpgSourcesScreenState extends ConsumerState<_EpgSourcesScreen> {
     if (diff.inHours < 1) return '${diff.inMinutes}m ago';
     if (diff.inDays < 1) return '${diff.inHours}h ago';
     return '${diff.inDays}d ago';
+  }
+}
+
+class _ShowsApiKeysSection extends ConsumerStatefulWidget {
+  @override
+  ConsumerState<_ShowsApiKeysSection> createState() => _ShowsApiKeysSectionState();
+}
+
+class _ShowsApiKeysSectionState extends ConsumerState<_ShowsApiKeysSection> {
+  final _traktCtrl = TextEditingController();
+  final _tmdbCtrl = TextEditingController();
+  final _debridCtrl = TextEditingController();
+  bool _loaded = false;
+
+  @override
+  void dispose() {
+    _traktCtrl.dispose();
+    _tmdbCtrl.dispose();
+    _debridCtrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final keys = ref.watch(showsApiKeysProvider);
+    if (!_loaded && keys.traktClientId.isNotEmpty) {
+      _traktCtrl.text = keys.traktClientId;
+      _tmdbCtrl.text = keys.tmdbApiKey;
+      _debridCtrl.text = keys.debridApiToken;
+      _loaded = true;
+    }
+
+    return _SettingsSection(
+      title: 'Shows & Movies (Trakt + TMDB + Real-Debrid)',
+      children: [
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          child: Column(
+            children: [
+              _apiKeyField(
+                controller: _traktCtrl,
+                label: 'Trakt Client ID',
+                hint: 'Get from trakt.tv/oauth/applications',
+                icon: Icons.tv,
+                hasValue: keys.hasTraktKey,
+              ),
+              const SizedBox(height: 8),
+              _apiKeyField(
+                controller: _tmdbCtrl,
+                label: 'TMDB API Key',
+                hint: 'Get from themoviedb.org/settings/api',
+                icon: Icons.image,
+                hasValue: keys.hasTmdbKey,
+              ),
+              const SizedBox(height: 8),
+              _apiKeyField(
+                controller: _debridCtrl,
+                label: 'Real-Debrid API Token',
+                hint: 'Get from real-debrid.com/apitoken',
+                icon: Icons.cloud_download,
+                hasValue: keys.hasDebridKey,
+              ),
+              const SizedBox(height: 12),
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton.icon(
+                  onPressed: () async {
+                    await ref.read(showsApiKeysProvider.notifier).save(
+                      traktClientId: _traktCtrl.text.trim(),
+                      tmdbApiKey: _tmdbCtrl.text.trim(),
+                      debridApiToken: _debridCtrl.text.trim(),
+                    );
+                    // Invalidate shows repo so it picks up new keys
+                    ref.invalidate(showsRepositoryProvider);
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Shows API keys saved')),
+                      );
+                    }
+                  },
+                  icon: const Icon(Icons.save),
+                  label: const Text('Save Keys'),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _apiKeyField({
+    required TextEditingController controller,
+    required String label,
+    required String hint,
+    required IconData icon,
+    required bool hasValue,
+  }) {
+    return TextFormField(
+      controller: controller,
+      obscureText: true,
+      decoration: InputDecoration(
+        labelText: label,
+        hintText: hint,
+        prefixIcon: Icon(icon),
+        suffixIcon: hasValue
+            ? const Icon(Icons.check_circle, color: Colors.green, size: 20)
+            : null,
+        border: const OutlineInputBorder(),
+        isDense: true,
+      ),
+    );
   }
 }
 
