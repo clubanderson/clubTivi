@@ -161,26 +161,30 @@ class _EpgSourcesScreenState extends ConsumerState<_EpgSourcesScreen> {
     final urlCtrl = TextEditingController(text: source.url);
     final result = await showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
+      builder: (ctx) => AlertDialog(
         title: const Text('Edit EPG Source'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: nameCtrl,
-              decoration: const InputDecoration(labelText: 'Name'),
-            ),
-            const SizedBox(height: 8),
-            TextField(
-              controller: urlCtrl,
-              decoration: const InputDecoration(labelText: 'URL'),
-            ),
-          ],
+        content: SizedBox(
+          width: 400,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextFormField(
+                controller: nameCtrl,
+                decoration: const InputDecoration(labelText: 'Name'),
+                autofocus: true,
+              ),
+              const SizedBox(height: 8),
+              TextFormField(
+                controller: urlCtrl,
+                decoration: const InputDecoration(labelText: 'URL'),
+              ),
+            ],
+          ),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
           FilledButton(
-            onPressed: () => Navigator.pop(context, true),
+            onPressed: () => Navigator.pop(ctx, true),
             child: const Text('Save'),
           ),
         ],
