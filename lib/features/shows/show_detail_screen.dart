@@ -55,19 +55,19 @@ class _ShowDetailScreenState extends ConsumerState<ShowDetailScreen> {
     if (_selectedSeason == null || detail.seasons.isEmpty) return;
     final index = detail.seasons.indexWhere((s) => s.number == _selectedSeason);
     if (index < 0) return;
-    // Each chip is ~110px wide (label + padding)
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (_seasonScrollController.hasClients) {
-        final target = (index * 110.0 - 40).clamp(
-          0.0,
-          _seasonScrollController.position.maxScrollExtent,
-        );
-        _seasonScrollController.animateTo(
-          target,
-          duration: const Duration(milliseconds: 300),
-          curve: Curves.easeOut,
-        );
-      }
+      if (!_seasonScrollController.hasClients) return;
+      final maxScroll = _seasonScrollController.position.maxScrollExtent;
+      final viewWidth = _seasonScrollController.position.viewportDimension;
+      // Estimate chip position — center it in the viewport
+      const chipWidth = 120.0;
+      final chipCenter = index * chipWidth + chipWidth / 2 + 20; // +20 for padding
+      final target = (chipCenter - viewWidth / 2).clamp(0.0, maxScroll);
+      _seasonScrollController.animateTo(
+        target,
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeOut,
+      );
     });
   }
 

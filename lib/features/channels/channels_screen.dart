@@ -642,7 +642,7 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    if (_isLoading) {
+    if (_isLoading && _allChannels.isEmpty) {
       return const Scaffold(
         body: Center(child: CircularProgressIndicator()),
       );
@@ -1341,40 +1341,56 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
           ? sortedGroups
           : sortedGroups.where((g) => g.toLowerCase().contains(query)).toList();
 
-      widgets.add(
-        _buildTreeSection(
-          'prov_${prov.id}',
-          prov.type == 'xtream' ? Icons.bolt_rounded : Icons.playlist_play_rounded,
-          prov.name,
-          [
-            _buildTreeItem(
-              'All ${prov.name}',
-              'provider:${prov.id}',
-              Icons.grid_view_rounded,
-              indent: 1,
-            ),
-            for (final group in filteredGroups)
-              _buildTreeItem(
-                group,
-                'provgroup:${prov.id}:$group',
-                Icons.folder_open_rounded,
-                indent: 2,
-              ),
-          ],
-        ),
-      );
+      // No subcategories — show as a flat link
+      if (filteredGroups.isEmpty) {
+        widgets.add(
+          _buildTreeItem(
+            prov.name,
+            'provider:${prov.id}',
+            prov.type == 'xtream' ? Icons.bolt_rounded : Icons.playlist_play_rounded,
+            indent: 0,
+          ),
+        );
+      } else {
+        // Has subcategories — show as expandable tree
+        widgets.add(
+          _buildTreeSection(
+            'prov_${prov.id}',
+            prov.type == 'xtream' ? Icons.bolt_rounded : Icons.playlist_play_rounded,
+            prov.name,
+            [
+              for (final group in filteredGroups)
+                _buildTreeItem(
+                  group,
+                  'provgroup:${prov.id}:$group',
+                  Icons.folder_open_rounded,
+                  indent: 1,
+                ),
+            ],
+            filterKey: 'provider:${prov.id}',
+          ),
+        );
+      }
     }
     return widgets;
   }
 
-  Widget _buildTreeSection(String sectionKey, IconData icon, String label, List<Widget> children) {
+  Widget _buildTreeSection(String sectionKey, IconData icon, String label, List<Widget> children, {String? filterKey}) {
     final expanded = _expandedSections.contains(sectionKey);
+    final isSelected = filterKey != null && _selectedGroup == filterKey;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         InkWell(
           onTap: () {
             setState(() {
+              // If filterKey provided, clicking header selects that filter
+              if (filterKey != null) {
+                _selectedGroup = filterKey;
+                _applyFilters();
+                _saveSession();
+              }
+              // Toggle expand/collapse
               if (expanded) {
                 _expandedSections.remove(sectionKey);
               } else {
@@ -1392,15 +1408,15 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
                   color: Colors.white38,
                 ),
                 const SizedBox(width: 4),
-                Icon(icon, size: 14, color: Colors.white54),
+                Icon(icon, size: 14, color: isSelected ? Colors.amber : Colors.white54),
                 const SizedBox(width: 6),
                 Expanded(
                   child: Text(
                     label,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 11,
                       fontWeight: FontWeight.w600,
-                      color: Colors.white54,
+                      color: isSelected ? Colors.white : Colors.white54,
                       letterSpacing: 0.5,
                     ),
                     overflow: TextOverflow.ellipsis,

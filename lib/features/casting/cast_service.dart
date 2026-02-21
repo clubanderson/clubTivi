@@ -45,30 +45,43 @@ class CastService {
   CastDevice? get activeDevice => _activeDevice;
 
   /// Start scanning for DLNA/UPnP devices on the local network.
+  /// LG WebOS TVs can be slow to respond — uses fallback if needed.
   Future<void> startDiscovery() async {
     await stopDiscovery();
     _devices.clear();
     _dlnaManager = DLNAManager();
     try {
-      _deviceManager = await _dlnaManager!.start(reusePort: true);
-      _deviceSub = _deviceManager!.devices.stream.listen((deviceMap) {
-        _devices.clear();
-        for (final entry in deviceMap.entries) {
-          final dlna = entry.value;
-          final name = dlna.info.friendlyName;
-          _devices[entry.key] = CastDevice(
-            id: entry.key,
-            name: name.isNotEmpty ? name : 'Unknown Device',
-            type: 'dlna',
-            dlnaDevice: dlna,
-          );
-        }
-        _devicesController.add(_devices.values.toList());
-      });
+      _deviceManager = await _dlnaManager!.start(reusePort: false);
+      _listenToDevices();
       _log.i('DLNA discovery started');
     } catch (e) {
       _log.e('DLNA discovery failed: $e');
+      // Retry with reusePort if bind fails (port already in use)
+      try {
+        _deviceManager = await _dlnaManager!.start(reusePort: true);
+        _listenToDevices();
+        _log.i('DLNA discovery started (reusePort fallback)');
+      } catch (e2) {
+        _log.e('DLNA discovery failed on retry: $e2');
+      }
     }
+  }
+
+  void _listenToDevices() {
+    _deviceSub = _deviceManager!.devices.stream.listen((deviceMap) {
+      _devices.clear();
+      for (final entry in deviceMap.entries) {
+        final dlna = entry.value;
+        final name = dlna.info.friendlyName;
+        _devices[entry.key] = CastDevice(
+          id: entry.key,
+          name: name.isNotEmpty ? name : 'Unknown Device',
+          type: 'dlna',
+          dlnaDevice: dlna,
+        );
+      }
+      _devicesController.add(_devices.values.toList());
+    });
   }
 
   /// Stop scanning.
