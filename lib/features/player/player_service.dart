@@ -23,7 +23,7 @@ class PlayerService {
     if (_player == null) {
       _player = Player(
         configuration: const PlayerConfiguration(
-          logLevel: MPVLogLevel.v,
+          logLevel: MPVLogLevel.warn,
         ),
       );
       _initPlayer(_player!);
@@ -34,16 +34,24 @@ class PlayerService {
   Future<void> _initPlayer(Player p) async {
     final np = p.platform;
     if (np is native_player.NativePlayer) {
-      // Force software audio decoding — exclude AudioToolbox decoders
-      // that silently produce no output for eac3/ac3 surround
-      await np.setProperty('ad', '-eac3_at,-ac3_at');
+      // Exclude AudioToolbox decoders which silently fail on eac3/ac3
+      // surround streams on macOS — force FFmpeg software decoders instead
+      await np.setProperty('ad', '-ac3_at,-eac3_at,-aac_at');
+      // Force audio through resampling filter to ensure compatible output
+      await np.setProperty('af', 'aformat=sample_fmts=s16:channel_layouts=stereo');
       // Downmix surround to stereo for output compatibility
       await np.setProperty('audio-channels', 'stereo');
-      // Disable SPDIF passthrough
+      // Normalize volume when downmixing surround to stereo
+      await np.setProperty('audio-normalize-downmix', 'yes');
+      // Disable SPDIF passthrough which can cause silent output
       await np.setProperty('audio-spdif', '');
+      // Ensure CoreAudio output is used
+      await np.setProperty('ao', 'coreaudio');
       // Volume
       await np.setProperty('volume', '100');
       await np.setProperty('mute', 'no');
+      // Verbose audio logging to debug remaining issues
+      await np.setProperty('msg-level', 'all=warn,ao=v,ad=v,af=v');
     }
     await p.setVolume(100);
     _playerReady = true;
