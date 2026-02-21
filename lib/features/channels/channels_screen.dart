@@ -442,6 +442,8 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
 
   void _selectChannel(int index) {
     if (index < 0 || index >= _filteredChannels.length) return;
+    // Skip if already selected — don't reload the stream
+    if (index == _selectedIndex) return;
     // Remember current as previous (for back/forth toggle)
     if (_selectedIndex >= 0 && _selectedIndex != index) {
       _previousIndex = _selectedIndex;
@@ -1667,7 +1669,23 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
     if (result != null && result.isNotEmpty && result != channel.name) {
       final database = ref.read(databaseProvider);
       await database.renameChannel(channel.id, channel.providerId, result);
-      await _loadChannels();
+      // Update local lists immediately so the UI reflects the rename
+      setState(() {
+        final updateList = (List<db.Channel> list) {
+          final idx = list.indexWhere((c) => c.id == channel.id && c.providerId == channel.providerId);
+          if (idx >= 0) {
+            list[idx] = list[idx].copyWith(name: result);
+          }
+        };
+        updateList(_allChannels);
+        updateList(_filteredChannels);
+        if (_previewChannel?.id == channel.id) {
+          _previewChannel = _filteredChannels.firstWhere(
+            (c) => c.id == channel.id,
+            orElse: () => _previewChannel!,
+          );
+        }
+      });
     }
   }
 
@@ -2087,18 +2105,6 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
       );
     }
 
-    // Auto-scroll to "now" when guide view opens
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (_guideScrollController.hasClients &&
-          _guideScrollController.position.pixels == 0.0) {
-        final now = DateTime.now();
-        final nowMinutes = now.hour * 60 + now.minute;
-        final target = (nowMinutes * _pixelsPerMinute - 100)
-            .clamp(0.0, _guideScrollController.position.maxScrollExtent);
-        _guideScrollController.jumpTo(target);
-      }
-    });
-
     final database = ref.read(databaseProvider);
     final today = DateTime.now();
     final dayStart = DateTime.now().subtract(const Duration(hours: 3));
@@ -2106,6 +2112,18 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
 
     final totalMinutes = dayEnd.difference(dayStart).inMinutes;
     final totalWidth = totalMinutes * _pixelsPerMinute;
+
+    // Auto-scroll to "now" when guide view opens
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_guideScrollController.hasClients &&
+          _guideScrollController.position.pixels == 0.0) {
+        final now = DateTime.now();
+        final nowMinFromStart = now.difference(dayStart).inMinutes;
+        final target = (nowMinFromStart * _pixelsPerMinute - 100)
+            .clamp(0.0, _guideScrollController.position.maxScrollExtent);
+        _guideScrollController.jumpTo(target);
+      }
+    });
 
     return Column(
       children: [
@@ -2123,19 +2141,33 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
                     width: totalWidth,
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
-                      children: List.generate(24, (hour) {
-                        final width = 60 * _pixelsPerMinute;
-                        return SizedBox(
-                          width: width,
-                          child: Padding(
-                            padding: const EdgeInsets.only(left: 4),
-                            child: Text(
-                              '${hour.toString().padLeft(2, '0')}:00',
-                              style: const TextStyle(fontSize: 10, color: Colors.white38),
+                      children: () {
+                        final labels = <Widget>[];
+                        // Start at the next full hour on or after dayStart
+                        var t = DateTime(dayStart.year, dayStart.month, dayStart.day, dayStart.hour);
+                        if (t.isBefore(dayStart)) t = t.add(const Duration(hours: 1));
+                        // Leading gap before first label
+                        final leadingMin = t.difference(dayStart).inMinutes;
+                        if (leadingMin > 0) {
+                          labels.add(SizedBox(width: leadingMin * _pixelsPerMinute));
+                        }
+                        while (t.isBefore(dayEnd)) {
+                          final next = t.add(const Duration(hours: 1));
+                          final mins = (next.isBefore(dayEnd) ? 60 : dayEnd.difference(t).inMinutes).clamp(1, 60);
+                          labels.add(SizedBox(
+                            width: mins * _pixelsPerMinute,
+                            child: Padding(
+                              padding: const EdgeInsets.only(left: 4),
+                              child: Text(
+                                '${t.hour.toString().padLeft(2, '0')}:00',
+                                style: const TextStyle(fontSize: 10, color: Colors.white38),
+                              ),
                             ),
-                          ),
-                        );
-                      }),
+                          ));
+                          t = next;
+                        }
+                        return labels;
+                      }(),
                     ),
                   ),
                 ),
@@ -2254,7 +2286,7 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
                                       maxWidth: totalWidth,
                                       child: Transform.translate(
                                         offset: Offset(-hOffset, 0),
-                                        child: _buildGuideRowProgrammes(channel, database, dayStart, dayEnd),
+                                        child: _buildGuideRowProgrammes(channel, database, dayStart, dayEnd, totalMinutes: totalMinutes, totalWidth: totalWidth),
                                       ),
                                     ),
                                   );
@@ -2388,7 +2420,8 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
   }
 
   Widget _buildGuideRowProgrammes(db.Channel channel,
-      db.AppDatabase database, DateTime dayStart, DateTime dayEnd) {
+      db.AppDatabase database, DateTime dayStart, DateTime dayEnd,
+      {required int totalMinutes, required double totalWidth}) {
     final epgId = _getEpgId(channel);
     if (epgId == null) {
       return const Center(
@@ -2413,39 +2446,47 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
         final programmes = snapshot.data!;
         final now = DateTime.now();
 
-        return Row(
-          mainAxisSize: MainAxisSize.min,
-          children: programmes.map((prog) {
-            final durationMin =
-                prog.stop.difference(prog.start).inMinutes.clamp(1, 1440);
-            final width = durationMin * _pixelsPerMinute;
-            final isCurrent =
-                now.isAfter(prog.start) && now.isBefore(prog.stop);
-            return Container(
-              width: width,
-              height: 44,
-              margin: const EdgeInsets.symmetric(vertical: 2, horizontal: 0.5),
-              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-              decoration: BoxDecoration(
-                color: isCurrent
-                    ? const Color(0xFF6C5CE7).withValues(alpha: 0.3)
-                    : const Color(0xFF16213E),
-                borderRadius: BorderRadius.circular(3),
-                border: isCurrent
-                    ? Border.all(color: const Color(0xFF6C5CE7), width: 1)
-                    : null,
-              ),
-              child: Text(
-                prog.title,
-                style: TextStyle(
-                  fontSize: 10,
-                  color: isCurrent ? Colors.white : Colors.white54,
+        return SizedBox(
+          width: totalWidth,
+          child: Stack(
+            children: programmes.map((prog) {
+              final startMin = prog.start.difference(dayStart).inMinutes.clamp(0, totalMinutes);
+              final endMin = prog.stop.difference(dayStart).inMinutes.clamp(0, totalMinutes);
+              final durationMin = (endMin - startMin).clamp(1, totalMinutes);
+              final left = startMin * _pixelsPerMinute;
+              final width = durationMin * _pixelsPerMinute;
+              final isCurrent =
+                  now.isAfter(prog.start) && now.isBefore(prog.stop);
+              return Positioned(
+                left: left,
+                width: width,
+                top: 2,
+                bottom: 2,
+                child: Container(
+                  margin: const EdgeInsets.symmetric(horizontal: 0.5),
+                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: isCurrent
+                        ? const Color(0xFF6C5CE7).withValues(alpha: 0.3)
+                        : const Color(0xFF16213E),
+                    borderRadius: BorderRadius.circular(3),
+                    border: isCurrent
+                        ? Border.all(color: const Color(0xFF6C5CE7), width: 1)
+                        : null,
+                  ),
+                  child: Text(
+                    prog.title,
+                    style: TextStyle(
+                      fontSize: 10,
+                      color: isCurrent ? Colors.white : Colors.white54,
+                    ),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
                 ),
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-              ),
-            );
-          }).toList(),
+              );
+            }).toList(),
+          ),
         );
       },
     );
