@@ -2279,6 +2279,28 @@ class $EpgProgrammesTable extends EpgProgrammes
     type: DriftSqlType.string,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _subtitleMeta = const VerificationMeta(
+    'subtitle',
+  );
+  @override
+  late final GeneratedColumn<String> subtitle = GeneratedColumn<String>(
+    'subtitle',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _episodeNumMeta = const VerificationMeta(
+    'episodeNum',
+  );
+  @override
+  late final GeneratedColumn<String> episodeNum = GeneratedColumn<String>(
+    'episode_num',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   static const VerificationMeta _categoryMeta = const VerificationMeta(
     'category',
   );
@@ -2315,6 +2337,8 @@ class $EpgProgrammesTable extends EpgProgrammes
     sourceId,
     title,
     description,
+    subtitle,
+    episodeNum,
     category,
     start,
     stop,
@@ -2370,6 +2394,18 @@ class $EpgProgrammesTable extends EpgProgrammes
         ),
       );
     }
+    if (data.containsKey('subtitle')) {
+      context.handle(
+        _subtitleMeta,
+        subtitle.isAcceptableOrUnknown(data['subtitle']!, _subtitleMeta),
+      );
+    }
+    if (data.containsKey('episode_num')) {
+      context.handle(
+        _episodeNumMeta,
+        episodeNum.isAcceptableOrUnknown(data['episode_num']!, _episodeNumMeta),
+      );
+    }
     if (data.containsKey('category')) {
       context.handle(
         _categoryMeta,
@@ -2421,6 +2457,14 @@ class $EpgProgrammesTable extends EpgProgrammes
         DriftSqlType.string,
         data['${effectivePrefix}description'],
       ),
+      subtitle: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}subtitle'],
+      ),
+      episodeNum: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}episode_num'],
+      ),
       category: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}category'],
@@ -2448,6 +2492,8 @@ class EpgProgramme extends DataClass implements Insertable<EpgProgramme> {
   final String sourceId;
   final String title;
   final String? description;
+  final String? subtitle;
+  final String? episodeNum;
   final String? category;
   final DateTime start;
   final DateTime stop;
@@ -2457,6 +2503,8 @@ class EpgProgramme extends DataClass implements Insertable<EpgProgramme> {
     required this.sourceId,
     required this.title,
     this.description,
+    this.subtitle,
+    this.episodeNum,
     this.category,
     required this.start,
     required this.stop,
@@ -2470,6 +2518,12 @@ class EpgProgramme extends DataClass implements Insertable<EpgProgramme> {
     map['title'] = Variable<String>(title);
     if (!nullToAbsent || description != null) {
       map['description'] = Variable<String>(description);
+    }
+    if (!nullToAbsent || subtitle != null) {
+      map['subtitle'] = Variable<String>(subtitle);
+    }
+    if (!nullToAbsent || episodeNum != null) {
+      map['episode_num'] = Variable<String>(episodeNum);
     }
     if (!nullToAbsent || category != null) {
       map['category'] = Variable<String>(category);
@@ -2488,6 +2542,12 @@ class EpgProgramme extends DataClass implements Insertable<EpgProgramme> {
       description: description == null && nullToAbsent
           ? const Value.absent()
           : Value(description),
+      subtitle: subtitle == null && nullToAbsent
+          ? const Value.absent()
+          : Value(subtitle),
+      episodeNum: episodeNum == null && nullToAbsent
+          ? const Value.absent()
+          : Value(episodeNum),
       category: category == null && nullToAbsent
           ? const Value.absent()
           : Value(category),
@@ -2507,6 +2567,8 @@ class EpgProgramme extends DataClass implements Insertable<EpgProgramme> {
       sourceId: serializer.fromJson<String>(json['sourceId']),
       title: serializer.fromJson<String>(json['title']),
       description: serializer.fromJson<String?>(json['description']),
+      subtitle: serializer.fromJson<String?>(json['subtitle']),
+      episodeNum: serializer.fromJson<String?>(json['episodeNum']),
       category: serializer.fromJson<String?>(json['category']),
       start: serializer.fromJson<DateTime>(json['start']),
       stop: serializer.fromJson<DateTime>(json['stop']),
@@ -2521,6 +2583,8 @@ class EpgProgramme extends DataClass implements Insertable<EpgProgramme> {
       'sourceId': serializer.toJson<String>(sourceId),
       'title': serializer.toJson<String>(title),
       'description': serializer.toJson<String?>(description),
+      'subtitle': serializer.toJson<String?>(subtitle),
+      'episodeNum': serializer.toJson<String?>(episodeNum),
       'category': serializer.toJson<String?>(category),
       'start': serializer.toJson<DateTime>(start),
       'stop': serializer.toJson<DateTime>(stop),
@@ -2533,6 +2597,8 @@ class EpgProgramme extends DataClass implements Insertable<EpgProgramme> {
     String? sourceId,
     String? title,
     Value<String?> description = const Value.absent(),
+    Value<String?> subtitle = const Value.absent(),
+    Value<String?> episodeNum = const Value.absent(),
     Value<String?> category = const Value.absent(),
     DateTime? start,
     DateTime? stop,
@@ -2542,6 +2608,8 @@ class EpgProgramme extends DataClass implements Insertable<EpgProgramme> {
     sourceId: sourceId ?? this.sourceId,
     title: title ?? this.title,
     description: description.present ? description.value : this.description,
+    subtitle: subtitle.present ? subtitle.value : this.subtitle,
+    episodeNum: episodeNum.present ? episodeNum.value : this.episodeNum,
     category: category.present ? category.value : this.category,
     start: start ?? this.start,
     stop: stop ?? this.stop,
@@ -2557,6 +2625,10 @@ class EpgProgramme extends DataClass implements Insertable<EpgProgramme> {
       description: data.description.present
           ? data.description.value
           : this.description,
+      subtitle: data.subtitle.present ? data.subtitle.value : this.subtitle,
+      episodeNum: data.episodeNum.present
+          ? data.episodeNum.value
+          : this.episodeNum,
       category: data.category.present ? data.category.value : this.category,
       start: data.start.present ? data.start.value : this.start,
       stop: data.stop.present ? data.stop.value : this.stop,
@@ -2571,6 +2643,8 @@ class EpgProgramme extends DataClass implements Insertable<EpgProgramme> {
           ..write('sourceId: $sourceId, ')
           ..write('title: $title, ')
           ..write('description: $description, ')
+          ..write('subtitle: $subtitle, ')
+          ..write('episodeNum: $episodeNum, ')
           ..write('category: $category, ')
           ..write('start: $start, ')
           ..write('stop: $stop')
@@ -2585,6 +2659,8 @@ class EpgProgramme extends DataClass implements Insertable<EpgProgramme> {
     sourceId,
     title,
     description,
+    subtitle,
+    episodeNum,
     category,
     start,
     stop,
@@ -2598,6 +2674,8 @@ class EpgProgramme extends DataClass implements Insertable<EpgProgramme> {
           other.sourceId == this.sourceId &&
           other.title == this.title &&
           other.description == this.description &&
+          other.subtitle == this.subtitle &&
+          other.episodeNum == this.episodeNum &&
           other.category == this.category &&
           other.start == this.start &&
           other.stop == this.stop);
@@ -2609,6 +2687,8 @@ class EpgProgrammesCompanion extends UpdateCompanion<EpgProgramme> {
   final Value<String> sourceId;
   final Value<String> title;
   final Value<String?> description;
+  final Value<String?> subtitle;
+  final Value<String?> episodeNum;
   final Value<String?> category;
   final Value<DateTime> start;
   final Value<DateTime> stop;
@@ -2618,6 +2698,8 @@ class EpgProgrammesCompanion extends UpdateCompanion<EpgProgramme> {
     this.sourceId = const Value.absent(),
     this.title = const Value.absent(),
     this.description = const Value.absent(),
+    this.subtitle = const Value.absent(),
+    this.episodeNum = const Value.absent(),
     this.category = const Value.absent(),
     this.start = const Value.absent(),
     this.stop = const Value.absent(),
@@ -2628,6 +2710,8 @@ class EpgProgrammesCompanion extends UpdateCompanion<EpgProgramme> {
     required String sourceId,
     required String title,
     this.description = const Value.absent(),
+    this.subtitle = const Value.absent(),
+    this.episodeNum = const Value.absent(),
     this.category = const Value.absent(),
     required DateTime start,
     required DateTime stop,
@@ -2642,6 +2726,8 @@ class EpgProgrammesCompanion extends UpdateCompanion<EpgProgramme> {
     Expression<String>? sourceId,
     Expression<String>? title,
     Expression<String>? description,
+    Expression<String>? subtitle,
+    Expression<String>? episodeNum,
     Expression<String>? category,
     Expression<DateTime>? start,
     Expression<DateTime>? stop,
@@ -2652,6 +2738,8 @@ class EpgProgrammesCompanion extends UpdateCompanion<EpgProgramme> {
       if (sourceId != null) 'source_id': sourceId,
       if (title != null) 'title': title,
       if (description != null) 'description': description,
+      if (subtitle != null) 'subtitle': subtitle,
+      if (episodeNum != null) 'episode_num': episodeNum,
       if (category != null) 'category': category,
       if (start != null) 'start': start,
       if (stop != null) 'stop': stop,
@@ -2664,6 +2752,8 @@ class EpgProgrammesCompanion extends UpdateCompanion<EpgProgramme> {
     Value<String>? sourceId,
     Value<String>? title,
     Value<String?>? description,
+    Value<String?>? subtitle,
+    Value<String?>? episodeNum,
     Value<String?>? category,
     Value<DateTime>? start,
     Value<DateTime>? stop,
@@ -2674,6 +2764,8 @@ class EpgProgrammesCompanion extends UpdateCompanion<EpgProgramme> {
       sourceId: sourceId ?? this.sourceId,
       title: title ?? this.title,
       description: description ?? this.description,
+      subtitle: subtitle ?? this.subtitle,
+      episodeNum: episodeNum ?? this.episodeNum,
       category: category ?? this.category,
       start: start ?? this.start,
       stop: stop ?? this.stop,
@@ -2698,6 +2790,12 @@ class EpgProgrammesCompanion extends UpdateCompanion<EpgProgramme> {
     if (description.present) {
       map['description'] = Variable<String>(description.value);
     }
+    if (subtitle.present) {
+      map['subtitle'] = Variable<String>(subtitle.value);
+    }
+    if (episodeNum.present) {
+      map['episode_num'] = Variable<String>(episodeNum.value);
+    }
     if (category.present) {
       map['category'] = Variable<String>(category.value);
     }
@@ -2718,6 +2816,8 @@ class EpgProgrammesCompanion extends UpdateCompanion<EpgProgramme> {
           ..write('sourceId: $sourceId, ')
           ..write('title: $title, ')
           ..write('description: $description, ')
+          ..write('subtitle: $subtitle, ')
+          ..write('episodeNum: $episodeNum, ')
           ..write('category: $category, ')
           ..write('start: $start, ')
           ..write('stop: $stop')
@@ -7377,6 +7477,8 @@ typedef $$EpgProgrammesTableCreateCompanionBuilder =
       required String sourceId,
       required String title,
       Value<String?> description,
+      Value<String?> subtitle,
+      Value<String?> episodeNum,
       Value<String?> category,
       required DateTime start,
       required DateTime stop,
@@ -7388,6 +7490,8 @@ typedef $$EpgProgrammesTableUpdateCompanionBuilder =
       Value<String> sourceId,
       Value<String> title,
       Value<String?> description,
+      Value<String?> subtitle,
+      Value<String?> episodeNum,
       Value<String?> category,
       Value<DateTime> start,
       Value<DateTime> stop,
@@ -7447,6 +7551,16 @@ class $$EpgProgrammesTableFilterComposer
 
   ColumnFilters<String> get description => $composableBuilder(
     column: $table.description,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get subtitle => $composableBuilder(
+    column: $table.subtitle,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get episodeNum => $composableBuilder(
+    column: $table.episodeNum,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -7518,6 +7632,16 @@ class $$EpgProgrammesTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get subtitle => $composableBuilder(
+    column: $table.subtitle,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get episodeNum => $composableBuilder(
+    column: $table.episodeNum,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<String> get category => $composableBuilder(
     column: $table.category,
     builder: (column) => ColumnOrderings(column),
@@ -7579,6 +7703,14 @@ class $$EpgProgrammesTableAnnotationComposer
 
   GeneratedColumn<String> get description => $composableBuilder(
     column: $table.description,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get subtitle =>
+      $composableBuilder(column: $table.subtitle, builder: (column) => column);
+
+  GeneratedColumn<String> get episodeNum => $composableBuilder(
+    column: $table.episodeNum,
     builder: (column) => column,
   );
 
@@ -7648,6 +7780,8 @@ class $$EpgProgrammesTableTableManager
                 Value<String> sourceId = const Value.absent(),
                 Value<String> title = const Value.absent(),
                 Value<String?> description = const Value.absent(),
+                Value<String?> subtitle = const Value.absent(),
+                Value<String?> episodeNum = const Value.absent(),
                 Value<String?> category = const Value.absent(),
                 Value<DateTime> start = const Value.absent(),
                 Value<DateTime> stop = const Value.absent(),
@@ -7657,6 +7791,8 @@ class $$EpgProgrammesTableTableManager
                 sourceId: sourceId,
                 title: title,
                 description: description,
+                subtitle: subtitle,
+                episodeNum: episodeNum,
                 category: category,
                 start: start,
                 stop: stop,
@@ -7668,6 +7804,8 @@ class $$EpgProgrammesTableTableManager
                 required String sourceId,
                 required String title,
                 Value<String?> description = const Value.absent(),
+                Value<String?> subtitle = const Value.absent(),
+                Value<String?> episodeNum = const Value.absent(),
                 Value<String?> category = const Value.absent(),
                 required DateTime start,
                 required DateTime stop,
@@ -7677,6 +7815,8 @@ class $$EpgProgrammesTableTableManager
                 sourceId: sourceId,
                 title: title,
                 description: description,
+                subtitle: subtitle,
+                episodeNum: episodeNum,
                 category: category,
                 start: start,
                 stop: stop,
