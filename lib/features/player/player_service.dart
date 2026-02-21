@@ -16,6 +16,9 @@ class PlayerService {
   /// Buffer stall threshold before triggering failover.
   static const bufferStallThreshold = Duration(seconds: 3);
 
+  bool _playerReady = false;
+  final _playerReadyCompleter = Completer<void>();
+
   Player get player {
     if (_player == null) {
       _player = Player(
@@ -31,9 +34,8 @@ class PlayerService {
   Future<void> _initPlayer(Player p) async {
     final np = p.platform;
     if (np is native_player.NativePlayer) {
-      // Exclude AudioToolbox decoders that silently fail on eac3/ac3
-      // The -eac3_at,-ac3_at prefix forces software (lavc) decoding
-      await np.setProperty('ad', 'lavc:*');
+      // Exclude AudioToolbox hardware decoders that silently fail on eac3/ac3
+      await np.setProperty('ad', '-eac3_at,-ac3_at');
       // Downmix surround to stereo for compatibility
       await np.setProperty('audio-channels', 'stereo');
       // Disable SPDIF/passthrough (forces software decode+output)
@@ -47,6 +49,17 @@ class PlayerService {
       await np.setProperty('mute', 'no');
     }
     await p.setVolume(100);
+    _playerReady = true;
+    _playerReadyCompleter.complete();
+  }
+
+  /// Wait for player properties to be applied before playback.
+  Future<void> _ensureReady() async {
+    if (!_playerReady) {
+      // Access player to trigger creation if needed
+      player; // ignore: unnecessary_statements
+      await _playerReadyCompleter.future;
+    }
   }
 
   VideoController get videoController {
@@ -59,14 +72,9 @@ class PlayerService {
     _isBuffering = false;
     _bufferStartTime = null;
     _tracksSub?.cancel();
+    await _ensureReady();
     await player.open(Media(url));
     await player.setVolume(100.0);
-    // Re-apply audio settings after opening new media
-    final np = player.platform;
-    if (np is native_player.NativePlayer) {
-      await np.setProperty('volume', '100');
-      await np.setProperty('mute', 'no');
-    }
   }
 
   /// Whether audio tracks are available on the current stream.
