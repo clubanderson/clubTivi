@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:go_router/go_router.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../../data/models/show.dart';
 import 'shows_providers.dart';
 
@@ -21,8 +22,35 @@ class ShowDetailScreen extends ConsumerStatefulWidget {
 }
 
 class _ShowDetailScreenState extends ConsumerState<ShowDetailScreen> {
-  int _selectedSeason = 1;
+  int? _selectedSeason; // null until initialized
   bool _resolving = false;
+  bool _seasonInitialized = false;
+
+  static const _seasonPrefPrefix = 'show_last_season_';
+
+  /// Initialize season: use persisted preference, or default to latest season
+  void _initSeason(ShowDetail detail) {
+    if (_seasonInitialized) return;
+    _seasonInitialized = true;
+    _loadLastSeason(detail);
+  }
+
+  Future<void> _loadLastSeason(ShowDetail detail) async {
+    final prefs = await SharedPreferences.getInstance();
+    final saved = prefs.getInt('$_seasonPrefPrefix${widget.traktId}');
+    final latestSeason = detail.seasons.isNotEmpty
+        ? detail.seasons.map((s) => s.number).reduce((a, b) => a > b ? a : b)
+        : 1;
+    setState(() {
+      _selectedSeason = saved ?? latestSeason;
+    });
+  }
+
+  Future<void> _selectSeason(int season) async {
+    setState(() => _selectedSeason = season);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt('$_seasonPrefPrefix${widget.traktId}', season);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -78,6 +106,11 @@ class _ShowDetailScreenState extends ConsumerState<ShowDetailScreen> {
   }
 
   Widget _buildDetail(ShowDetail detail, {bool loading = false}) {
+    // Initialize season selection (latest or last-viewed)
+    _initSeason(detail);
+    final effectiveSeason = _selectedSeason ?? (detail.seasons.isNotEmpty
+        ? detail.seasons.map((s) => s.number).reduce((a, b) => a > b ? a : b)
+        : 1);
     final show = detail.show;
     return CustomScrollView(
       slivers: [
@@ -203,7 +236,7 @@ class _ShowDetailScreenState extends ConsumerState<ShowDetailScreen> {
                 itemCount: detail.seasons.length,
                 itemBuilder: (context, index) {
                   final season = detail.seasons[index];
-                  final selected = season.number == _selectedSeason;
+                  final selected = season.number == effectiveSeason;
                   return Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 4),
                     child: ChoiceChip(
@@ -215,7 +248,7 @@ class _ShowDetailScreenState extends ConsumerState<ShowDetailScreen> {
                         color: selected ? Colors.white : Colors.white60,
                       ),
                       side: BorderSide.none,
-                      onSelected: (_) => setState(() => _selectedSeason = season.number),
+                      onSelected: (_) => _selectSeason(season.number),
                     ),
                   );
                 },
@@ -223,7 +256,7 @@ class _ShowDetailScreenState extends ConsumerState<ShowDetailScreen> {
             ),
           ),
           // Episodes list
-          _buildEpisodesList(show),
+          _buildEpisodesList(show, effectiveSeason),
         ],
       ],
     );
@@ -252,9 +285,9 @@ class _ShowDetailScreenState extends ConsumerState<ShowDetailScreen> {
     );
   }
 
-  Widget _buildEpisodesList(Show show) {
+  Widget _buildEpisodesList(Show show, int seasonNumber) {
     final episodesAsync = ref.watch(
-      episodesProvider(EpisodeParams(widget.traktId, _selectedSeason)),
+      episodesProvider(EpisodeParams(widget.traktId, seasonNumber)),
     );
 
     return episodesAsync.when(
