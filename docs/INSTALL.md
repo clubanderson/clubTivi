@@ -57,6 +57,36 @@ adb install clubtivi-<version>.apk
 
 ---
 
+## 📱 iOS / iPadOS
+
+### Build from Source (iOS)
+
+> **Note:** clubTivi is not yet available on the App Store. You can build and run it on your device using Xcode.
+
+```bash
+# Prerequisites: Xcode 15+ with iOS platform component installed
+# Install Flutter: https://docs.flutter.dev/get-started/install/macos
+
+git clone https://github.com/clubanderson/clubTivi.git
+cd clubTivi
+flutter pub get
+cd ios && pod install && cd ..
+flutter run -d <your-device-id>    # or: flutter build ios
+```
+
+### Requirements
+- iOS 13.0 or later (iPhone, iPad)
+- Xcode 15+ with iOS platform installed (Xcode > Settings > Components)
+- Apple Developer account (free or paid) for device deployment
+- CocoaPods: `sudo gem install cocoapods`
+
+### Notes
+- HTTP IPTV streams are supported (App Transport Security is configured)
+- Background audio is enabled for listening while the app is backgrounded
+- All orientations supported on iPad; portrait + landscape on iPhone
+
+---
+
 ## 🍎 macOS
 
 ### Install from DMG
@@ -288,6 +318,13 @@ flutter build <platform> --release
 | Video won't play | Check your playlist URL is accessible. Try opening in VLC first. |
 | EPG not loading | Verify the XMLTV URL is reachable. Check **Settings → EPG → Refresh**. |
 | App crashes on launch | Run `flutter clean && flutter pub get` and rebuild. |
+
+### iOS / iPadOS
+| Issue | Solution |
+|-------|----------|
+| Build fails: "iOS platform not installed" | Open Xcode → Settings → Components → Download iOS |
+| "Untrusted Developer" on device | Go to Settings → General → VPN & Device Management → Trust |
+| No audio on some channels | Some eac3 streams may need codec configuration; check player settings |
 
 ### Android TV
 | Issue | Solution |
