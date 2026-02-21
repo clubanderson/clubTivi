@@ -73,6 +73,8 @@ class EpgRefreshService {
           title: p.title,
           description: Value(p.description),
           category: Value(p.category),
+          subtitle: Value(p.subtitle),
+          episodeNum: Value(p.episodeNum),
           start: p.start,
           stop: p.stop,
         );
