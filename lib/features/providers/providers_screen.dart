@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-
+import 'package:go_router/go_router.dart';
 import '../../data/datasources/local/database.dart' as db;
 import 'add_provider_dialog.dart';
 import 'provider_manager.dart';
@@ -19,7 +19,13 @@ class ProvidersScreen extends ConsumerWidget {
     final providersAsync = ref.watch(_providersStreamProvider);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('IPTV Providers')),
+      appBar: AppBar(
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () => context.go('/'),
+        ),
+        title: const Text('IPTV Providers'),
+      ),
       body: providersAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, _) => Center(child: Text('Error: $e')),
