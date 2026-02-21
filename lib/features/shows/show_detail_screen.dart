@@ -327,7 +327,7 @@ class _ShowDetailScreenState extends ConsumerState<ShowDetailScreen> {
         resolveStreamProvider(StreamResolveParams(show.imdbId!)).future,
       );
       if (streams.isEmpty) {
-        _showSnackbar('No cached streams found');
+        _showSnackbar('No streams found on Torrentio');
         return;
       }
       if (!mounted) return;
@@ -354,7 +354,7 @@ class _ShowDetailScreenState extends ConsumerState<ShowDetailScreen> {
         )).future,
       );
       if (streams.isEmpty) {
-        _showSnackbar('No cached streams found for ${episode.code}');
+        _showSnackbar('No streams found for ${episode.code}');
         return;
       }
       if (!mounted) return;
@@ -370,63 +370,120 @@ class _ShowDetailScreenState extends ConsumerState<ShowDetailScreen> {
     showModalBottomSheet(
       context: context,
       backgroundColor: const Color(0xFF1A1A2E),
+      isScrollControlled: true,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
       ),
-      builder: (ctx) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
-              child: Text(
-                'Select Stream',
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
+      builder: (ctx) => DraggableScrollableSheet(
+        initialChildSize: 0.5,
+        maxChildSize: 0.85,
+        minChildSize: 0.3,
+        expand: false,
+        builder: (ctx, scrollController) => SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Handle bar
+              Center(
+                child: Container(
+                  width: 40,
+                  height: 4,
+                  margin: const EdgeInsets.only(top: 12),
+                  decoration: BoxDecoration(
+                    color: Colors.white24,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
                 ),
               ),
-            ),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20),
-              child: Text(
-                title,
-                style: const TextStyle(color: Colors.white54, fontSize: 13),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 12, 20, 4),
+                child: Text(
+                  'Select Stream',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
               ),
-            ),
-            const SizedBox(height: 8),
-            const Divider(color: Colors.white12, height: 1),
-            ...streams.map((stream) => ListTile(
-                  leading: _streamQualityBadge(stream.quality),
-                  title: Text(
-                    stream.filename,
-                    style: const TextStyle(color: Colors.white, fontSize: 14),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  subtitle: Text(
-                    [
-                      if (stream.filesizeDisplay.isNotEmpty) stream.filesizeDisplay,
-                      stream.source,
-                    ].join(' • '),
-                    style: const TextStyle(color: Colors.white38, fontSize: 12),
-                  ),
-                  trailing: const Icon(Icons.play_circle_fill,
-                      color: Color(0xFF6C5CE7), size: 32),
-                  onTap: () {
-                    Navigator.pop(ctx);
-                    _launchPlayer(stream, title);
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                child: Text(
+                  '$title • ${streams.length} sources',
+                  style: const TextStyle(color: Colors.white54, fontSize: 13),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              const SizedBox(height: 8),
+              const Divider(color: Colors.white12, height: 1),
+              Expanded(
+                child: ListView.builder(
+                  controller: scrollController,
+                  itemCount: streams.length,
+                  itemBuilder: (ctx, index) {
+                    final stream = streams[index];
+                    return ListTile(
+                      leading: _streamQualityBadge(stream.quality),
+                      title: Text(
+                        stream.filename,
+                        style: const TextStyle(color: Colors.white, fontSize: 13),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      subtitle: Text(
+                        [
+                          stream.source,
+                          if (stream.seeds != null) '👤 ${stream.seeds}',
+                        ].join(' • '),
+                        style: const TextStyle(color: Colors.white38, fontSize: 12),
+                      ),
+                      trailing: Icon(
+                        stream.isCached
+                            ? Icons.play_circle_fill
+                            : Icons.cloud_download_outlined,
+                        color: stream.isCached
+                            ? const Color(0xFF6C5CE7)
+                            : Colors.white38,
+                        size: 32,
+                      ),
+                      onTap: () {
+                        Navigator.pop(ctx);
+                        _resolveAndPlay(stream, title);
+                      },
+                    );
                   },
-                )),
-            const SizedBox(height: 8),
-          ],
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
+  }
+
+  Future<void> _resolveAndPlay(ResolvedStream stream, String title) async {
+    if (stream.magnetUrl == null) {
+      _showSnackbar('No magnet URL available');
+      return;
+    }
+    _showSnackbar(stream.isCached ? 'Resolving stream...' : 'Adding to Real-Debrid...');
+    setState(() => _resolving = true);
+    try {
+      final repo = await ref.read(showsRepositoryProvider.future);
+      final resolved = await repo.resolveMagnet(stream.magnetUrl!);
+      if (resolved == null) {
+        _showSnackbar('Failed to resolve stream');
+        return;
+      }
+      if (!mounted) return;
+      _launchPlayer(resolved, title);
+    } catch (e) {
+      _showSnackbar('Resolve error: $e');
+    } finally {
+      if (mounted) setState(() => _resolving = false);
+    }
   }
 
   Widget _streamQualityBadge(String? quality) {

@@ -220,14 +220,14 @@ class ShowsRepository {
     }
   }
 
-  /// Resolve a stream URL for a show/movie via debrid
-  /// Returns sorted list of available streams (best quality first)
+  /// Find streams for a show/movie. Returns both cached (instant) and
+  /// non-cached torrent sources so the user can pick.
   Future<List<ResolvedStream>> resolveStreams({
     required String imdbId,
     int? season,
     int? episode,
   }) async {
-    // Step 1: Search for torrent hashes
+    // Step 1: Search for torrent hashes via Torrentio
     List<TorrentResult> torrents;
     if (season != null && episode != null) {
       torrents = await _torrentSearch.searchEpisode(
@@ -247,45 +247,54 @@ class ShowsRepository {
     // Sort by quality (best first)
     torrents.sort((a, b) => b.qualityScore.compareTo(a.qualityScore));
 
-    // Step 2: Check instant availability via debrid
-    if (_debrid == null) {
-      _log.w('No debrid client configured');
-      return [];
-    }
-
-    final hashes = torrents.map((t) => t.infoHash).toList();
-    final available = await _debrid.checkInstantAvailability(hashes);
-
-    if (available.isEmpty) {
-      _log.w('No cached torrents found on debrid for $imdbId');
-      return [];
-    }
-
-    // Step 3: Resolve the best available cached torrent
-    final resolved = <ResolvedStream>[];
-    for (final torrent in torrents) {
-      final hashLower = torrent.infoHash.toLowerCase();
-      if (available.containsKey(hashLower)) {
-        try {
-          final stream = await _debrid.resolveFromMagnet(torrent.magnetUrl);
-          if (stream != null) {
-            resolved.add(ResolvedStream(
-              url: stream.url,
-              filename: stream.filename,
-              quality: torrent.quality,
-              filesize: stream.filesize,
-              source: 'real-debrid',
-            ));
-          }
-        } catch (e) {
-          _log.e('Failed to resolve torrent ${torrent.infoHash}: $e');
-        }
-        // Return first 3 best quality options
-        if (resolved.length >= 3) break;
+    // Step 2: Check debrid instant availability
+    Set<String> cachedHashes = {};
+    if (_debrid != null) {
+      try {
+        final hashes = torrents.map((t) => t.infoHash).toList();
+        final available = await _debrid.checkInstantAvailability(hashes);
+        cachedHashes = available.keys.toSet();
+      } catch (e) {
+        _log.w('Debrid availability check failed: $e');
       }
     }
 
-    return resolved;
+    // Step 3: Build stream list — cached first, then non-cached
+    final results = <ResolvedStream>[];
+    for (final torrent in torrents) {
+      final hashLower = torrent.infoHash.toLowerCase();
+      final cached = cachedHashes.contains(hashLower);
+      results.add(ResolvedStream(
+        url: '', // resolved on-demand when user picks
+        filename: torrent.title.isNotEmpty ? torrent.title : torrent.name,
+        quality: torrent.quality.isNotEmpty ? torrent.quality : null,
+        filesize: null,
+        source: cached ? 'real-debrid ⚡' : 'torrent',
+        isCached: cached,
+        magnetUrl: torrent.magnetUrl,
+        seeds: torrent.seeds,
+      ));
+      if (results.length >= 10) break;
+    }
+
+    // Sort: cached first, then by quality
+    results.sort((a, b) {
+      if (a.isCached != b.isCached) return a.isCached ? -1 : 1;
+      return 0;
+    });
+
+    return results;
+  }
+
+  /// Resolve a specific torrent via Real-Debrid (add magnet → wait → stream URL)
+  Future<ResolvedStream?> resolveMagnet(String magnetUrl) async {
+    if (_debrid == null) return null;
+    try {
+      return await _debrid.resolveFromMagnet(magnetUrl);
+    } catch (e) {
+      _log.e('Failed to resolve magnet: $e');
+      return null;
+    }
   }
 
   /// Enrich a list of shows with TMDB poster/backdrop URLs

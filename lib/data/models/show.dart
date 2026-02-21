@@ -160,6 +160,9 @@ class ResolvedStream extends Equatable {
   final String? quality; // "1080p", "720p", "4K", etc.
   final int? filesize; // bytes
   final String source; // "real-debrid", "direct", etc.
+  final bool isCached; // instant availability on debrid
+  final String? magnetUrl; // for non-cached torrents that need resolving
+  final int? seeds;
 
   const ResolvedStream({
     required this.url,
@@ -167,6 +170,9 @@ class ResolvedStream extends Equatable {
     this.quality,
     this.filesize,
     this.source = 'real-debrid',
+    this.isCached = true,
+    this.magnetUrl,
+    this.seeds,
   });
 
   String get filesizeDisplay {
