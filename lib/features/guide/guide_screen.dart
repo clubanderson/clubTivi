@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/fuzzy_match.dart';
 import '../../data/datasources/local/database.dart' as db;
 import '../providers/provider_manager.dart';
 
@@ -15,6 +16,8 @@ class GuideScreen extends ConsumerStatefulWidget {
 class _GuideScreenState extends ConsumerState<GuideScreen> {
   DateTime _focusTime = DateTime.now();
   final _scrollController = ScrollController();
+  String _searchQuery = '';
+  final _searchController = TextEditingController();
 
   /// Pixels per minute for the timeline.
   static const _pixelsPerMinute = 4.0;
@@ -34,6 +37,7 @@ class _GuideScreenState extends ConsumerState<GuideScreen> {
   @override
   void dispose() {
     _scrollController.dispose();
+    _searchController.dispose();
     super.dispose();
   }
 
@@ -85,6 +89,40 @@ class _GuideScreenState extends ConsumerState<GuideScreen> {
                 ),
               ),
               const Divider(height: 1),
+              // Search bar
+              Padding(
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 12, vertical: 6),
+                child: TextField(
+                  controller: _searchController,
+                  style: const TextStyle(color: Colors.white),
+                  decoration: InputDecoration(
+                    hintText: 'Search channels...',
+                    hintStyle: const TextStyle(color: Colors.white38),
+                    prefixIcon:
+                        const Icon(Icons.search, color: Colors.white38),
+                    suffixIcon: _searchQuery.isNotEmpty
+                        ? IconButton(
+                            icon: const Icon(Icons.clear,
+                                color: Colors.white38),
+                            onPressed: () {
+                              _searchController.clear();
+                              setState(() => _searchQuery = '');
+                            },
+                          )
+                        : null,
+                    filled: true,
+                    fillColor: const Color(0xFF16213E),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                      borderSide: BorderSide.none,
+                    ),
+                    contentPadding:
+                        const EdgeInsets.symmetric(vertical: 10),
+                  ),
+                  onChanged: (v) => setState(() => _searchQuery = v),
+                ),
+              ),
               // Channel rows
               Expanded(
                 child: FutureBuilder<List<db.Channel>>(
@@ -94,7 +132,13 @@ class _GuideScreenState extends ConsumerState<GuideScreen> {
                     if (!chanSnap.hasData) {
                       return const Center(child: CircularProgressIndicator());
                     }
-                    final channels = chanSnap.data!;
+                    var channels = chanSnap.data!;
+                    if (_searchQuery.isNotEmpty) {
+                      channels = channels
+                          .where((c) => fuzzyMatchPasses(
+                              _searchQuery, [c.name, c.groupTitle]))
+                          .toList();
+                    }
                     return ListView.builder(
                       itemCount: channels.length,
                       itemBuilder: (context, index) {
