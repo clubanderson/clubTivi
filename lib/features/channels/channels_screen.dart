@@ -2601,11 +2601,14 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
       );
     }
 
+    final shiftHours = _epgTimeshifts[channel.id] ?? 0;
+    final fetchShift = Duration(hours: shiftHours);
+
     return FutureBuilder<List<db.EpgProgramme>>(
       future: database.getProgrammes(
         epgChannelId: epgId,
-        start: dayStart,
-        end: dayEnd,
+        start: dayStart.subtract(fetchShift),
+        end: dayEnd.subtract(fetchShift),
       ),
       builder: (context, snapshot) {
         if (!snapshot.hasData || snapshot.data!.isEmpty) {
