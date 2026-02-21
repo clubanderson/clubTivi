@@ -80,6 +80,8 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
 
   // Provider list for sidebar
   List<db.Provider> _providers = [];
+  // Pre-computed: provider ID → sorted group names
+  Map<String, List<String>> _providerGroups = {};
 
   // Favorite lists state
   List<db.FavoriteList> _favoriteLists = [];
@@ -288,6 +290,18 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
       _allChannels = allChannels;
       _providers = providers;
       _groups = groups;
+      // Pre-compute provider groups for sidebar (avoids re-scanning on every build)
+      final pGroups = <String, List<String>>{};
+      for (final prov in providers) {
+        final gSet = <String>{};
+        for (final ch in allChannels) {
+          if (ch.providerId == prov.id && ch.groupTitle != null && ch.groupTitle!.isNotEmpty) {
+            gSet.add(ch.groupTitle!);
+          }
+        }
+        pGroups[prov.id] = gSet.toList()..sort();
+      }
+      _providerGroups = pGroups;
       _nowPlaying = nowPlaying;
       _epgMappings = epgMap;
       _validEpgChannelIds = validIds;
@@ -1254,15 +1268,7 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
   List<Widget> _buildProviderTrees(List<db.Provider> providers, String query) {
     final widgets = <Widget>[];
     for (final prov in providers) {
-      final provChannels = _allChannels.where((c) => c.providerId == prov.id).toList();
-      // Get unique groups for this provider
-      final provGroups = <String>{};
-      for (final ch in provChannels) {
-        if (ch.groupTitle != null && ch.groupTitle!.isNotEmpty) {
-          provGroups.add(ch.groupTitle!);
-        }
-      }
-      final sortedGroups = provGroups.toList()..sort();
+      final sortedGroups = _providerGroups[prov.id] ?? [];
       final filteredGroups = query.isEmpty
           ? sortedGroups
           : sortedGroups.where((g) => g.toLowerCase().contains(query)).toList();
@@ -1271,30 +1277,20 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
         _buildTreeSection(
           'prov_${prov.id}',
           prov.type == 'xtream' ? Icons.bolt_rounded : Icons.playlist_play_rounded,
-          '${prov.name} (${provChannels.length})',
+          prov.name,
           [
-            // "All" for this provider
             _buildTreeItem(
               'All ${prov.name}',
               'provider:${prov.id}',
               Icons.grid_view_rounded,
               indent: 1,
-              trailing: Text(
-                '${provChannels.length}',
-                style: const TextStyle(fontSize: 10, color: Colors.white38),
-              ),
             ),
-            // Category groups within this provider
             for (final group in filteredGroups)
               _buildTreeItem(
                 group,
                 'provgroup:${prov.id}:$group',
                 Icons.folder_open_rounded,
                 indent: 2,
-                trailing: Text(
-                  '${provChannels.where((c) => c.groupTitle == group).length}',
-                  style: const TextStyle(fontSize: 10, color: Colors.white38),
-                ),
               ),
           ],
         ),
