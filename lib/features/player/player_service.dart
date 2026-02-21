@@ -23,15 +23,30 @@ class PlayerService {
           logLevel: MPVLogLevel.warn,
         ),
       );
-      _player!.setVolume(100);
-      // Enable software audio decoding for eac3/ac3/dts support
-      final nativePlayer = _player!.platform;
-      if (nativePlayer is native_player.NativePlayer) {
-        nativePlayer.setProperty('ad', '*');
-        nativePlayer.setProperty('audio-channels', 'stereo');
-      }
+      _initPlayer(_player!);
     }
     return _player!;
+  }
+
+  Future<void> _initPlayer(Player p) async {
+    final np = p.platform;
+    if (np is native_player.NativePlayer) {
+      // Exclude AudioToolbox decoders that silently fail on eac3/ac3
+      // The -eac3_at,-ac3_at prefix forces software (lavc) decoding
+      await np.setProperty('ad', 'lavc:*');
+      // Downmix surround to stereo for compatibility
+      await np.setProperty('audio-channels', 'stereo');
+      // Disable SPDIF/passthrough (forces software decode+output)
+      await np.setProperty('audio-spdif', '');
+      // Explicitly use coreaudio with stereo downmix
+      await np.setProperty('ao', 'coreaudio');
+      // Select first audio track automatically
+      await np.setProperty('aid', 'auto');
+      // Volume
+      await np.setProperty('volume', '100');
+      await np.setProperty('mute', 'no');
+    }
+    await p.setVolume(100);
   }
 
   VideoController get videoController {
@@ -46,6 +61,12 @@ class PlayerService {
     _tracksSub?.cancel();
     await player.open(Media(url));
     await player.setVolume(100.0);
+    // Re-apply audio settings after opening new media
+    final np = player.platform;
+    if (np is native_player.NativePlayer) {
+      await np.setProperty('volume', '100');
+      await np.setProperty('mute', 'no');
+    }
   }
 
   /// Whether audio tracks are available on the current stream.
