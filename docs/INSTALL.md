@@ -2,11 +2,13 @@
 
 clubTivi runs on **Android (phone/tablet/TV)**, **macOS**, **Windows**, and **Linux**.
 
+> **Looking for the easiest way to install on Android TV?** See [Easy Install Guide](EASY_INSTALL.md) — install without typing anything on your TV.
+
 ---
 
 ## 📦 Pre-Built Releases (Recommended)
 
-Download the latest release for your platform from the [Releases](https://github.com/clubanderson/clubTivi/releases) page.
+Download the latest release for your platform from the [Releases](https://github.com/clubanderson/clubTivi/releases) page, or visit **[clubtivi.app](https://clubtivi.app)** for auto-detected platform downloads.
 
 | Platform | File | Notes |
 |----------|------|-------|

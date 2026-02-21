@@ -82,6 +82,7 @@ clubTivi/
 ## 📖 Documentation
 
 - **[Installation Guide](docs/INSTALL.md)** — Install on Android/TV, macOS, Windows, Linux
+- **[Easy Install (Android TV)](docs/EASY_INSTALL.md)** — Phone-to-TV push, QR codes, short codes — zero typing on TV
 - **[Remote Control](docs/REMOTE_CONTROL.md)** — Physical remotes, keyboard shortcuts, gamepad, web companion remote
 - **[EPG Mapping Engine](docs/EPG_MAPPING.md)** — Auto-mapping, manual management, provider integration
 - **[Stream Failover](docs/FAILOVER.md)** — Cold & warm failover architecture, buffering detection, cross-provider switching
