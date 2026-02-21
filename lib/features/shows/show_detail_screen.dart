@@ -518,7 +518,7 @@ class _ShowDetailScreenState extends ConsumerState<ShowDetailScreen> {
       _showSnackbar('No magnet URL available');
       return;
     }
-    _showSnackbar(stream.isCached ? 'Resolving cached stream…' : 'Adding to Real-Debrid…');
+    _showSnackbar(stream.isCached ? 'Preparing stream…' : 'Preparing stream — this may take a moment…');
     setState(() => _resolving = true);
     try {
       final repo = await ref.read(showsRepositoryProvider.future);
@@ -526,12 +526,13 @@ class _ShowDetailScreenState extends ConsumerState<ShowDetailScreen> {
         stream.magnetUrl!,
         onProgress: (status, progress) {
           if (mounted) {
-            _showSnackbar('$status ${progress > 0 ? '($progress%)' : ''}');
+            final label = _friendlyStatus(status);
+            _showSnackbar(progress > 0 ? '$label ($progress%)' : label);
           }
         },
       );
       if (resolved == null) {
-        _showSnackbar('Failed to resolve stream');
+        _showSnackbar('Stream unavailable — try another source');
         return;
       }
       if (!mounted) return;
@@ -548,7 +549,7 @@ class _ShowDetailScreenState extends ConsumerState<ShowDetailScreen> {
       _showSnackbar('No magnet URL available');
       return;
     }
-    _showSnackbar(stream.isCached ? 'Getting download link…' : 'Adding to Real-Debrid…');
+    _showSnackbar(stream.isCached ? 'Preparing download…' : 'Preparing download — this may take a moment…');
     setState(() => _resolving = true);
     try {
       final repo = await ref.read(showsRepositoryProvider.future);
@@ -556,12 +557,13 @@ class _ShowDetailScreenState extends ConsumerState<ShowDetailScreen> {
         stream.magnetUrl!,
         onProgress: (status, progress) {
           if (mounted) {
-            _showSnackbar('$status ${progress > 0 ? '($progress%)' : ''}');
+            final label = _friendlyStatus(status);
+            _showSnackbar(progress > 0 ? '$label ($progress%)' : label);
           }
         },
       );
       if (resolved == null || resolved.url.isEmpty) {
-        _showSnackbar('Failed to get download link');
+        _showSnackbar('Download unavailable — try another source');
         return;
       }
       final uri = Uri.parse(resolved.url);
@@ -602,11 +604,37 @@ class _ShowDetailScreenState extends ConsumerState<ShowDetailScreen> {
   }
 
   void _launchPlayer(ResolvedStream stream, String title) {
-    context.go('/player', extra: {
+    debugPrint('[Shows] Launching player: url=${stream.url}, title=$title');
+    if (stream.url.isEmpty) {
+      _showSnackbar('Stream URL is empty — try another source');
+      return;
+    }
+    context.push('/player', extra: {
       'streamUrl': stream.url,
       'channelName': title,
       'channelLogo': widget.initialShow?.posterUrl ?? '',
     });
+  }
+
+  String _friendlyStatus(String status) {
+    switch (status) {
+      case 'magnet_conversion':
+        return 'Processing magnet';
+      case 'waiting_files_selection':
+        return 'Selecting files';
+      case 'queued':
+        return 'Queued';
+      case 'downloading':
+        return 'Downloading';
+      case 'downloaded':
+        return 'Preparing stream';
+      case 'uploading':
+        return 'Uploading';
+      case 'compressing':
+        return 'Compressing';
+      default:
+        return status.replaceAll('_', ' ');
+    }
   }
 
   void _showSnackbar(String message) {
