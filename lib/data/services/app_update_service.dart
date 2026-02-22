@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
 
 const _repo = 'clubanderson/clubTivi';
@@ -30,6 +31,7 @@ class ReleaseInfo {
 
 class AppUpdateService {
   static final Dio _dio = Dio();
+  static const _channel = MethodChannel('io.github.clubanderson.clubtivi/installer');
 
   static String get currentVersion => _currentVersion;
 
@@ -75,7 +77,7 @@ class AppUpdateService {
     }
   }
 
-  /// Download APK and trigger install via Android intent.
+  /// Download APK and trigger install via native FileProvider intent.
   static Future<void> downloadAndInstall(
     String apkUrl, {
     required void Function(double progress) onProgress,
@@ -93,32 +95,12 @@ class AppUpdateService {
         },
       );
 
-      // Trigger Android package installer
-      final result = await Process.run('am', [
-        'start',
-        '-a', 'android.intent.action.VIEW',
-        '-t', 'application/vnd.android.package-archive',
-        '-d', 'file://$filePath',
-        '--grant-read-uri-permission',
-      ]);
-
-      if (result.exitCode != 0) {
-        // Fallback: use content:// URI via install intent
-        await _installViaIntent(filePath);
+      if (Platform.isAndroid) {
+        await _channel.invokeMethod('installApk', {'filePath': filePath});
       }
     } catch (e) {
-      onError('Download failed: $e');
+      onError('Install failed: $e');
     }
-  }
-
-  static Future<void> _installViaIntent(String filePath) async {
-    // Use shell command as fallback
-    await Process.run('am', [
-      'start',
-      '-a', 'android.intent.action.INSTALL_PACKAGE',
-      '-d', 'file://$filePath',
-      '--grant-read-uri-permission',
-    ]);
   }
 }
 

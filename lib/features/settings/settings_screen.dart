@@ -224,6 +224,8 @@ Future<void> _downloadUpdate(BuildContext context, String apkUrl) async {
       }
     },
   );
+  // Dismiss dialog after install intent launches
+  if (context.mounted) Navigator.of(context).pop();
 }
 
 class SettingsScreen extends ConsumerWidget {

@@ -213,6 +213,8 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
         }
       },
     );
+    // Dismiss dialog after install intent launches
+    if (mounted) Navigator.of(context).pop();
   }
 
   Future<void> _refreshNowPlaying() async {
