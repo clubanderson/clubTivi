@@ -1,0 +1,65 @@
+# Nightly release — runs every day at 2:00 AM UTC
+name: Nightly Release
+
+on:
+  schedule:
+    - cron: '0 2 * * *'
+  workflow_dispatch: # allow manual trigger
+
+concurrency:
+  group: nightly-release
+  cancel-in-progress: true
+
+jobs:
+  check-changes:
+    name: Check for new commits
+    runs-on: ubuntu-latest
+    outputs:
+      has_changes: ${{ steps.check.outputs.has_changes }}
+      short_sha: ${{ steps.check.outputs.short_sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check for commits in last 24h
+        id: check
+        run: |
+          SINCE=$(date -u -d '24 hours ago' '+%Y-%m-%dT%H:%M:%SZ' 2>/dev/null || date -u -v-24H '+%Y-%m-%dT%H:%M:%SZ')
+          COUNT=$(git log --since="$SINCE" --oneline | wc -l | tr -d ' ')
+          SHA=$(git rev-parse --short HEAD)
+          echo "short_sha=$SHA" >> "$GITHUB_OUTPUT"
+          if [ "$COUNT" -gt 0 ] || [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "has_changes=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_changes=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  build:
+    needs: check-changes
+    if: needs.check-changes.outputs.has_changes == 'true'
+    uses: ./.github/workflows/build.yml
+    with:
+      release_tag: nightly-${{ needs.check-changes.outputs.short_sha }}
+      release_name: "🌙 Nightly — ${{ needs.check-changes.outputs.short_sha }}"
+      prerelease: true
+
+  cleanup:
+    name: Clean up old nightlies
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Delete old nightly releases (keep last 7)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release list --limit 100 --json tagName,isPrerelease \
+            -q '[.[] | select(.isPrerelease and (.tagName | startswith("nightly-")))] | sort_by(.tagName) | reverse | .[7:][] | .tagName' \
+          | while read -r tag; do
+              echo "Deleting old nightly: $tag"
+              gh release delete "$tag" --yes --cleanup-tag
+            done
