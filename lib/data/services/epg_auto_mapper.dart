@@ -63,6 +63,12 @@ class EpgAutoMapper {
 
       final best = candidates.first;
 
+      // 0% confidence is not a real match — skip
+      if (best.confidence <= 0.0) {
+        unmapped++;
+        continue;
+      }
+
       final source = best.confidence >= autoApplyThreshold
           ? MappingSource.auto
           : MappingSource.suggested;

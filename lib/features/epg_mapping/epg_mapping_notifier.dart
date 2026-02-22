@@ -97,13 +97,25 @@ class ChannelMappingEntry {
     this.suggestions = const [],
   });
 
+  bool get _is247 =>
+      channel.displayName.contains('24/7') ||
+      channel.displayName.contains('24-7') ||
+      (channel.groupTitle != null &&
+          (channel.groupTitle!.contains('24/7') ||
+           channel.groupTitle!.contains('24-7')));
+
   bool get isMapped =>
       mapping != null &&
+      !_is247 &&
+      mapping!.confidence > 0.0 &&
       (mapping!.source == MappingSource.auto ||
           mapping!.source == MappingSource.manual);
   bool get isSuggested =>
-      mapping != null && mapping!.source == MappingSource.suggested;
-  bool get isUnmapped => mapping == null;
+      mapping != null &&
+      !_is247 &&
+      mapping!.confidence > 0.0 &&
+      mapping!.source == MappingSource.suggested;
+  bool get isUnmapped => mapping == null || _is247 || mapping!.confidence <= 0.0;
   bool get isLocked => mapping?.locked ?? false;
 }
 
@@ -240,15 +252,31 @@ class EpgMappingNotifier extends StateNotifier<EpgMappingState> {
       onMapping: (m) => newMappings.add(m),
     );
 
-    // Save mappings to DB
+    // Save mappings to DB (with confidence and source)
     for (final m in newMappings) {
       if (m.epgChannelId == null || m.epgSourceId == null) continue;
+      // Skip 0% confidence — not a real match
+      if (m.confidence <= 0.0) continue;
       await _db.upsertMapping(db.EpgMappingsCompanion.insert(
         channelId: m.playlistChannelId,
         providerId: m.providerId,
         epgChannelId: m.epgChannelId!,
         epgSourceId: m.epgSourceId!,
+        confidence: Value(m.confidence),
+        source: Value(m.source == MappingSource.auto ? 'auto' : 'suggested'),
       ));
+    }
+
+    // Remove mappings for 24/7 channels (may exist from before the skip rule)
+    for (final ch in channels) {
+      final is247 = ch.displayName.contains('24/7') ||
+          ch.displayName.contains('24-7') ||
+          (ch.groupTitle != null &&
+              (ch.groupTitle!.contains('24/7') ||
+               ch.groupTitle!.contains('24-7')));
+      if (is247) {
+        await _db.deleteMapping(ch.id, ch.providerId);
+      }
     }
 
     await load(); // Refresh

@@ -260,6 +260,31 @@ class SettingsScreen extends ConsumerStatefulWidget {
 }
 
 class _SettingsScreenState extends ConsumerState<SettingsScreen> {
+  String _localIp = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _detectLocalIp();
+  }
+
+  Future<void> _detectLocalIp() async {
+    try {
+      final interfaces = await NetworkInterface.list(
+        type: InternetAddressType.IPv4,
+        includeLoopback: false,
+      );
+      for (final iface in interfaces) {
+        for (final addr in iface.addresses) {
+          if (!addr.isLoopback) {
+            if (mounted) setState(() => _localIp = addr.address);
+            return;
+          }
+        }
+      }
+    } catch (_) {}
+  }
+
   @override
   Widget build(BuildContext context) {
     final webRemote = ref.watch(webRemoteServerProvider);
@@ -316,6 +341,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           _SettingsSection(
             title: 'Playback',
             children: [
+              _UserAgentTile(),
               _BufferSizeTile(),
               _FailoverModeTile(),
             ],
@@ -333,7 +359,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 secondary: const Icon(Icons.web_rounded),
                 title: const Text('Web Remote'),
                 subtitle: Text(webRemote.isRunning
-                    ? 'Running on port ${webRemote.port} — open http://<your-ip>:${webRemote.port} on your phone'
+                    ? 'Running — open http://${_localIp.isNotEmpty ? _localIp : '<detecting...>'}:${webRemote.port} on your phone'
                     : 'Allow control from phone browser'),
                 value: webRemote.isRunning,
                 onChanged: (value) async {
@@ -351,6 +377,19 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 subtitle: const Text('Customize remote buttons'),
                 trailing: const Icon(Icons.chevron_right),
                 onTap: () => _showButtonMappingInfo(context),
+              ),
+            ],
+          ),
+          _SettingsSection(
+            title: 'Recordings',
+            children: [
+              _RecordingsFolderTile(),
+              ListTile(
+                leading: const Icon(Icons.info_outline_rounded),
+                title: const Text('How it works'),
+                subtitle: const Text('Tap to learn about recording setup'),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () => _showRecordingHelp(context),
               ),
             ],
           ),
@@ -408,6 +447,39 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   void _openEpgSourcesScreen(BuildContext context, WidgetRef ref) {
     Navigator.of(context).push(
       MaterialPageRoute(builder: (_) => const _EpgSourcesScreen()),
+    );
+  }
+
+  void _showRecordingHelp(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Recording Setup'),
+        content: const SingleChildScrollView(
+          child: Text(
+            '1. Choose a folder\n'
+            '   Tap "Recording Folder" above and pick any folder on your device.\n'
+            '   clubTivi will save all recordings there.\n\n'
+            '2. Start recording\n'
+            '   While watching a channel, tap the record (●) button in the\n'
+            '   player controls. Recording starts immediately.\n\n'
+            '3. Stop recording\n'
+            '   Tap the record button again, or change channels.\n'
+            '   The file is saved as MP4 in your chosen folder.\n\n'
+            '4. View recordings\n'
+            '   Open "Recordings" in the sidebar to browse and play\n'
+            '   your saved recordings.\n\n'
+            'Tips:\n'
+            '• Make sure you have enough disk space\n'
+            '• Recordings use the original stream quality\n'
+            '• On macOS: the folder picker grants clubTivi access automatically\n'
+            '• On Android: choose a folder in internal storage or SD card',
+          ),
+        ),
+        actions: [
+          FilledButton(onPressed: () => Navigator.pop(ctx), child: const Text('Got it')),
+        ],
+      ),
     );
   }
 
@@ -799,6 +871,92 @@ class _SettingsSection extends StatelessWidget {
   }
 }
 
+class _UserAgentTile extends StatefulWidget {
+  @override
+  State<_UserAgentTile> createState() => _UserAgentTileState();
+}
+
+class _UserAgentTileState extends State<_UserAgentTile> {
+  String _userAgent = 'Default';
+  static const _key = 'playback_user_agent';
+  static const _presets = [
+    'Default',
+    'VLC/3.0',
+    'Kodi/20.0',
+    'ExoPlayer',
+    'Lavf/60',
+    'Mozilla/5.0',
+  ];
+
+  @override
+  void initState() {
+    super.initState();
+    SharedPreferences.getInstance().then((prefs) {
+      if (mounted) setState(() => _userAgent = prefs.getString(_key) ?? 'Default');
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ListTile(
+      leading: const Icon(Icons.badge_rounded),
+      title: const Text('User Agent'),
+      subtitle: Text(_userAgent, style: const TextStyle(color: Colors.purpleAccent)),
+      trailing: const Icon(Icons.chevron_right),
+      onTap: () async {
+        final controller = TextEditingController(
+          text: _userAgent == 'Default' ? '' : _userAgent,
+        );
+        final picked = await showDialog<String>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: const Text('User Agent'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: controller,
+                  decoration: const InputDecoration(
+                    hintText: 'Enter custom user agent...',
+                    isDense: true,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                const Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text('Presets', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+                ),
+                const SizedBox(height: 8),
+                ...List.generate(_presets.length, (i) => ListTile(
+                  dense: true,
+                  title: Text(_presets[i]),
+                  selected: _userAgent == _presets[i],
+                  onTap: () => Navigator.pop(ctx, _presets[i]),
+                )),
+              ],
+            ),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+              FilledButton(
+                onPressed: () {
+                  final custom = controller.text.trim();
+                  Navigator.pop(ctx, custom.isEmpty ? 'Default' : custom);
+                },
+                child: const Text('Save'),
+              ),
+            ],
+          ),
+        );
+        if (picked != null) {
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.setString(_key, picked);
+          setState(() => _userAgent = picked);
+        }
+      },
+    );
+  }
+}
+
 class _TimeFormatTile extends StatefulWidget {
   @override
   State<_TimeFormatTile> createState() => _TimeFormatTileState();
@@ -892,7 +1050,15 @@ class _BufferSizeTile extends StatefulWidget {
 class _BufferSizeTileState extends State<_BufferSizeTile> {
   String _buffer = 'Auto';
   static const _key = 'playback_buffer_size';
-  static const _options = {'Auto': 'Auto', '1 MB': '1', '2 MB': '2', '4 MB': '4', '8 MB': '8', '16 MB': '16'};
+  static const _options = {
+    'Auto': 'Auto',
+    'None': 'None',
+    '1 MB (Small)': '1',
+    '2 MB (Small)': '2',
+    '4 MB (Medium)': '4',
+    '8 MB (Large)': '8',
+    '16 MB (XL)': '16',
+  };
 
   @override
   void initState() {
@@ -989,6 +1155,155 @@ class _FailoverModeTileState extends State<_FailoverModeTile> {
           final prefs = await SharedPreferences.getInstance();
           await prefs.setString(_key, picked);
           setState(() => _mode = picked);
+        }
+      },
+    );
+  }
+}
+
+class _RecordingsFolderTile extends StatefulWidget {
+  @override
+  State<_RecordingsFolderTile> createState() => _RecordingsFolderTileState();
+}
+
+class _RecordingsFolderTileState extends State<_RecordingsFolderTile> {
+  String? _folder;
+  static const _key = 'recordings_folder';
+
+  @override
+  void initState() {
+    super.initState();
+    SharedPreferences.getInstance().then((prefs) {
+      if (mounted) setState(() => _folder = prefs.getString(_key));
+    });
+  }
+
+  Future<void> _pickLocal() async {
+    final result = await FilePicker.platform.getDirectoryPath(
+      dialogTitle: 'Choose where to save recordings',
+    );
+    if (result != null) {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_key, result);
+      setState(() => _folder = result);
+    }
+  }
+
+  Future<void> _enterNetworkPath(BuildContext context) async {
+    final controller = TextEditingController(
+      text: _folder != null && _folder!.startsWith('smb://') || 
+            _folder != null && _folder!.startsWith('nfs://') ||
+            _folder != null && _folder!.startsWith('afp://') ||
+            _folder != null && _folder!.startsWith('ftp://') ||
+            _folder != null && _folder!.startsWith('webdav://')
+          ? _folder : '',
+    );
+    final path = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Network Storage'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Enter the network path to your shared folder:',
+              style: TextStyle(fontSize: 13),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: controller,
+              autofocus: true,
+              decoration: const InputDecoration(
+                hintText: 'smb://192.168.1.100/Recordings',
+                isDense: true,
+              ),
+              onSubmitted: (v) => Navigator.pop(ctx, v.trim()),
+            ),
+            const SizedBox(height: 16),
+            const Text('Supported protocols:', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+            const SizedBox(height: 4),
+            const Text('• SMB — smb://server/share  (Windows/NAS)', style: TextStyle(fontSize: 11, color: Colors.white54)),
+            const Text('• NFS — nfs://server/path  (Linux/NAS)', style: TextStyle(fontSize: 11, color: Colors.white54)),
+            const Text('• AFP — afp://server/share  (Apple)', style: TextStyle(fontSize: 11, color: Colors.white54)),
+            const Text('• FTP — ftp://user:pass@server/path', style: TextStyle(fontSize: 11, color: Colors.white54)),
+            const Text('• WebDAV — webdav://server/path', style: TextStyle(fontSize: 11, color: Colors.white54)),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, controller.text.trim()),
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+    if (path != null && path.isNotEmpty) {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_key, path);
+      setState(() => _folder = path);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ListTile(
+      leading: const Icon(Icons.folder_rounded),
+      title: const Text('Recording Location'),
+      subtitle: Text(
+        _folder ?? 'Not set — tap to choose',
+        style: TextStyle(
+          color: _folder != null ? Colors.purpleAccent : Colors.white38,
+          fontSize: 13,
+        ),
+        overflow: TextOverflow.ellipsis,
+      ),
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (_folder != null)
+            IconButton(
+              icon: const Icon(Icons.close_rounded, size: 18),
+              tooltip: 'Clear',
+              onPressed: () async {
+                final prefs = await SharedPreferences.getInstance();
+                await prefs.remove(_key);
+                setState(() => _folder = null);
+              },
+            ),
+          const Icon(Icons.chevron_right),
+        ],
+      ),
+      onTap: () async {
+        final choice = await showDialog<String>(
+          context: context,
+          builder: (ctx) => SimpleDialog(
+            title: const Text('Recording Location'),
+            children: [
+              SimpleDialogOption(
+                onPressed: () => Navigator.pop(ctx, 'local'),
+                child: const Row(children: [
+                  Icon(Icons.folder_rounded, size: 20),
+                  SizedBox(width: 12),
+                  Text('Local Folder'),
+                ]),
+              ),
+              SimpleDialogOption(
+                onPressed: () => Navigator.pop(ctx, 'network'),
+                child: const Row(children: [
+                  Icon(Icons.lan_rounded, size: 20),
+                  SizedBox(width: 12),
+                  Text('Network Share (SMB/NFS/AFP/FTP)'),
+                ]),
+              ),
+            ],
+          ),
+        );
+        if (choice == 'local') {
+          await _pickLocal();
+        } else if (choice == 'network' && context.mounted) {
+          await _enterNetworkPath(context);
         }
       },
     );
