@@ -9,6 +9,7 @@ import '../features/epg_mapping/epg_mapping_screen.dart';
 import '../features/settings/settings_screen.dart';
 import '../features/shows/shows_screen.dart';
 import '../features/shows/show_detail_screen.dart';
+import '../features/splash/splash_screen.dart';
 import '../platform/tv/tv_shell.dart';
 import '../data/models/show.dart';
 
@@ -37,8 +38,12 @@ GoRouter createRouter() {
     ),
   ];
 
-  // Routes outside the shell (player, shows detail, etc.)
+  // Routes outside the shell (player, shows detail, splash, etc.)
   final standaloneRoutes = [
+    GoRoute(
+      path: '/splash',
+      builder: (context, state) => const SplashScreen(),
+    ),
     GoRoute(
       path: '/player',
       builder: (context, state) {
@@ -73,7 +78,7 @@ GoRouter createRouter() {
 
   if (PlatformInfo.isTV) {
     return GoRouter(
-      initialLocation: '/',
+      initialLocation: '/splash',
       routes: [
         ShellRoute(
           builder: (context, state, child) => TvShell(child: child),
@@ -86,7 +91,7 @@ GoRouter createRouter() {
 
   // Non-TV: flat routes (original behavior)
   return GoRouter(
-    initialLocation: '/',
+    initialLocation: '/splash',
     routes: [
       ...sidebarRoutes,
       ...standaloneRoutes,
