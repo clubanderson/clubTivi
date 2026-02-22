@@ -1,0 +1,222 @@
+# Reusable build workflow for all platforms
+name: Build All Platforms
+
+on:
+  workflow_call:
+    inputs:
+      release_tag:
+        description: 'Tag name for the release'
+        required: true
+        type: string
+      release_name:
+        description: 'Display name for the release'
+        required: true
+        type: string
+      prerelease:
+        description: 'Mark as pre-release'
+        required: false
+        type: boolean
+        default: true
+
+jobs:
+  # ─── Android ────────────────────────────────────────────────────────
+  build-android:
+    name: Android (APK + AAB)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Build APK
+        run: flutter build apk --release
+
+      - name: Build AAB
+        run: flutter build appbundle --release
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-apk
+          path: build/app/outputs/flutter-apk/app-release.apk
+
+      - name: Upload AAB
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-aab
+          path: build/app/outputs/bundle/release/app-release.aab
+
+  # ─── iOS ────────────────────────────────────────────────────────────
+  build-ios:
+    name: iOS (IPA)
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Build iOS (no codesign)
+        run: flutter build ios --release --no-codesign
+
+      - name: Create unsigned IPA
+        run: |
+          cd build/ios/iphoneos
+          mkdir -p Payload
+          cp -r Runner.app Payload/
+          zip -r clubtivi-ios-unsigned.ipa Payload
+
+      - name: Upload IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-ipa
+          path: build/ios/iphoneos/clubtivi-ios-unsigned.ipa
+
+  # ─── macOS ──────────────────────────────────────────────────────────
+  build-macos:
+    name: macOS (DMG)
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Build macOS
+        run: flutter build macos --release
+
+      - name: Create DMG
+        run: |
+          APP_PATH="build/macos/Build/Products/Release/clubtivi.app"
+          DMG_NAME="clubtivi-macos.dmg"
+          hdiutil create -volname "clubTivi" -srcfolder "$APP_PATH" -ov -format UDZO "$DMG_NAME"
+
+      - name: Upload DMG
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-dmg
+          path: clubtivi-macos.dmg
+
+  # ─── Windows ────────────────────────────────────────────────────────
+  build-windows:
+    name: Windows (ZIP)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Build Windows
+        run: flutter build windows --release
+
+      - name: Create ZIP
+        run: Compress-Archive -Path "build\windows\x64\runner\Release\*" -DestinationPath "clubtivi-windows.zip"
+
+      - name: Upload ZIP
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-zip
+          path: clubtivi-windows.zip
+
+  # ─── Linux ──────────────────────────────────────────────────────────
+  build-linux:
+    name: Linux (tar.gz)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Linux build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang cmake ninja-build pkg-config \
+            libgtk-3-dev liblzma-dev libstdc++-12-dev \
+            libmpv-dev
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Build Linux
+        run: flutter build linux --release
+
+      - name: Create tarball
+        run: |
+          cd build/linux/x64/release
+          tar czf ../../../../clubtivi-linux-x64.tar.gz bundle/
+
+      - name: Upload tarball
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-tar
+          path: clubtivi-linux-x64.tar.gz
+
+  # ─── Create Release ────────────────────────────────────────────────
+  create-release:
+    name: Create GitHub Release
+    needs: [build-android, build-ios, build-macos, build-windows, build-linux]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Prepare release assets
+        run: |
+          mkdir -p release
+          cp artifacts/android-apk/app-release.apk       release/clubtivi-android.apk
+          cp artifacts/android-aab/app-release.aab        release/clubtivi-android.aab
+          cp artifacts/ios-ipa/clubtivi-ios-unsigned.ipa   release/clubtivi-ios-unsigned.ipa
+          cp artifacts/macos-dmg/clubtivi-macos.dmg       release/clubtivi-macos.dmg
+          cp artifacts/windows-zip/clubtivi-windows.zip   release/clubtivi-windows.zip
+          cp artifacts/linux-tar/clubtivi-linux-x64.tar.gz release/clubtivi-linux-x64.tar.gz
+
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.release_tag }}
+          name: ${{ inputs.release_name }}
+          prerelease: ${{ inputs.prerelease }}
+          generate_release_notes: true
+          files: release/*
