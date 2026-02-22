@@ -7,6 +7,7 @@ import 'package:share_plus/share_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../data/datasources/local/database.dart' as db;
+import '../../data/services/app_update_service.dart';
 import '../../data/services/backup_service.dart';
 import '../../data/services/epg_refresh_service.dart';
 import '../providers/provider_manager.dart';
@@ -110,6 +111,119 @@ Future<void> _importBackup(BuildContext context) async {
       );
     }
   }
+}
+
+Future<void> _checkForUpdates(BuildContext context) async {
+  showDialog(
+    context: context,
+    barrierDismissible: false,
+    builder: (_) => const Center(child: CircularProgressIndicator()),
+  );
+
+  final release = await AppUpdateService.checkForUpdate();
+
+  if (!context.mounted) return;
+  Navigator.of(context).pop(); // dismiss spinner
+
+  if (release == null) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Could not check for updates')),
+    );
+    return;
+  }
+
+  if (!release.isNewer) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('You\'re up to date! (v${AppUpdateService.currentVersion})'),
+      ),
+    );
+    return;
+  }
+
+  // New version available
+  final action = await showDialog<String>(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      backgroundColor: const Color(0xFF1A1A2E),
+      title: Text('Update Available — v${release.version}'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Current: v${AppUpdateService.currentVersion}\n'
+            'Latest: v${release.version}\n',
+          ),
+          if (release.body.isNotEmpty)
+            Text(
+              release.body.length > 300
+                  ? '${release.body.substring(0, 300)}…'
+                  : release.body,
+              style: const TextStyle(fontSize: 13, color: Colors.white70),
+            ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(ctx, 'later'),
+          child: const Text('Later'),
+        ),
+        if (release.apkDownloadUrl != null)
+          FilledButton.icon(
+            onPressed: () => Navigator.pop(ctx, 'install'),
+            icon: const Icon(Icons.download, size: 18),
+            label: const Text('Download & Install'),
+          ),
+      ],
+    ),
+  );
+
+  if (action == 'install' && release.apkDownloadUrl != null && context.mounted) {
+    _downloadUpdate(context, release.apkDownloadUrl!);
+  }
+}
+
+Future<void> _downloadUpdate(BuildContext context, String apkUrl) async {
+  double progress = 0;
+  late StateSetter dialogSetState;
+
+  showDialog(
+    context: context,
+    barrierDismissible: false,
+    builder: (ctx) => StatefulBuilder(
+      builder: (ctx, setState) {
+        dialogSetState = setState;
+        return AlertDialog(
+          backgroundColor: const Color(0xFF1A1A2E),
+          title: const Text('Downloading Update…'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              LinearProgressIndicator(value: progress),
+              const SizedBox(height: 12),
+              Text('${(progress * 100).toStringAsFixed(0)}%'),
+            ],
+          ),
+        );
+      },
+    ),
+  );
+
+  await AppUpdateService.downloadAndInstall(
+    apkUrl,
+    onProgress: (p) {
+      try { dialogSetState(() => progress = p); } catch (_) {}
+    },
+    onError: (error) {
+      if (context.mounted) {
+        Navigator.of(context).pop();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(error), backgroundColor: Colors.red),
+        );
+      }
+    },
+  );
 }
 
 class SettingsScreen extends ConsumerWidget {
@@ -227,10 +341,17 @@ class SettingsScreen extends ConsumerWidget {
           _SettingsSection(
             title: 'About',
             children: [
-              const ListTile(
-                leading: Icon(Icons.info_outline_rounded),
-                title: Text('clubTivi'),
-                subtitle: Text('v0.1.0 • Open Source • Apache-2.0'),
+              ListTile(
+                leading: const Icon(Icons.info_outline_rounded),
+                title: const Text('clubTivi'),
+                subtitle: Text('v${AppUpdateService.currentVersion} • Open Source • Apache-2.0'),
+              ),
+              ListTile(
+                leading: const Icon(Icons.system_update_rounded),
+                title: const Text('Check for Updates'),
+                subtitle: const Text('Download latest version from GitHub'),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () => _checkForUpdates(context),
               ),
               ListTile(
                 leading: const Icon(Icons.code_rounded),

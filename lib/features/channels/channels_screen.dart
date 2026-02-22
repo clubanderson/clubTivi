@@ -15,6 +15,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../core/fuzzy_match.dart';
 import '../../data/datasources/local/database.dart' as db;
 import '../../data/datasources/remote/tmdb_client.dart';
+import '../../data/services/app_update_service.dart';
 import '../../data/services/epg_refresh_service.dart';
 import '../casting/cast_service.dart';
 import '../casting/cast_dialog.dart';
@@ -134,6 +135,84 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
     _channelsSub = database.select(database.channels).watch().listen((_) => debouncedReload());
     // Refresh now-playing every 60 seconds so the info panel stays current
     _nowPlayingTimer = Timer.periodic(const Duration(seconds: 60), (_) => _refreshNowPlaying());
+    // Check for app updates after a short delay so the UI loads first
+    Future.delayed(const Duration(seconds: 3), _checkForUpdateOnStartup);
+  }
+
+  Future<void> _checkForUpdateOnStartup() async {
+    if (!mounted) return;
+    final release = await AppUpdateService.checkForUpdate();
+    if (!mounted || release == null || !release.isNewer) return;
+
+    // Show a non-intrusive banner at the bottom
+    ScaffoldMessenger.of(context).showMaterialBanner(
+      MaterialBanner(
+        backgroundColor: const Color(0xFF1A1A2E),
+        content: Text(
+          'Update available: v${release.version}',
+          style: const TextStyle(color: Colors.white),
+        ),
+        leading: const Icon(Icons.system_update, color: Color(0xFF6C5CE7)),
+        actions: [
+          TextButton(
+            onPressed: () {
+              ScaffoldMessenger.of(context).hideCurrentMaterialBanner();
+            },
+            child: const Text('LATER'),
+          ),
+          if (release.apkDownloadUrl != null)
+            TextButton(
+              onPressed: () {
+                ScaffoldMessenger.of(context).hideCurrentMaterialBanner();
+                _showDownloadDialog(release.apkDownloadUrl!);
+              },
+              child: const Text('UPDATE'),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _showDownloadDialog(String apkUrl) async {
+    double progress = 0;
+    late StateSetter dialogSetState;
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setState) {
+          dialogSetState = setState;
+          return AlertDialog(
+            backgroundColor: const Color(0xFF1A1A2E),
+            title: const Text('Downloading Update…'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                LinearProgressIndicator(value: progress),
+                const SizedBox(height: 12),
+                Text('${(progress * 100).toStringAsFixed(0)}%'),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+
+    await AppUpdateService.downloadAndInstall(
+      apkUrl,
+      onProgress: (p) {
+        try { dialogSetState(() => progress = p); } catch (_) {}
+      },
+      onError: (error) {
+        if (mounted) {
+          Navigator.of(context).pop();
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(error), backgroundColor: Colors.red),
+          );
+        }
+      },
+    );
   }
 
   Future<void> _refreshNowPlaying() async {
