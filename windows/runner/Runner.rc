@@ -90,12 +90,12 @@ BEGIN
         BLOCK "040904e4"
         BEGIN
             VALUE "CompanyName", "io.github.clubanderson" "\0"
-            VALUE "FileDescription", "clubtivi" "\0"
+            VALUE "FileDescription", "clubTivi" "\0"
             VALUE "FileVersion", VERSION_AS_STRING "\0"
             VALUE "InternalName", "clubtivi" "\0"
             VALUE "LegalCopyright", "Copyright (C) 2026 io.github.clubanderson. All rights reserved." "\0"
             VALUE "OriginalFilename", "clubtivi.exe" "\0"
-            VALUE "ProductName", "clubtivi" "\0"
+            VALUE "ProductName", "clubTivi" "\0"
             VALUE "ProductVersion", VERSION_AS_STRING "\0"
         END
     END

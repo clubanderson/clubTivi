@@ -9,11 +9,22 @@ import 'package:uuid/uuid.dart';
 
 import '../datasources/local/database.dart' as db;
 import '../datasources/parsers/xmltv_parser.dart';
+import '../models/epg.dart';
 import '../../features/providers/provider_manager.dart';
+
+/// Runs heavy XML parsing in a background isolate.
+XmltvResult _parseInIsolate(_ParseArgs args) {
+  return XmltvParser().parse(args.xml, sourceId: args.sourceId);
+}
+
+class _ParseArgs {
+  final String xml;
+  final String sourceId;
+  const _ParseArgs(this.xml, this.sourceId);
+}
 
 class EpgRefreshService {
   final db.AppDatabase _db;
-  final _parser = XmltvParser();
   final _uuid = const Uuid();
 
   EpgRefreshService(this._db);
@@ -39,17 +50,8 @@ class EpgRefreshService {
       final bytes = response.data!;
       debugPrint('[EPG] Downloaded ${bytes.length} bytes');
 
-      // Decompress if gzipped
-      List<int> decompressed;
-      try {
-        decompressed = gzip.decode(bytes);
-        debugPrint('[EPG] Decompressed to ${decompressed.length} bytes');
-      } catch (_) {
-        decompressed = bytes;
-      }
-
-      final xmlContent = utf8.decode(decompressed, allowMalformed: true);
-      final result = _parser.parse(xmlContent, sourceId: sourceId);
+      // Decompress + parse in background isolate to avoid ANR
+      final result = await compute(_decompressAndParse, _DecompressParseArgs(bytes, sourceId));
       debugPrint('[EPG] Parsed ${result.channels.length} channels, ${result.programmes.length} programmes');
 
       // Store channels
@@ -64,7 +66,7 @@ class EpgRefreshService {
       }).toList();
       await _db.upsertEpgChannels(channelCompanions);
 
-      // Delete old programmes for this source, then insert new ones
+      // Delete old programmes for this source, then insert new ones in batches
       await _db.deleteEpgProgrammesForSource(sourceId);
       final programmeCompanions = result.programmes.map((p) {
         return db.EpgProgrammesCompanion.insert(
@@ -80,7 +82,13 @@ class EpgRefreshService {
         );
       }).toList();
       if (programmeCompanions.isNotEmpty) {
-        await _db.insertEpgProgrammes(programmeCompanions);
+        // Insert in batches of 5000 to avoid blocking the main thread
+        for (var i = 0; i < programmeCompanions.length; i += 5000) {
+          final end = (i + 5000).clamp(0, programmeCompanions.length);
+          await _db.insertEpgProgrammes(programmeCompanions.sublist(i, end));
+          // Yield to the event loop between batches
+          await Future<void>.delayed(Duration.zero);
+        }
       }
 
       // Update last refresh timestamp
@@ -146,3 +154,22 @@ class EpgRefreshService {
 final epgRefreshServiceProvider = Provider<EpgRefreshService>((ref) {
   return EpgRefreshService(ref.watch(databaseProvider));
 });
+
+/// Args for the background isolate (must be serializable).
+class _DecompressParseArgs {
+  final List<int> bytes;
+  final String sourceId;
+  const _DecompressParseArgs(this.bytes, this.sourceId);
+}
+
+/// Top-level function for compute() — runs decompression + XML parsing off the main thread.
+XmltvResult _decompressAndParse(_DecompressParseArgs args) {
+  List<int> decompressed;
+  try {
+    decompressed = gzip.decode(args.bytes);
+  } catch (_) {
+    decompressed = args.bytes;
+  }
+  final xmlContent = utf8.decode(decompressed, allowMalformed: true);
+  return XmltvParser().parse(xmlContent, sourceId: args.sourceId);
+}

@@ -33,6 +33,7 @@ class ChannelsScreen extends ConsumerStatefulWidget {
 }
 
 class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
+  static bool _updateCheckDone = false;
   List<db.Channel> _allChannels = [];
   List<db.Channel> _filteredChannels = [];
   List<String> _groups = [];
@@ -140,7 +141,8 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
   }
 
   Future<void> _checkForUpdateOnStartup() async {
-    if (!mounted) return;
+    if (_updateCheckDone || !mounted) return;
+    _updateCheckDone = true;
     final release = await AppUpdateService.checkForUpdate();
     if (!mounted || release == null || !release.isNewer) return;
 
@@ -1563,6 +1565,20 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
           Expanded(
             child: _sidebarExpanded ? _buildSidebarTree() : _buildCollapsedSidebar(),
           ),
+          // Version watermark
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 8),
+            child: Text(
+              _sidebarExpanded ? 'clubTivi v${AppUpdateService.currentVersion}' : 'v${AppUpdateService.currentVersion}',
+              style: const TextStyle(
+                fontSize: 10,
+                color: Colors.white24,
+                letterSpacing: 0.5,
+              ),
+              textAlign: TextAlign.center,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
         ],
       ),
     );
@@ -1624,7 +1640,7 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
       padding: const EdgeInsets.symmetric(vertical: 4),
       children: [
         if (showAll)
-          _buildTreeItem('All', 'All', Icons.grid_view_rounded, indent: 0),
+          _buildTreeItem('All (${_allChannels.length})', 'All', Icons.grid_view_rounded, indent: 0),
         if (showFavSection)
           _buildTreeSection(
             'favorites',
@@ -1834,7 +1850,7 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
       );
     }
 
-    return FocusTraversalGroup(
+    final listWidget = FocusTraversalGroup(
       child: ListView.builder(
       controller: _channelListController,
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
@@ -1992,6 +2008,30 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
         );
       },
     ),
+    );
+
+    return Stack(
+      children: [
+        listWidget,
+        Positioned(
+          left: 0, right: 0, bottom: 0,
+          height: 40,
+          child: IgnorePointer(
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [
+                    Colors.transparent,
+                    const Color(0xFF0A0A0F),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 
