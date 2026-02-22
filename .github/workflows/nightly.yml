@@ -6,6 +6,9 @@ on:
     - cron: '0 2 * * *'
   workflow_dispatch: # allow manual trigger
 
+permissions:
+  contents: write
+
 concurrency:
   group: nightly-release
   cancel-in-progress: true
@@ -47,9 +50,8 @@ jobs:
   cleanup:
     name: Clean up old nightlies
     needs: build
+    if: always() && needs.build.result == 'success'
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
     steps:
       - uses: actions/checkout@v4
 
