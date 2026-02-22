@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io' show Platform;
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:media_kit/media_kit.dart';
@@ -46,6 +47,16 @@ class PlayerService {
       // Volume
       await np.setProperty('volume', '100');
       await np.setProperty('mute', 'no');
+      // Android TV: enable hardware decoding and optimize buffering
+      if (Platform.isAndroid) {
+        await np.setProperty('hwdec', 'mediacodec-copy');
+        await np.setProperty('vo', 'gpu');
+        await np.setProperty('framedrop', 'vo');
+        await np.setProperty('cache', 'yes');
+        await np.setProperty('cache-secs', '10');
+        await np.setProperty('demuxer-max-bytes', '50M');
+        await np.setProperty('demuxer-max-back-bytes', '5M');
+      }
     }
     await p.setVolume(100);
     _playerReady = true;

@@ -1,7 +1,10 @@
+import 'dart:io' show Platform;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:media_kit/media_kit.dart';
+import 'package:media_kit/src/player/native/player/real.dart' as native_player;
 import 'package:media_kit_video/media_kit_video.dart';
 
 /// Multi-view player — shows 1-9 streams in a flexible grid.
@@ -29,6 +32,7 @@ class _MultiViewScreenState extends ConsumerState<MultiViewScreen> {
   void _initPlayers() {
     for (var i = 0; i < widget.channels.length && i < 9; i++) {
       final player = Player();
+      _configurePlayer(player);
       final controller = VideoController(player);
       _cells.add(_StreamCell(
         player: player,
@@ -38,6 +42,20 @@ class _MultiViewScreenState extends ConsumerState<MultiViewScreen> {
       // Mute all except the focused one
       player.setVolume(i == _audioFocusIndex ? 100.0 : 0.0);
       player.open(Media(widget.channels[i].url));
+    }
+  }
+
+  /// Apply Android TV hardware decoding and buffering optimizations.
+  void _configurePlayer(Player player) {
+    final np = player.platform;
+    if (np is native_player.NativePlayer && Platform.isAndroid) {
+      np.setProperty('hwdec', 'mediacodec-copy');
+      np.setProperty('vo', 'gpu');
+      np.setProperty('framedrop', 'vo');
+      np.setProperty('cache', 'yes');
+      np.setProperty('cache-secs', '10');
+      np.setProperty('demuxer-max-bytes', '50M');
+      np.setProperty('demuxer-max-back-bytes', '5M');
     }
   }
 
