@@ -414,7 +414,6 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
                       ),
                     ),
                     child: Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
                       children: [
                         StreamBuilder<bool>(
                           stream: playerService.playingStream,
@@ -447,6 +446,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
                             tooltip: 'Switch stream',
                             onPressed: _switchToNextStream,
                           ),
+                        const Spacer(),
                         IconButton(
                           icon: Icon(
                             ref.read(castServiceProvider).isCasting

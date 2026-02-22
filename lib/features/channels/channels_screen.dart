@@ -1202,21 +1202,7 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
                               controller: playerService.videoController,
                               controls: NoVideoControls,
                             ),
-                            if (_showOverlay && _previewChannel != null)
-                              ChannelInfoOverlay(
-                                providerName: _getProviderName(_previewChannel!.providerId),
-                                channelName: _previewChannel!.name,
-                                channelLogo: _previewChannel!.tvgLogo,
-                                groupTitle: _previewChannel!.groupTitle,
-                                currentProgramme: programme?.title,
-                                currentProgrammeTime: _programmeTimeRange(programme, timeshiftHours: _epgTimeshifts[_previewChannel!.id] ?? 0),
-                                nextProgramme: nextProg?.title,
-                                nextProgrammeTime: _programmeTimeRange(nextProg, timeshiftHours: _epgTimeshifts[_previewChannel!.id] ?? 0),
-                                playerService: playerService,
-                                onDismissed: () {
-                                  if (mounted) setState(() => _showOverlay = false);
-                                },
-                              ),
+                            // Channel info overlay removed — info shown in panel to the right
                             if (_showVolumeOverlay)
                               Positioned(
                                 top: 8,
@@ -1824,7 +1810,8 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
             if (event.logicalKey == LogicalKeyboardKey.select ||
                 event.logicalKey == LogicalKeyboardKey.enter) {
               setState(() {
-                if (filterKey != null) {
+                // Only change channel list if provider has no subcategories
+                if (filterKey != null && children.isEmpty) {
                   _selectedGroup = filterKey;
                   _applyFilters();
                   _saveSession();
@@ -1845,7 +1832,8 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
               return InkWell(
                 onTap: () {
                   setState(() {
-                    if (filterKey != null) {
+                    // Only change channel list if provider has no subcategories
+                    if (filterKey != null && children.isEmpty) {
                       _selectedGroup = filterKey;
                       _applyFilters();
                       _saveSession();
