@@ -1,16 +1,21 @@
+import 'dart:io';
+
 import 'package:drift/drift.dart' show Value;
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../data/datasources/local/database.dart' as db;
 import '../../data/services/app_update_service.dart';
 import '../../data/services/backup_service.dart';
 import '../../data/services/epg_refresh_service.dart';
 import '../providers/provider_manager.dart';
+import '../remote/web_remote_server.dart';
 import 'add_epg_source_dialog.dart';
 import '../shows/shows_providers.dart';
 
@@ -24,15 +29,20 @@ Future<void> _exportBackup(BuildContext context) async {
     final path = await BackupService.exportBackup();
     if (context.mounted) Navigator.of(context).pop();
     if (context.mounted) {
+      // Offer to save to a user-chosen location or share
       final action = await showDialog<String>(
         context: context,
         builder: (ctx) => AlertDialog(
           title: const Text('Backup Created'),
-          content: Text('Saved to:\n$path\n\nShare to transfer to another device?'),
+          content: Text('Saved to:\n$path'),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(ctx, 'close'),
               child: const Text('Done'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, 'save'),
+              child: const Text('Save As…'),
             ),
             FilledButton.icon(
               onPressed: () => Navigator.pop(ctx, 'share'),
@@ -44,6 +54,20 @@ Future<void> _exportBackup(BuildContext context) async {
       );
       if (action == 'share') {
         await SharePlus.instance.share(ShareParams(files: [XFile(path)]));
+      } else if (action == 'save') {
+        final savePath = await FilePicker.platform.saveFile(
+          dialogTitle: 'Save Backup',
+          fileName: path.split('/').last,
+          type: FileType.any,
+        );
+        if (savePath != null) {
+          await File(path).copy(savePath);
+          if (context.mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('Saved to $savePath')),
+            );
+          }
+        }
       }
     }
   } catch (e) {
@@ -228,12 +252,30 @@ Future<void> _downloadUpdate(BuildContext context, String apkUrl) async {
   if (context.mounted) Navigator.of(context).pop();
 }
 
-class SettingsScreen extends ConsumerWidget {
+class SettingsScreen extends ConsumerStatefulWidget {
   const SettingsScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    return Scaffold(
+  ConsumerState<SettingsScreen> createState() => _SettingsScreenState();
+}
+
+class _SettingsScreenState extends ConsumerState<SettingsScreen> {
+  @override
+  Widget build(BuildContext context) {
+    final webRemote = ref.watch(webRemoteServerProvider);
+    return CallbackShortcuts(
+      bindings: {
+        const SingleActivator(LogicalKeyboardKey.escape): () {
+          if (Navigator.of(context).canPop()) {
+            Navigator.of(context).pop();
+          } else {
+            context.go('/');
+          }
+        },
+      },
+      child: Focus(
+        autofocus: true,
+        child: Scaffold(
       appBar: AppBar(
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
@@ -266,34 +308,16 @@ class SettingsScreen extends ConsumerWidget {
                 title: const Text('EPG Mappings'),
                 subtitle: const Text('Channel ↔ EPG mapping manager'),
                 trailing: const Icon(Icons.chevron_right),
-                onTap: () {},
+                onTap: () => context.push('/epg-mapping'),
               ),
-              ListTile(
-                leading: const Icon(Icons.refresh_rounded),
-                title: const Text('Auto-Refresh'),
-                subtitle: const Text('Every 12 hours'),
-                trailing: const Icon(Icons.chevron_right),
-                onTap: () {},
-              ),
+              _AutoRefreshTile(),
             ],
           ),
           _SettingsSection(
             title: 'Playback',
             children: [
-              ListTile(
-                leading: const Icon(Icons.speed_rounded),
-                title: const Text('Buffer Size'),
-                subtitle: const Text('Auto'),
-                trailing: const Icon(Icons.chevron_right),
-                onTap: () {},
-              ),
-              ListTile(
-                leading: const Icon(Icons.swap_horizontal_circle_rounded),
-                title: const Text('Failover Mode'),
-                subtitle: const Text('Cold (switch on buffering)'),
-                trailing: const Icon(Icons.chevron_right),
-                onTap: () {},
-              ),
+              _BufferSizeTile(),
+              _FailoverModeTile(),
             ],
           ),
           _SettingsSection(
@@ -308,16 +332,25 @@ class SettingsScreen extends ConsumerWidget {
               SwitchListTile(
                 secondary: const Icon(Icons.web_rounded),
                 title: const Text('Web Remote'),
-                subtitle: const Text('Allow control from phone browser'),
-                value: false,
-                onChanged: (value) {},
+                subtitle: Text(webRemote.isRunning
+                    ? 'Running on port ${webRemote.port} — open http://<your-ip>:${webRemote.port} on your phone'
+                    : 'Allow control from phone browser'),
+                value: webRemote.isRunning,
+                onChanged: (value) async {
+                  if (value) {
+                    await webRemote.start();
+                  } else {
+                    await webRemote.stop();
+                  }
+                  setState(() {});
+                },
               ),
               ListTile(
                 leading: const Icon(Icons.gamepad_rounded),
                 title: const Text('Button Mapping'),
                 subtitle: const Text('Customize remote buttons'),
                 trailing: const Icon(Icons.chevron_right),
-                onTap: () {},
+                onTap: () => _showButtonMappingInfo(context),
               ),
             ],
           ),
@@ -359,7 +392,7 @@ class SettingsScreen extends ConsumerWidget {
                 leading: const Icon(Icons.code_rounded),
                 title: const Text('Source Code'),
                 subtitle: const Text('github.com/clubanderson/clubTivi'),
-                onTap: () {},
+                onTap: () => launchUrl(Uri.parse('https://github.com/clubanderson/clubTivi')),
               ),
             ],
           ),
@@ -367,12 +400,42 @@ class SettingsScreen extends ConsumerWidget {
         ],
         ),
       ),
+    ),
+      ),
     );
   }
 
   void _openEpgSourcesScreen(BuildContext context, WidgetRef ref) {
     Navigator.of(context).push(
       MaterialPageRoute(builder: (_) => const _EpgSourcesScreen()),
+    );
+  }
+
+  void _showButtonMappingInfo(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Button Mapping'),
+        content: const Text(
+          'clubTivi supports the following remote controls:\n\n'
+          '• IR remotes (via Android TV / Fire TV)\n'
+          '• Bluetooth gamepads\n'
+          '• Keyboard shortcuts\n'
+          '• Web Remote (enable in Remote Control settings)\n\n'
+          'Default mappings:\n'
+          '  ↑↓←→  Navigate\n'
+          '  Enter/OK  Select / Play\n'
+          '  Esc/Back  Go back\n'
+          '  Space  Play/Pause\n'
+          '  M  Mute\n'
+          '  ↑↓ (in player)  Volume\n'
+          '  ←→ (in player)  Seek ±10s\n\n'
+          'Custom mapping editor coming soon.',
+        ),
+        actions: [
+          FilledButton(onPressed: () => Navigator.pop(ctx), child: const Text('OK')),
+        ],
+      ),
     );
   }
 }
@@ -531,7 +594,25 @@ class _EpgSourcesScreenState extends ConsumerState<_EpgSourcesScreen> {
                 final isRefreshing = _refreshing.contains(source.id);
                 final lastRefresh = source.lastRefresh;
                 return ListTile(
-                  title: Text(source.name),
+                  leading: Switch(
+                    value: source.enabled,
+                    onChanged: (val) async {
+                      final database = ref.read(databaseProvider);
+                      await database.upsertEpgSource(db.EpgSourcesCompanion(
+                        id: Value(source.id),
+                        name: Value(source.name),
+                        url: Value(source.url),
+                        enabled: Value(val),
+                      ));
+                      await _loadSources();
+                    },
+                  ),
+                  title: Text(
+                    source.name,
+                    style: TextStyle(
+                      color: source.enabled ? null : Colors.white38,
+                    ),
+                  ),
                   subtitle: Text(
                     '${source.url}\n'
                     'Last refresh: ${lastRefresh != null ? _formatTime(lastRefresh) : 'Never'}',
@@ -747,6 +828,168 @@ class _TimeFormatTileState extends State<_TimeFormatTile> {
         final prefs = await SharedPreferences.getInstance();
         await prefs.setBool('use_24_hour_time', value);
         setState(() => _use24Hour = value);
+      },
+    );
+  }
+}
+
+class _AutoRefreshTile extends StatefulWidget {
+  @override
+  State<_AutoRefreshTile> createState() => _AutoRefreshTileState();
+}
+
+class _AutoRefreshTileState extends State<_AutoRefreshTile> {
+  int _hours = 12;
+  static const _key = 'epg_auto_refresh_hours';
+  static const _options = [1, 4, 6, 12, 24, 48];
+
+  @override
+  void initState() {
+    super.initState();
+    SharedPreferences.getInstance().then((prefs) {
+      if (mounted) setState(() => _hours = prefs.getInt(_key) ?? 12);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ListTile(
+      leading: const Icon(Icons.refresh_rounded),
+      title: const Text('Auto-Refresh'),
+      subtitle: Text('Every $_hours hours'),
+      trailing: const Icon(Icons.chevron_right),
+      onTap: () async {
+        final picked = await showDialog<int>(
+          context: context,
+          builder: (ctx) => SimpleDialog(
+            title: const Text('Auto-Refresh Interval'),
+            children: [
+              for (final h in _options)
+                RadioListTile<int>(
+                  title: Text('Every $h hour${h == 1 ? '' : 's'}'),
+                  value: h,
+                  groupValue: _hours,
+                  onChanged: (v) => Navigator.pop(ctx, v),
+                ),
+            ],
+          ),
+        );
+        if (picked != null) {
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.setInt(_key, picked);
+          setState(() => _hours = picked);
+        }
+      },
+    );
+  }
+}
+
+class _BufferSizeTile extends StatefulWidget {
+  @override
+  State<_BufferSizeTile> createState() => _BufferSizeTileState();
+}
+
+class _BufferSizeTileState extends State<_BufferSizeTile> {
+  String _buffer = 'Auto';
+  static const _key = 'playback_buffer_size';
+  static const _options = {'Auto': 'Auto', '1 MB': '1', '2 MB': '2', '4 MB': '4', '8 MB': '8', '16 MB': '16'};
+
+  @override
+  void initState() {
+    super.initState();
+    SharedPreferences.getInstance().then((prefs) {
+      if (mounted) setState(() => _buffer = prefs.getString(_key) ?? 'Auto');
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ListTile(
+      leading: const Icon(Icons.speed_rounded),
+      title: const Text('Buffer Size'),
+      subtitle: Text(_buffer),
+      trailing: const Icon(Icons.chevron_right),
+      onTap: () async {
+        final picked = await showDialog<String>(
+          context: context,
+          builder: (ctx) => SimpleDialog(
+            title: const Text('Buffer Size'),
+            children: [
+              for (final entry in _options.entries)
+                RadioListTile<String>(
+                  title: Text(entry.key),
+                  value: entry.key,
+                  groupValue: _buffer,
+                  onChanged: (v) => Navigator.pop(ctx, v),
+                ),
+            ],
+          ),
+        );
+        if (picked != null) {
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.setString(_key, picked);
+          setState(() => _buffer = picked);
+        }
+      },
+    );
+  }
+}
+
+class _FailoverModeTile extends StatefulWidget {
+  @override
+  State<_FailoverModeTile> createState() => _FailoverModeTileState();
+}
+
+class _FailoverModeTileState extends State<_FailoverModeTile> {
+  String _mode = 'cold';
+  static const _key = 'failover_mode';
+  static const _options = {
+    'cold': 'Cold (switch on buffering)',
+    'warm': 'Warm (background probes)',
+    'off': 'Off',
+  };
+
+  @override
+  void initState() {
+    super.initState();
+    SharedPreferences.getInstance().then((prefs) {
+      if (mounted) setState(() => _mode = prefs.getString(_key) ?? 'cold');
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ListTile(
+      leading: const Icon(Icons.swap_horizontal_circle_rounded),
+      title: const Text('Failover Mode'),
+      subtitle: Text(_options[_mode] ?? _mode),
+      trailing: const Icon(Icons.chevron_right),
+      onTap: () async {
+        final picked = await showDialog<String>(
+          context: context,
+          builder: (ctx) => SimpleDialog(
+            title: const Text('Failover Mode'),
+            children: [
+              for (final entry in _options.entries)
+                RadioListTile<String>(
+                  title: Text(entry.value),
+                  subtitle: entry.key == 'warm'
+                      ? const Text('Monitors alternate streams in background', style: TextStyle(fontSize: 12))
+                      : entry.key == 'cold'
+                          ? const Text('Switches only when buffering detected', style: TextStyle(fontSize: 12))
+                          : null,
+                  value: entry.key,
+                  groupValue: _mode,
+                  onChanged: (v) => Navigator.pop(ctx, v),
+                ),
+            ],
+          ),
+        );
+        if (picked != null) {
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.setString(_key, picked);
+          setState(() => _mode = picked);
+        }
       },
     );
   }

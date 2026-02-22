@@ -175,7 +175,7 @@ class _ShowDetailScreenState extends ConsumerState<ShowDetailScreen> {
       slivers: [
         // Backdrop + back button
         SliverAppBar(
-          expandedHeight: 200,
+          expandedHeight: 240,
           pinned: true,
           backgroundColor: bgColor,
           leading: IconButton(

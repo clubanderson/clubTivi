@@ -296,7 +296,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
             fit: StackFit.expand,
             children: [
               // Video — fill entire screen
-              Video(controller: playerService.videoController),
+              Video(controller: playerService.videoController, controls: NoVideoControls),
 
               // Overlay
               if (_showOverlay) ...[

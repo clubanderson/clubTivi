@@ -1092,22 +1092,12 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
             },
           ),
           IconButton(
-            icon: Icon(_showGuideView ? Icons.list_rounded : Icons.calendar_view_week_rounded, color: Colors.white70),
-            tooltip: _showGuideView ? 'Channel List' : 'Program Guide',
-            onPressed: () => setState(() => _showGuideView = !_showGuideView),
-          ),
-          IconButton(
             icon: const Icon(Icons.dns_rounded, color: Colors.white70),
             tooltip: 'Providers',
             onPressed: () async {
               await context.push('/providers');
               if (mounted) _loadChannels();
             },
-          ),
-          IconButton(
-            icon: const Icon(Icons.link_rounded, color: Colors.white70),
-            tooltip: 'EPG Mappings',
-            onPressed: () => context.push('/epg-mapping'),
           ),
           IconButton(
             icon: const Icon(Icons.settings_rounded, color: Colors.white70),
