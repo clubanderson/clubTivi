@@ -1,4 +1,5 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-permission android:name="android.permission.INTERNET"/>
     <!-- Android TV: touchscreen is optional (TV has no touchscreen) -->
     <uses-feature android:name="android.hardware.touchscreen" android:required="false"/>
     <!-- Android TV: declare Leanback support (required="false" so phone/tablet still works) -->

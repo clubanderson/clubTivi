@@ -15,6 +15,8 @@ Future<bool?> showAddProviderDialog(BuildContext context) {
   );
 }
 
+enum _ProviderType { m3u, xtream }
+
 class _AddProviderPage extends ConsumerStatefulWidget {
   const _AddProviderPage();
 
@@ -22,11 +24,9 @@ class _AddProviderPage extends ConsumerStatefulWidget {
   ConsumerState<_AddProviderPage> createState() => _AddProviderPageState();
 }
 
-class _AddProviderPageState extends ConsumerState<_AddProviderPage>
-    with SingleTickerProviderStateMixin {
-  late final TabController _tabController;
-  final _m3uFormKey = GlobalKey<FormState>();
-  final _xtreamFormKey = GlobalKey<FormState>();
+class _AddProviderPageState extends ConsumerState<_AddProviderPage> {
+  final _formKey = GlobalKey<FormState>();
+  _ProviderType _type = _ProviderType.m3u;
 
   // M3U fields
   final _m3uName = TextEditingController();
@@ -41,14 +41,7 @@ class _AddProviderPageState extends ConsumerState<_AddProviderPage>
   bool _loading = false;
 
   @override
-  void initState() {
-    super.initState();
-    _tabController = TabController(length: 2, vsync: this);
-  }
-
-  @override
   void dispose() {
-    _tabController.dispose();
     _m3uName.dispose();
     _m3uUrl.dispose();
     _xtreamName.dispose();
@@ -82,30 +75,29 @@ class _AddProviderPageState extends ConsumerState<_AddProviderPage>
     return null;
   }
 
-  Future<void> _submitM3u() async {
-    if (!_m3uFormKey.currentState!.validate()) return;
-    await _addProvider(() {
-      final manager = ref.read(providerManagerProvider);
-      return manager.addM3uProvider(
-        id: _generateId(_m3uName.text.trim()),
-        name: _m3uName.text.trim(),
-        url: _m3uUrl.text.trim(),
-      );
-    });
-  }
-
-  Future<void> _submitXtream() async {
-    if (!_xtreamFormKey.currentState!.validate()) return;
-    await _addProvider(() {
-      final manager = ref.read(providerManagerProvider);
-      return manager.addXtreamProvider(
-        id: _generateId(_xtreamName.text.trim()),
-        name: _xtreamName.text.trim(),
-        url: _xtreamUrl.text.trim(),
-        username: _xtreamUser.text.trim(),
-        password: _xtreamPass.text.trim(),
-      );
-    });
+  Future<void> _submit() async {
+    if (!_formKey.currentState!.validate()) return;
+    if (_type == _ProviderType.m3u) {
+      await _addProvider(() {
+        final manager = ref.read(providerManagerProvider);
+        return manager.addM3uProvider(
+          id: _generateId(_m3uName.text.trim()),
+          name: _m3uName.text.trim(),
+          url: _m3uUrl.text.trim(),
+        );
+      });
+    } else {
+      await _addProvider(() {
+        final manager = ref.read(providerManagerProvider);
+        return manager.addXtreamProvider(
+          id: _generateId(_xtreamName.text.trim()),
+          name: _xtreamName.text.trim(),
+          url: _xtreamUrl.text.trim(),
+          username: _xtreamUser.text.trim(),
+          password: _xtreamPass.text.trim(),
+        );
+      });
+    }
   }
 
   Future<void> _addProvider(Future<void> Function() action) async {
@@ -172,136 +164,132 @@ class _AddProviderPageState extends ConsumerState<_AddProviderPage>
         ),
         title: const Text('Add Provider'),
       ),
-      body: Column(
-        children: [
-          TabBar(
-            controller: _tabController,
-            tabs: const [
-              Tab(text: 'M3U Playlist'),
-              Tab(text: 'Xtream Codes'),
-            ],
-          ),
-          Expanded(
-            child: TabBarView(
-              controller: _tabController,
-              children: [
-                _buildM3uTab(),
-                _buildXtreamTab(),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildM3uTab() {
-    return Form(
-      key: _m3uFormKey,
-      child: FocusTraversalGroup(
+      body: Form(
+        key: _formKey,
         child: ListView(
           padding: const EdgeInsets.all(20),
           children: [
-            TextFormField(
-              controller: _m3uName,
+            // Provider type dropdown — D-pad navigable as a form field
+            DropdownButtonFormField<_ProviderType>(
+              value: _type,
               autofocus: true,
               decoration: const InputDecoration(
-                labelText: 'Provider Name',
-                hintText: 'e.g. My IPTV',
+                labelText: 'Provider Type',
+                prefixIcon: Icon(Icons.live_tv),
               ),
-              validator: _validateRequired,
-              textInputAction: TextInputAction.next,
-            ),
-            const SizedBox(height: 16),
-            TextFormField(
-              controller: _m3uUrl,
-              decoration: const InputDecoration(
-                labelText: 'M3U URL',
-                hintText: 'http://...',
-              ),
-              validator: _validateUrl,
-              keyboardType: TextInputType.url,
-              textInputAction: TextInputAction.done,
-              onFieldSubmitted: (_) => _submitM3u(),
-            ),
-            const SizedBox(height: 8),
-            Align(
-              alignment: Alignment.centerRight,
-              child: TextButton.icon(
-                onPressed: () => _pasteUrl(_m3uUrl),
-                icon: const Icon(Icons.paste, size: 18),
-                label: const Text('Paste URL'),
-              ),
-            ),
-            const SizedBox(height: 16),
-            _buildSubmitButton(onPressed: _submitM3u),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildXtreamTab() {
-    return Form(
-      key: _xtreamFormKey,
-      child: FocusTraversalGroup(
-        child: ListView(
-          padding: const EdgeInsets.all(20),
-          children: [
-            TextFormField(
-              controller: _xtreamName,
-              decoration: const InputDecoration(
-                labelText: 'Provider Name',
-                hintText: 'e.g. My Xtream',
-              ),
-              validator: _validateRequired,
-              textInputAction: TextInputAction.next,
-            ),
-            const SizedBox(height: 16),
-            TextFormField(
-              controller: _xtreamUrl,
-              decoration: const InputDecoration(
-                labelText: 'Server URL',
-                hintText: 'http://...',
-              ),
-              validator: _validateUrl,
-              keyboardType: TextInputType.url,
-              textInputAction: TextInputAction.next,
-            ),
-            const SizedBox(height: 16),
-            TextFormField(
-              controller: _xtreamUser,
-              decoration: const InputDecoration(
-                labelText: 'Username',
-              ),
-              validator: _validateRequired,
-              textInputAction: TextInputAction.next,
-            ),
-            const SizedBox(height: 16),
-            TextFormField(
-              controller: _xtreamPass,
-              decoration: const InputDecoration(
-                labelText: 'Password',
-              ),
-              obscureText: true,
-              validator: _validateRequired,
-              textInputAction: TextInputAction.done,
-              onFieldSubmitted: (_) => _submitXtream(),
+              dropdownColor: const Color(0xFF1A1A2E),
+              items: const [
+                DropdownMenuItem(
+                  value: _ProviderType.m3u,
+                  child: Text('M3U Playlist'),
+                ),
+                DropdownMenuItem(
+                  value: _ProviderType.xtream,
+                  child: Text('Xtream Codes'),
+                ),
+              ],
+              onChanged: (v) {
+                if (v != null) setState(() => _type = v);
+              },
             ),
             const SizedBox(height: 24),
-            _buildSubmitButton(onPressed: _submitXtream),
+            // Fields change based on type
+            if (_type == _ProviderType.m3u) ..._buildM3uFields(),
+            if (_type == _ProviderType.xtream) ..._buildXtreamFields(),
+            const SizedBox(height: 24),
+            _buildSubmitButton(),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildSubmitButton({required VoidCallback onPressed}) {
+  List<Widget> _buildM3uFields() {
+    return [
+      TextFormField(
+        controller: _m3uName,
+        decoration: const InputDecoration(
+          labelText: 'Provider Name',
+          hintText: 'e.g. My IPTV',
+        ),
+        validator: _validateRequired,
+        textInputAction: TextInputAction.next,
+      ),
+      const SizedBox(height: 16),
+      TextFormField(
+        controller: _m3uUrl,
+        decoration: const InputDecoration(
+          labelText: 'M3U URL',
+          hintText: 'http://...',
+        ),
+        validator: _validateUrl,
+        keyboardType: TextInputType.url,
+        textInputAction: TextInputAction.done,
+        onFieldSubmitted: (_) => _submit(),
+      ),
+      const SizedBox(height: 8),
+      Align(
+        alignment: Alignment.centerRight,
+        child: TextButton.icon(
+          onPressed: () => _pasteUrl(_m3uUrl),
+          icon: const Icon(Icons.paste, size: 18),
+          label: const Text('Paste URL'),
+        ),
+      ),
+    ];
+  }
+
+  List<Widget> _buildXtreamFields() {
+    return [
+      TextFormField(
+        controller: _xtreamName,
+        decoration: const InputDecoration(
+          labelText: 'Provider Name',
+          hintText: 'e.g. My Xtream',
+        ),
+        validator: _validateRequired,
+        textInputAction: TextInputAction.next,
+      ),
+      const SizedBox(height: 16),
+      TextFormField(
+        controller: _xtreamUrl,
+        decoration: const InputDecoration(
+          labelText: 'Server URL',
+          hintText: 'http://...',
+        ),
+        validator: _validateUrl,
+        keyboardType: TextInputType.url,
+        textInputAction: TextInputAction.next,
+      ),
+      const SizedBox(height: 16),
+      TextFormField(
+        controller: _xtreamUser,
+        decoration: const InputDecoration(
+          labelText: 'Username',
+        ),
+        validator: _validateRequired,
+        textInputAction: TextInputAction.next,
+      ),
+      const SizedBox(height: 16),
+      TextFormField(
+        controller: _xtreamPass,
+        decoration: const InputDecoration(
+          labelText: 'Password',
+        ),
+        obscureText: true,
+        validator: _validateRequired,
+        textInputAction: TextInputAction.done,
+        onFieldSubmitted: (_) => _submit(),
+      ),
+    ];
+  }
+
+  Widget _buildSubmitButton() {
     const accent = Color(0xFF6C5CE7);
     return SizedBox(
       height: 48,
       child: FilledButton(
-        onPressed: _loading ? null : onPressed,
+        onPressed: _loading ? null : _submit,
         style: FilledButton.styleFrom(backgroundColor: accent),
         child: _loading
             ? const SizedBox(
