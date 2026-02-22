@@ -1092,22 +1092,12 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
             },
           ),
           IconButton(
-            icon: Icon(_showGuideView ? Icons.list_rounded : Icons.calendar_view_week_rounded, color: Colors.white70),
-            tooltip: _showGuideView ? 'Channel List' : 'Program Guide',
-            onPressed: () => setState(() => _showGuideView = !_showGuideView),
-          ),
-          IconButton(
             icon: const Icon(Icons.dns_rounded, color: Colors.white70),
             tooltip: 'Providers',
             onPressed: () async {
               await context.push('/providers');
               if (mounted) _loadChannels();
             },
-          ),
-          IconButton(
-            icon: const Icon(Icons.link_rounded, color: Colors.white70),
-            tooltip: 'EPG Mappings',
-            onPressed: () => context.push('/epg-mapping'),
           ),
           IconButton(
             icon: const Icon(Icons.settings_rounded, color: Colors.white70),
@@ -1202,21 +1192,7 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
                               controller: playerService.videoController,
                               controls: NoVideoControls,
                             ),
-                            if (_showOverlay && _previewChannel != null)
-                              ChannelInfoOverlay(
-                                providerName: _getProviderName(_previewChannel!.providerId),
-                                channelName: _previewChannel!.name,
-                                channelLogo: _previewChannel!.tvgLogo,
-                                groupTitle: _previewChannel!.groupTitle,
-                                currentProgramme: programme?.title,
-                                currentProgrammeTime: _programmeTimeRange(programme, timeshiftHours: _epgTimeshifts[_previewChannel!.id] ?? 0),
-                                nextProgramme: nextProg?.title,
-                                nextProgrammeTime: _programmeTimeRange(nextProg, timeshiftHours: _epgTimeshifts[_previewChannel!.id] ?? 0),
-                                playerService: playerService,
-                                onDismissed: () {
-                                  if (mounted) setState(() => _showOverlay = false);
-                                },
-                              ),
+                            // Channel info overlay removed — info shown in panel to the right
                             if (_showVolumeOverlay)
                               Positioned(
                                 top: 8,
@@ -1824,7 +1800,8 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
             if (event.logicalKey == LogicalKeyboardKey.select ||
                 event.logicalKey == LogicalKeyboardKey.enter) {
               setState(() {
-                if (filterKey != null) {
+                // Only change channel list if provider has no subcategories
+                if (filterKey != null && children.isEmpty) {
                   _selectedGroup = filterKey;
                   _applyFilters();
                   _saveSession();
@@ -1845,7 +1822,8 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
               return InkWell(
                 onTap: () {
                   setState(() {
-                    if (filterKey != null) {
+                    // Only change channel list if provider has no subcategories
+                    if (filterKey != null && children.isEmpty) {
                       _selectedGroup = filterKey;
                       _applyFilters();
                       _saveSession();

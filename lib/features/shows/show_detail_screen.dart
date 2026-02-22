@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:go_router/go_router.dart';
+import 'package:palette_generator/palette_generator.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../data/models/show.dart';
@@ -27,6 +28,8 @@ class _ShowDetailScreenState extends ConsumerState<ShowDetailScreen> {
   bool _resolving = false;
   int _lastSeasonCount = 0; // track when seasons change
   final _seasonScrollController = ScrollController();
+  Color? _dominantColor; // extracted from backdrop image
+  String? _lastBackdropUrl; // avoid re-extracting for the same URL
 
   static const _seasonPrefPrefix = 'show_last_season_';
 
@@ -77,6 +80,24 @@ class _ShowDetailScreenState extends ConsumerState<ShowDetailScreen> {
     await prefs.setInt('$_seasonPrefPrefix${widget.traktId}', season);
   }
 
+  /// Extract dominant color from backdrop for subtle page tint.
+  void _extractDominantColor(String? url) {
+    if (url == null || url.isEmpty || url == _lastBackdropUrl) return;
+    _lastBackdropUrl = url;
+    PaletteGenerator.fromImageProvider(
+      CachedNetworkImageProvider(url),
+      maximumColorCount: 8,
+    ).then((palette) {
+      if (!mounted) return;
+      final color = palette.dominantColor?.color ??
+          palette.mutedColor?.color ??
+          palette.darkMutedColor?.color;
+      if (color != null) {
+        setState(() => _dominantColor = color);
+      }
+    }).catchError((_) {});
+  }
+
   @override
   void dispose() {
     _seasonScrollController.dispose();
@@ -91,7 +112,9 @@ class _ShowDetailScreenState extends ConsumerState<ShowDetailScreen> {
     );
 
     return Scaffold(
-      backgroundColor: const Color(0xFF0A0A1A),
+      backgroundColor: _dominantColor != null
+          ? Color.lerp(const Color(0xFF0A0A1A), _dominantColor!, 0.15)!
+          : const Color(0xFF0A0A1A),
       body: detailAsync.when(
         loading: () => _buildWithShow(widget.initialShow, loading: true),
         error: (err, _) => _buildError(err),
@@ -143,13 +166,18 @@ class _ShowDetailScreenState extends ConsumerState<ShowDetailScreen> {
         ? detail.seasons.map((s) => s.number).reduce((a, b) => a > b ? a : b)
         : 1);
     final show = detail.show;
+    // Extract dominant color from backdrop for page tint
+    _extractDominantColor(show.backdropUrl);
+    final bgColor = _dominantColor != null
+        ? Color.lerp(const Color(0xFF0A0A1A), _dominantColor!, 0.15)!
+        : const Color(0xFF0A0A1A);
     return CustomScrollView(
       slivers: [
         // Backdrop + back button
         SliverAppBar(
-          expandedHeight: 300,
+          expandedHeight: 240,
           pinned: true,
-          backgroundColor: const Color(0xFF0A0A1A),
+          backgroundColor: bgColor,
           leading: IconButton(
             icon: const Icon(Icons.arrow_back, color: Colors.white),
             onPressed: () => context.go('/shows'),
@@ -172,8 +200,8 @@ class _ShowDetailScreenState extends ConsumerState<ShowDetailScreen> {
                     gradient: LinearGradient(
                       begin: Alignment.topCenter,
                       end: Alignment.bottomCenter,
-                      colors: [Colors.transparent, Color(0xFF0A0A1A)],
-                      stops: [0.5, 1.0],
+                      colors: [Colors.transparent, Color(0xDD0A0A1A)],
+                      stops: [0.4, 1.0],
                     ),
                   ),
                 ),

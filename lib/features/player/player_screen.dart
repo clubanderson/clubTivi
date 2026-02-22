@@ -296,7 +296,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
             fit: StackFit.expand,
             children: [
               // Video — fill entire screen
-              Video(controller: playerService.videoController),
+              Video(controller: playerService.videoController, controls: NoVideoControls),
 
               // Overlay
               if (_showOverlay) ...[
@@ -414,7 +414,6 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
                       ),
                     ),
                     child: Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
                       children: [
                         StreamBuilder<bool>(
                           stream: playerService.playingStream,
@@ -447,6 +446,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
                             tooltip: 'Switch stream',
                             onPressed: _switchToNextStream,
                           ),
+                        const Spacer(),
                         IconButton(
                           icon: Icon(
                             ref.read(castServiceProvider).isCasting

@@ -36,16 +36,24 @@ class EpgAutoMapper {
         continue;
       }
 
-      // 24/7 channels: only allow exact tvg-id match, skip fuzzy matching
+      // 24/7 channels should not be matched with EPG guide at all —
+      // they loop content and don't have scheduled programming.
       final is247 = channel.displayName.contains('24/7') ||
-          channel.displayName.contains('24-7');
+          channel.displayName.contains('24-7') ||
+          (channel.groupTitle != null && (
+              channel.groupTitle!.contains('24/7') ||
+              channel.groupTitle!.contains('24-7')));
+
+      if (is247) {
+        unmapped++;
+        continue;
+      }
 
       final candidates = findCandidates(
         channel: channel,
         epgChannels: epgChannels,
         index: index,
         epgSourceId: epgSourceId,
-        exactOnly: is247,
       );
 
       if (candidates.isEmpty) {
