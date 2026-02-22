@@ -7,7 +7,7 @@ import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
 
 const _repo = 'clubanderson/clubTivi';
-const _currentVersion = '0.3.1';
+const _currentVersion = '0.4.0';
 
 class ReleaseInfo {
   final String tagName;

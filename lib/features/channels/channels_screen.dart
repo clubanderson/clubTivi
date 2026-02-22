@@ -74,6 +74,9 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
   bool _sidebarExpanded = true;
   Set<String> _expandedSections = {'favorites'};
   final _sidebarSearchController = TextEditingController();
+  final _sidebarFocusNode = FocusScopeNode(debugLabel: 'sidebar');
+  final _sidebarAllItemFocusNode = FocusNode(debugLabel: 'sidebar-all');
+  FocusNode? _firstChannelFocusNode;
   String _sidebarSearchQuery = '';
 
   // Top bar auto-hide
@@ -367,6 +370,8 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
     _searchController.dispose();
     _searchFocusNode.dispose();
     _sidebarSearchController.dispose();
+    _sidebarFocusNode.dispose();
+    _sidebarAllItemFocusNode.dispose();
     _channelListController.dispose();
     _guideScrollController.dispose();
     _guideIdleTimer?.cancel();
@@ -891,7 +896,7 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
     return PopScope(
       canPop: false,
       child: FocusTraversalGroup(
-        policy: WidgetOrderTraversalPolicy(),
+        policy: ReadingOrderTraversalPolicy(),
         child: Focus(
           focusNode: _focusNode,
           autofocus: !Platform.isAndroid,
@@ -899,27 +904,12 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
           onKeyEvent: (node, event) {
             if (event is! KeyDownEvent) return KeyEventResult.ignored;
             if (_searchFocusNode.hasFocus) return KeyEventResult.ignored;
-            final isAndroid = Platform.isAndroid;
             final key = event.logicalKey;
-            if (isAndroid) {
-              // Manually handle D-pad traversal to prevent focus from escaping the app
-              if (key == LogicalKeyboardKey.arrowUp ||
-                  key == LogicalKeyboardKey.arrowDown ||
-                  key == LogicalKeyboardKey.arrowLeft ||
-                  key == LogicalKeyboardKey.arrowRight) {
-                final direction = key == LogicalKeyboardKey.arrowUp
-                    ? TraversalDirection.up
-                    : key == LogicalKeyboardKey.arrowDown
-                        ? TraversalDirection.down
-                        : key == LogicalKeyboardKey.arrowLeft
-                            ? TraversalDirection.left
-                            : TraversalDirection.right;
-                final focused = FocusManager.instance.primaryFocus;
-                if (focused != null && node.context != null) {
-                  FocusTraversalGroup.of(node.context!).inDirection(focused, direction);
-                }
-                return KeyEventResult.handled;
-              }
+            // Let Flutter's spatial focus system handle D-pad arrows
+            if (key == LogicalKeyboardKey.arrowUp ||
+                key == LogicalKeyboardKey.arrowDown ||
+                key == LogicalKeyboardKey.arrowLeft ||
+                key == LogicalKeyboardKey.arrowRight) {
               return KeyEventResult.ignored;
             }
             _handleKeyEvent(event);
@@ -930,6 +920,7 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
             body: SafeArea(
               child: Column(
                 children: [
+                  if (!Platform.isAndroid) // TV: no top bar, use sidebar for nav
                   MouseRegion(
                     onEnter: (_) {
                       _mouseInTopBar = true;
@@ -979,7 +970,7 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
       body: SafeArea(
         child: Column(
           children: [
-            _buildTopBar(context),
+            if (!Platform.isAndroid) _buildTopBar(context),
             const Expanded(
               child: Center(
                 child: Column(
@@ -1018,8 +1009,7 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
   }
 
   Widget _buildTopBar(BuildContext context) {
-    return FocusTraversalGroup(
-      child: Padding(
+    return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       child: Row(
         children: [
@@ -1167,7 +1157,6 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
           ),
         ],
       ),
-    ),
     );
   }
 
@@ -1434,23 +1423,29 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
                               // Debug info
                               SizedBox(
                                 height: 28, width: 28,
-                                child: IconButton(
-                                  onPressed: () => ChannelDebugDialog.show(context, _previewChannel!, playerService, mappedEpgId: _getEpgId(_previewChannel!)),
-                                  icon: const Icon(Icons.info_outline, size: 16),
-                                  padding: EdgeInsets.zero,
-                                  color: Colors.white70,
-                                  tooltip: 'Channel debug info',
+                                child: ExcludeFocus(
+                                  excluding: Platform.isAndroid,
+                                  child: IconButton(
+                                    onPressed: () => ChannelDebugDialog.show(context, _previewChannel!, playerService, mappedEpgId: _getEpgId(_previewChannel!)),
+                                    icon: const Icon(Icons.info_outline, size: 16),
+                                    padding: EdgeInsets.zero,
+                                    color: Colors.white70,
+                                    tooltip: 'Channel debug info',
+                                  ),
                                 ),
                               ),
                               // Fullscreen
                               SizedBox(
                                 height: 28, width: 28,
-                                child: IconButton(
-                                  onPressed: () => _goFullscreen(_previewChannel!),
-                                  icon: const Icon(Icons.fullscreen_rounded, size: 16),
-                                  padding: EdgeInsets.zero,
-                                  color: Colors.white70,
-                                  tooltip: 'Fullscreen',
+                                child: ExcludeFocus(
+                                  excluding: Platform.isAndroid,
+                                  child: IconButton(
+                                    onPressed: () => _goFullscreen(_previewChannel!),
+                                    icon: const Icon(Icons.fullscreen_rounded, size: 16),
+                                    padding: EdgeInsets.zero,
+                                    color: Colors.white70,
+                                    tooltip: 'Fullscreen',
+                                  ),
                                 ),
                               ),
                             ],
@@ -1502,8 +1497,10 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
       duration: const Duration(milliseconds: 200),
       width: width,
       color: const Color(0xFF111127),
-      child: Column(
-        children: [
+      child: FocusScope(
+        node: _sidebarFocusNode,
+        child: Column(
+          children: [
           // Toggle button
           InkWell(
             onTap: () => setState(() => _sidebarExpanded = !_sidebarExpanded),
@@ -1565,6 +1562,27 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
           Expanded(
             child: _sidebarExpanded ? _buildSidebarTree() : _buildCollapsedSidebar(),
           ),
+          // TV navigation items (Providers, Settings) — only on Android TV
+          if (Platform.isAndroid) ...[
+            const Divider(height: 1, color: Colors.white10),
+            if (_sidebarExpanded) ...[
+              _buildSidebarNavItem(Icons.dns_rounded, 'Providers', () async {
+                await context.push('/providers');
+                if (mounted) _loadChannels();
+              }),
+              _buildSidebarNavItem(Icons.settings_rounded, 'Settings', () {
+                context.push('/settings');
+              }),
+            ] else ...[
+              _sidebarIcon(Icons.dns_rounded, 'Providers', false, () async {
+                await context.push('/providers');
+                if (mounted) _loadChannels();
+              }),
+              _sidebarIcon(Icons.settings_rounded, 'Settings', false, () {
+                context.push('/settings');
+              }),
+            ],
+          ],
           // Version watermark
           Padding(
             padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 8),
@@ -1580,6 +1598,7 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
             ),
           ),
         ],
+      ),
       ),
     );
   }
@@ -1609,14 +1628,81 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
     return Tooltip(
       message: tooltip,
       preferBelow: false,
-      child: InkWell(
-        onTap: onTap,
-        child: Container(
-          height: 36,
-          alignment: Alignment.center,
-          color: active ? Colors.white.withValues(alpha: 0.08) : Colors.transparent,
-          child: Icon(icon, size: 18, color: active ? Colors.white : Colors.white38),
+      child: Focus(
+        onKeyEvent: (node, event) {
+          if (event is! KeyDownEvent) return KeyEventResult.ignored;
+          if (event.logicalKey == LogicalKeyboardKey.arrowRight) {
+            if (_firstChannelFocusNode != null) {
+              _firstChannelFocusNode!.requestFocus();
+            }
+            return KeyEventResult.handled;
+          }
+          if (event.logicalKey == LogicalKeyboardKey.select ||
+              event.logicalKey == LogicalKeyboardKey.enter) {
+            onTap();
+            return KeyEventResult.handled;
+          }
+          return KeyEventResult.ignored;
+        },
+        child: Builder(
+          builder: (context) {
+            final hasFocus = Focus.of(context).hasFocus;
+            return InkWell(
+              onTap: onTap,
+              child: Container(
+                height: 36,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: active ? Colors.white.withValues(alpha: 0.08) : Colors.transparent,
+                  border: hasFocus ? Border.all(color: Colors.purpleAccent, width: 1.5) : null,
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: Icon(icon, size: 18, color: active ? Colors.white : Colors.white38),
+              ),
+            );
+          },
         ),
+      ),
+    );
+  }
+
+  Widget _buildSidebarNavItem(IconData icon, String label, VoidCallback onTap) {
+    return Focus(
+      onKeyEvent: (node, event) {
+        if (event is! KeyDownEvent) return KeyEventResult.ignored;
+        if (event.logicalKey == LogicalKeyboardKey.arrowRight) {
+          if (_firstChannelFocusNode != null) _firstChannelFocusNode!.requestFocus();
+          return KeyEventResult.handled;
+        }
+        if (event.logicalKey == LogicalKeyboardKey.select ||
+            event.logicalKey == LogicalKeyboardKey.enter) {
+          onTap();
+          return KeyEventResult.handled;
+        }
+        return KeyEventResult.ignored;
+      },
+      child: Builder(
+        builder: (context) {
+          final hasFocus = Focus.of(context).hasFocus;
+          return InkWell(
+            onTap: onTap,
+            child: Container(
+              height: 36,
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              decoration: BoxDecoration(
+                border: hasFocus ? Border.all(color: Colors.purpleAccent, width: 1.5) : null,
+                borderRadius: BorderRadius.circular(4),
+              ),
+              child: Row(
+                children: [
+                  Icon(icon, size: 16, color: Colors.white54),
+                  const SizedBox(width: 8),
+                  Text(label, style: const TextStyle(fontSize: 12, color: Colors.white54)),
+                ],
+              ),
+            ),
+          );
+        },
       ),
     );
   }
@@ -1640,7 +1726,7 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
       padding: const EdgeInsets.symmetric(vertical: 4),
       children: [
         if (showAll)
-          _buildTreeItem('All (${_allChannels.length})', 'All', Icons.grid_view_rounded, indent: 0),
+          _buildTreeItem('All (${_allChannels.length})', 'All', Icons.grid_view_rounded, indent: 0, focusNode: _sidebarAllItemFocusNode),
         if (showFavSection)
           _buildTreeSection(
             'favorites',
@@ -1726,49 +1812,84 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        InkWell(
-          onTap: () {
-            setState(() {
-              // If filterKey provided, clicking header selects that filter
-              if (filterKey != null) {
-                _selectedGroup = filterKey;
-                _applyFilters();
-                _saveSession();
+        Focus(
+          onKeyEvent: (node, event) {
+            if (event is! KeyDownEvent) return KeyEventResult.ignored;
+            if (event.logicalKey == LogicalKeyboardKey.arrowRight) {
+              if (_firstChannelFocusNode != null) {
+                _firstChannelFocusNode!.requestFocus();
               }
-              // Toggle expand/collapse
-              if (expanded) {
-                _expandedSections.remove(sectionKey);
-              } else {
-                _expandedSections.add(sectionKey);
-              }
-            });
+              return KeyEventResult.handled;
+            }
+            if (event.logicalKey == LogicalKeyboardKey.select ||
+                event.logicalKey == LogicalKeyboardKey.enter) {
+              setState(() {
+                if (filterKey != null) {
+                  _selectedGroup = filterKey;
+                  _applyFilters();
+                  _saveSession();
+                }
+                if (expanded) {
+                  _expandedSections.remove(sectionKey);
+                } else {
+                  _expandedSections.add(sectionKey);
+                }
+              });
+              return KeyEventResult.handled;
+            }
+            return KeyEventResult.ignored;
           },
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-            child: Row(
-              children: [
-                Icon(
-                  expanded ? Icons.expand_more_rounded : Icons.chevron_right_rounded,
-                  size: 16,
-                  color: Colors.white38,
-                ),
-                const SizedBox(width: 4),
-                Icon(icon, size: 14, color: isSelected ? Colors.amber : Colors.white54),
-                const SizedBox(width: 6),
-                Expanded(
-                  child: Text(
-                    label,
-                    style: TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w600,
-                      color: isSelected ? Colors.white : Colors.white54,
-                      letterSpacing: 0.5,
-                    ),
-                    overflow: TextOverflow.ellipsis,
+          child: Builder(
+            builder: (context) {
+              final hasFocus = Focus.of(context).hasFocus;
+              return InkWell(
+                onTap: () {
+                  setState(() {
+                    if (filterKey != null) {
+                      _selectedGroup = filterKey;
+                      _applyFilters();
+                      _saveSession();
+                    }
+                    if (expanded) {
+                      _expandedSections.remove(sectionKey);
+                    } else {
+                      _expandedSections.add(sectionKey);
+                    }
+                  });
+                },
+                child: Container(
+                  decoration: BoxDecoration(
+                    border: hasFocus ? Border.all(color: Colors.purpleAccent, width: 1.5) : null,
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                  child: Row(
+                    children: [
+                      Icon(
+                        expanded ? Icons.expand_more_rounded : Icons.chevron_right_rounded,
+                        size: 16,
+                        color: Colors.white38,
+                      ),
+                      const SizedBox(width: 4),
+                      Icon(icon, size: 14, color: isSelected ? Colors.amber : Colors.white54),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: Text(
+                          label,
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                            color: isSelected ? Colors.white : Colors.white54,
+                            letterSpacing: 0.5,
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-              ],
-            ),
+              );
+            },
           ),
         ),
         if (expanded) ...children,
@@ -1776,44 +1897,76 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
     );
   }
 
-  Widget _buildTreeItem(String label, String filterKey, IconData? icon, {int indent = 0, VoidCallback? onSecondaryTap, Widget? trailing}) {
+  Widget _buildTreeItem(String label, String filterKey, IconData? icon, {int indent = 0, VoidCallback? onSecondaryTap, Widget? trailing, FocusNode? focusNode}) {
     final isSelected = _selectedGroup == filterKey;
     return GestureDetector(
       onSecondaryTap: onSecondaryTap,
-      child: InkWell(
-        onTap: () {
-          setState(() {
-            _selectedGroup = filterKey;
-            _applyFilters();
-          });
-          _saveSession();
+      child: Focus(
+        focusNode: focusNode,
+        onKeyEvent: (node, event) {
+          if (event is! KeyDownEvent) return KeyEventResult.ignored;
+          if (event.logicalKey == LogicalKeyboardKey.arrowRight) {
+            // RIGHT from sidebar → focus channel list
+            if (_firstChannelFocusNode != null) {
+              _firstChannelFocusNode!.requestFocus();
+            }
+            return KeyEventResult.handled;
+          }
+          if (event.logicalKey == LogicalKeyboardKey.select ||
+              event.logicalKey == LogicalKeyboardKey.enter) {
+            setState(() {
+              _selectedGroup = filterKey;
+              _applyFilters();
+            });
+            _saveSession();
+            return KeyEventResult.handled;
+          }
+          return KeyEventResult.ignored;
         },
-        child: Container(
-          height: 30,
-          padding: EdgeInsets.only(left: 12.0 + (indent * 16.0), right: 8),
-          color: isSelected ? Colors.white.withValues(alpha: 0.1) : Colors.transparent,
-          alignment: Alignment.centerLeft,
-          child: Row(
-            children: [
-              if (icon != null) ...[
-                Icon(icon, size: 13,
-                    color: isSelected ? Colors.amber : Colors.white38),
-                const SizedBox(width: 6),
-              ],
-              Expanded(
-                child: Text(
-                  label,
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: isSelected ? Colors.white : Colors.white60,
-                    fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
-                  ),
-                  overflow: TextOverflow.ellipsis,
+        child: Builder(
+          builder: (context) {
+            final hasFocus = Focus.of(context).hasFocus;
+            return InkWell(
+              onTap: () {
+                setState(() {
+                  _selectedGroup = filterKey;
+                  _applyFilters();
+                });
+                _saveSession();
+              },
+              child: Container(
+                height: 30,
+                padding: EdgeInsets.only(left: 12.0 + (indent * 16.0), right: 8),
+                decoration: BoxDecoration(
+                  color: isSelected ? Colors.white.withValues(alpha: 0.1) : Colors.transparent,
+                  border: hasFocus ? Border.all(color: Colors.purpleAccent, width: 1.5) : null,
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                alignment: Alignment.centerLeft,
+                child: Row(
+                  children: [
+                    if (icon != null) ...[
+                      Icon(icon, size: 13,
+                          color: isSelected ? Colors.amber : Colors.white38),
+                      const SizedBox(width: 6),
+                    ],
+                    Expanded(
+                      child: Text(
+                        label,
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: isSelected ? Colors.white : Colors.white60,
+                          fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    if (trailing != null) trailing,
+                  ],
                 ),
               ),
-              if (trailing != null) trailing,
-            ],
-          ),
+            );
+          },
         ),
       ),
     );
@@ -1850,8 +2003,7 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
       );
     }
 
-    final listWidget = FocusTraversalGroup(
-      child: ListView.builder(
+    final listWidget = ListView.builder(
       controller: _channelListController,
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       itemCount: _filteredChannels.length,
@@ -1870,15 +2022,23 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
                 if (hasFocus && Platform.isAndroid) _selectChannel(index);
               },
               onKeyEvent: (node, event) {
+                // Track this node so sidebar can navigate back
+                if (index == 0) _firstChannelFocusNode = node;
                 if (event is! KeyDownEvent) return KeyEventResult.ignored;
                 final key = event.logicalKey;
+                // SELECT/ENTER → fullscreen
                 if (key == LogicalKeyboardKey.select ||
                     key == LogicalKeyboardKey.enter ||
                     key == LogicalKeyboardKey.gameButtonA) {
                   _goFullscreen(channel);
                   return KeyEventResult.handled;
                 }
-                return KeyEventResult.ignored;
+                // LEFT from channel list → focus sidebar
+                if (key == LogicalKeyboardKey.arrowLeft) {
+                  _sidebarAllItemFocusNode.requestFocus();
+                  return KeyEventResult.handled;
+                }
+                return KeyEventResult.ignored; // Let Flutter handle UP/DOWN naturally
               },
               child: Builder(
                 builder: (context) {
@@ -2007,7 +2167,6 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
           ),
         );
       },
-    ),
     );
 
     return Stack(
