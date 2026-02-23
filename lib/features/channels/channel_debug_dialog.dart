@@ -129,65 +129,51 @@ class _ChannelDebugDialogState extends State<ChannelDebugDialog> {
       .where((a) => _decisions[a.channel.id] != false)
       .length;
 
-  Future<void> _saveDecisions() async {
+  /// Accept a channel — immediately apply vanity name to lock it in.
+  Future<void> _acceptChannel(String channelId) async {
+    setState(() => _decisions[channelId] = true);
     try {
       final prefs = await SharedPreferences.getInstance();
-
-      // Save rejections
-      final rejectedJson = prefs.getString('channel_failover_rejected');
-      final rejected = rejectedJson != null
-          ? (jsonDecode(rejectedJson) as Map<String, dynamic>)
-          : <String, dynamic>{};
-      final myRejected = <String>[];
-      for (final entry in _decisions.entries) {
-        if (entry.value == false) myRejected.add(entry.key);
-      }
-      if (myRejected.isNotEmpty) {
-        rejected[widget.channel.id] = myRejected;
-      } else {
-        rejected.remove(widget.channel.id);
-      }
-      await prefs.setString('channel_failover_rejected', jsonEncode(rejected));
-
-      // Apply vanity name to accepted alternatives
       final vanityName = widget.vanityName ?? widget.channel.name;
       final vanityJson = prefs.getString('channel_vanity_names');
       final vanityMap = vanityJson != null
           ? (jsonDecode(vanityJson) as Map<String, dynamic>)
           : <String, dynamic>{};
-      for (final entry in _decisions.entries) {
-        if (entry.value == true) {
-          vanityMap[entry.key] = vanityName;
-        }
-      }
+      vanityMap[channelId] = vanityName;
       // Ensure current channel also has the vanity name
-      if (widget.vanityName != null) {
-        vanityMap[widget.channel.id] = widget.vanityName!;
-      }
+      vanityMap[widget.channel.id] = vanityName;
       await prefs.setString('channel_vanity_names', jsonEncode(vanityMap));
-
-      // Notify parent
-      final acceptedIds = _decisions.entries
-          .where((e) => e.value == true)
-          .map((e) => e.key)
-          .toList();
-      widget.onVanityApplied?.call(acceptedIds, vanityName);
-
-      if (mounted) {
-        setState(() => _hasChanges = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Failover group saved'), duration: Duration(seconds: 1)),
-        );
-      }
+      widget.onVanityApplied?.call([channelId], vanityName);
     } catch (e) {
-      debugPrint('Error saving failover decisions: $e');
+      debugPrint('Error accepting failover: $e');
     }
   }
 
+  /// Reject a channel — immediately persist rejection.
+  Future<void> _rejectChannel(String channelId) async {
+    setState(() => _decisions[channelId] = false);
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final rejectedJson = prefs.getString('channel_failover_rejected');
+      final rejected = rejectedJson != null
+          ? (jsonDecode(rejectedJson) as Map<String, dynamic>)
+          : <String, dynamic>{};
+      final myRejected = (rejected[widget.channel.id] as List<dynamic>?)
+              ?.cast<String>()
+              .toSet() ??
+          <String>{};
+      myRejected.add(channelId);
+      rejected[widget.channel.id] = myRejected.toList();
+      await prefs.setString('channel_failover_rejected', jsonEncode(rejected));
+    } catch (e) {
+      debugPrint('Error rejecting failover: $e');
+    }
+  }
+
+  /// Reset all decisions — clear rejections and re-discover.
   Future<void> _resetDecisions() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      // Clear rejections for this channel
       final rejectedJson = prefs.getString('channel_failover_rejected');
       if (rejectedJson != null) {
         final rejected = (jsonDecode(rejectedJson) as Map<String, dynamic>);
@@ -195,13 +181,7 @@ class _ChannelDebugDialogState extends State<ChannelDebugDialog> {
         await prefs.setString('channel_failover_rejected', jsonEncode(rejected));
       }
       if (mounted) {
-        setState(() {
-          _decisions.clear();
-          _hasChanges = false;
-        });
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Failover group reset'), duration: Duration(seconds: 1)),
-        );
+        setState(() => _decisions.clear());
       }
     } catch (e) {
       debugPrint('Error resetting failover decisions: $e');
@@ -407,9 +387,6 @@ class _ChannelDebugDialogState extends State<ChannelDebugDialog> {
                               fontWeight: FontWeight.bold),
                         ),
                         const Spacer(),
-                        if (_hasChanges)
-                          _actionButton('Save', Icons.check, const Color(0xFF00B894), _saveDecisions),
-                        const SizedBox(width: 4),
                         _actionButton('Reset', Icons.refresh, Colors.white38, _resetDecisions),
                       ],
                     ),
@@ -444,19 +421,13 @@ class _ChannelDebugDialogState extends State<ChannelDebugDialog> {
                               _iconBtn(
                                 icon: Icons.check_circle_outline,
                                 color: decision == true ? const Color(0xFF00B894) : Colors.white24,
-                                onTap: () => setState(() {
-                                  _decisions[alt.channel.id] = true;
-                                  _hasChanges = true;
-                                }),
+                                onTap: () => _acceptChannel(alt.channel.id),
                               ),
                               // Reject button
                               _iconBtn(
                                 icon: Icons.cancel_outlined,
                                 color: isRejected ? const Color(0xFFFF6B6B) : Colors.white24,
-                                onTap: () => setState(() {
-                                  _decisions[alt.channel.id] = false;
-                                  _hasChanges = true;
-                                }),
+                                onTap: () => _rejectChannel(alt.channel.id),
                               ),
                             ],
                           ),
