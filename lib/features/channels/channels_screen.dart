@@ -55,6 +55,7 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
   Set<String> _validEpgChannelIds = {};
   Map<String, String> _rawToPrefixedEpg = {}; // XMLTV channelId → prefixed id
   Map<String, String> _epgNameToId = {}; // normalized EPG displayName → prefixed id
+  Map<String, String> _epgCallSignToId = {}; // call sign (e.g. WABC) → prefixed id
   bool _showGuideView = true;
   final _searchController = TextEditingController();
   final _searchFocusNode = FocusNode();
@@ -115,6 +116,18 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
   List<db.FavoriteList> _favoriteLists = [];
   Set<String> _favoritedChannelIds = {};
 
+  // Multi-select mode for failover group creation
+  bool _multiSelectMode = false;
+  Set<String> _multiSelectedChannelIds = {};
+
+  // Failover groups state
+  List<db.FailoverGroup> _failoverGroups = [];
+  /// groupId → ordered list of channel IDs
+  Map<int, List<String>> _failoverGroupMembers = {};
+  /// channelId → list of group memberships (for fast player lookup)
+  Map<String, List<db.FailoverGroupMembership>> _failoverGroupIndex = {};
+  final Set<int> _expandedFailoverGroups = {};
+
   // Time format
   bool _use24HourTime = false;
   static const _kUse24HourTime = 'use_24_hour_time';
@@ -153,6 +166,21 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
             width: 250,
           ),
         );
+        // Update channel list selection to reflect the failover target
+        final newId = ps.lastFailoverChannelId;
+        if (newId != null) {
+          final idx = _filteredChannels.indexWhere((c) => c.id == newId);
+          if (idx >= 0 && idx != _selectedIndex) {
+            setState(() {
+              _previousIndex = _selectedIndex;
+              _selectedIndex = idx;
+              _previewChannel = _filteredChannels[idx];
+            });
+            if (_channelListController.hasClients) {
+              _scrollToIndex(idx);
+            }
+          }
+        }
       }
     };
     // Watch providers table — reload when providers or channels change
@@ -353,6 +381,31 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
         .trim();
   }
 
+  /// Extract a broadcast call-sign sort key from a channel name.
+  /// Channels with call signs (W/K + 2-3 letters) sort first (uppercase),
+  /// others sort by cleaned name (lowercase) so they come after.
+  static String _callSignSortKey(String name) {
+    // Strip provider prefixes like "US-P|", "US: ", "UK- ", "CA-", "MX-"
+    var s = name.replaceAll(RegExp(r'^[A-Z]{2}[\s:-]*[A-Z]*\|'), '');
+    s = s.replaceAll(RegExp(r'^(US|UK|CA|MX)[\s:-]+', caseSensitive: false), '');
+    // Strip bracketed tags [US], [SP], [H]
+    s = s.replaceAll(RegExp(r'\[.*?\]'), '');
+    // Strip quality tags
+    s = s.replaceAll(RegExp(r'\b(HD|FHD|SHD|SD|4K|UHD)\b', caseSensitive: false), '');
+    // Strip common location names
+    s = s.replaceAll(RegExp(r'\b(New York|Los Angeles|Chicago|Houston|Phoenix|Philadelphia|San Antonio|San Diego|Dallas|San Jose|Austin|Jacksonville|Fort Worth|Columbus|Charlotte|Indianapolis|San Francisco|Seattle|Denver|Washington|Nashville|Oklahoma City|El Paso|Boston|Portland|Las Vegas|Memphis|Louisville|Baltimore|Milwaukee|Albuquerque|Tucson|Fresno|Mesa|Sacramento|Atlanta|Kansas City|Colorado Springs|Omaha|Raleigh|Long Beach|Virginia Beach|Miami|Oakland|Minneapolis|Tampa|Tulsa|Arlington|New Orleans|Cleveland|Orlando|Cincinnati|Pittsburgh|Detroit|St\.? Louis)\b', caseSensitive: false), '');
+    s = s.trim();
+    // Try to find a broadcast call sign: W or K followed by 2-3 letters
+    final csMatch = RegExp(r'\b([WK][A-Z]{2,3})\b', caseSensitive: false).firstMatch(s);
+    if (csMatch != null) {
+      final cs = csMatch.group(1)!.toUpperCase();
+      // Validate it looks like a real call sign (not a common word)
+      if (cs.length >= 3 && cs.length <= 4) return cs;
+    }
+    // No call sign found — return cleaned name lowercase (sorts after uppercase)
+    return s.replaceAll(RegExp(r'[^a-zA-Z0-9]+'), ' ').trim().toLowerCase();
+  }
+
   /// Normalize a channel/EPG display name for fuzzy EPG matching.
   /// Strips country tags, quality tags, provider prefixes, call signs in parens.
   static String _normalizeForEpgMatch(String name) {
@@ -364,6 +417,34 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
         .replaceAll(RegExp(r'[^a-z0-9]+'), ' ')        // non-alphanum → space
         .trim()
         .replaceAll(RegExp(r'\s+'), ' ');
+  }
+
+  /// Extract a broadcast call sign (3-4 uppercase letters starting with W or K)
+  /// from a channel name. Checks parenthesized call signs like (WABC) first,
+  /// then tvgId patterns, then words in the name.
+  static final _callSignInParens = RegExp(r'\(([WK][A-Z]{2,3})\)');
+  static final _callSignInTvgId = RegExp(r'[.\-_]([wk][a-z]{2,3})(?:[.\-_]|$)', caseSensitive: false);
+  static final _callSignWord = RegExp(r'\b([WK][A-Z]{2,3})\b');
+
+  static String? _extractCallSign(String name, String? tvgId) {
+    // 1. Check parenthesized call sign: (WABC)
+    final parenMatch = _callSignInParens.firstMatch(name);
+    if (parenMatch != null) return parenMatch.group(1)!.toUpperCase();
+    // 2. Check tvgId for embedded call sign: abcwabc.us, ABC.(WABC).New.York
+    if (tvgId != null && tvgId.isNotEmpty) {
+      final tvgMatch = _callSignInTvgId.firstMatch(tvgId);
+      if (tvgMatch != null) return tvgMatch.group(1)!.toUpperCase();
+      // Also try last segment before .us: e.g. "cbs2wcbs.us" → extract WCBS
+      final dotParts = tvgId.replaceAll(RegExp(r'\.us$', caseSensitive: false), '').split('.');
+      for (final part in dotParts) {
+        final m = RegExp(r'([wk][a-z]{2,3})$', caseSensitive: false).firstMatch(part);
+        if (m != null) return m.group(1)!.toUpperCase();
+      }
+    }
+    // 3. Check name for standalone call sign word
+    final wordMatch = _callSignWord.firstMatch(name.replaceAll(RegExp(r'\(.*?\)'), ''));
+    if (wordMatch != null) return wordMatch.group(1)!.toUpperCase();
+    return null;
   }
 
   /// Clear the search bar and re-apply filters.
@@ -493,6 +574,15 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
     final favLists = await database.getAllFavoriteLists();
     final favChannelIds = await database.getAllFavoritedChannelIds();
 
+    // Load failover groups
+    final foGroups = await database.getAllFailoverGroups();
+    final foGroupMembers = <int, List<String>>{};
+    for (final g in foGroups) {
+      final members = await database.getFailoverGroupMembers(g.id);
+      foGroupMembers[g.id] = members.map((m) => m.channelId).toList();
+    }
+    final foGroupIndex = await database.getFailoverGroupIndex();
+
     // Pre-compute provider groups for sidebar
     final pGroups = <String, List<String>>{};
     for (final prov in providers) {
@@ -523,6 +613,9 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
       _providerGroups = pGroups;
       _favoriteLists = favLists;
       _favoritedChannelIds = favChannelIds;
+      _failoverGroups = foGroups;
+      _failoverGroupMembers = foGroupMembers;
+      _failoverGroupIndex = foGroupIndex;
       _isLoading = false;
       _applyFilters();
     });
@@ -546,6 +639,7 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
     final validIds = <String>{};
     final rawToPrefixed = <String, String>{};
     final epgNameToId = <String, String>{};
+    final epgCallSignToId = <String, String>{}; // WABC → prefixed id
     for (final src in epgSources) {
       final chs = await database.getEpgChannelsForSource(src.id);
       for (final ch in chs) {
@@ -553,6 +647,20 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
         rawToPrefixed[ch.channelId.toLowerCase()] = ch.id;
         final normName = _normalizeForEpgMatch(ch.displayName);
         if (normName.isNotEmpty) epgNameToId[normName] = ch.id;
+        // Index by call sign extracted from channelId (e.g. WABC.us → WABC)
+        final rawUpper = ch.channelId.toUpperCase();
+        final csMatch = RegExp(r'^([WK][A-Z]{2,3})\.').firstMatch(rawUpper);
+        if (csMatch != null) {
+          epgCallSignToId.putIfAbsent(csMatch.group(1)!, () => ch.id);
+        }
+        // Also index from local station IDs like abc.ny.newyork.wabc
+        final dotParts = ch.channelId.split('.');
+        if (dotParts.length >= 4) {
+          final lastPart = dotParts.last.toUpperCase();
+          if (RegExp(r'^[WK][A-Z]{2,3}$').hasMatch(lastPart)) {
+            epgCallSignToId.putIfAbsent(lastPart, () => ch.id);
+          }
+        }
       }
     }
 
@@ -594,16 +702,23 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
       final mapped = epgMap[c.id];
       if (mapped != null && mapped.isNotEmpty) {
         epgChannelIds.add(mapped);
-      } else if (c.tvgId != null && c.tvgId!.isNotEmpty) {
-        final prefixed = rawToPrefixed[c.tvgId!.toLowerCase()];
-        if (prefixed != null) epgChannelIds.add(prefixed);
+        continue;
       }
-      if (!epgChannelIds.contains(epgMap[c.id])) {
-        final normName = _normalizeForEpgMatch(c.name);
-        if (normName.isNotEmpty) {
-          final byName = epgNameToId[normName];
-          if (byName != null) epgChannelIds.add(byName);
-        }
+      if (c.tvgId != null && c.tvgId!.isNotEmpty) {
+        final prefixed = rawToPrefixed[c.tvgId!.toLowerCase()];
+        if (prefixed != null) { epgChannelIds.add(prefixed); continue; }
+      }
+      // Fallback: match by normalized channel name
+      final normName = _normalizeForEpgMatch(c.name);
+      if (normName.isNotEmpty) {
+        final byName = epgNameToId[normName];
+        if (byName != null) { epgChannelIds.add(byName); continue; }
+      }
+      // Fallback: match by call sign (WABC, WCBS, WNYW)
+      final callSign = _extractCallSign(c.name, c.tvgId);
+      if (callSign != null) {
+        final byCs = epgCallSignToId[callSign];
+        if (byCs != null) epgChannelIds.add(byCs);
       }
     }
     List<db.EpgProgramme> nowPlaying = [];
@@ -618,6 +733,7 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
       _validEpgChannelIds = validIds;
       _rawToPrefixedEpg = rawToPrefixed;
       _epgNameToId = epgNameToId;
+      _epgCallSignToId = epgCallSignToId;
     });
   }
 
@@ -681,7 +797,7 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
       if (_selectedGroup == 'Favorites') {
         channels =
             channels.where((c) => _favoritedChannelIds.contains(c.id)).toList()
-              ..sort((a, b) => _channelDisplayName(a).toLowerCase().compareTo(_channelDisplayName(b).toLowerCase()));
+              ..sort((a, b) => _callSignSortKey(_channelDisplayName(a)).compareTo(_callSignSortKey(_channelDisplayName(b))));
       } else if (_selectedGroup.startsWith('fav:')) {
         final listId = _selectedGroup.substring(4);
         _applyFavoriteListFilter(listId);
@@ -749,7 +865,7 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
           })
           .toList();
     }
-    channels.sort((a, b) => _channelDisplayName(a).toLowerCase().compareTo(_channelDisplayName(b).toLowerCase()));
+    channels.sort((a, b) => _callSignSortKey(_channelDisplayName(a)).compareTo(_callSignSortKey(_channelDisplayName(b))));
     if (!mounted) return;
     setState(() {
       _filteredChannels = channels;
@@ -771,6 +887,24 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
     }
     final channel = _filteredChannels[index];
     final playerService = ref.read(playerServiceProvider);
+
+    // Check if channel belongs to a failover group → pass group URLs
+    final groupMemberships = _failoverGroupIndex[channel.id];
+    List<String>? failoverUrls;
+    if (groupMemberships != null && groupMemberships.isNotEmpty) {
+      final groupId = groupMemberships.first.group.id;
+      final memberIds = _failoverGroupMembers[groupId] ?? [];
+      final channelById = <String, db.Channel>{};
+      for (final c in _allChannels) {
+        channelById[c.id] = c;
+      }
+      failoverUrls = memberIds
+          .map((id) => channelById[id]?.streamUrl)
+          .whereType<String>()
+          .where((url) => url != channel.streamUrl)
+          .toList();
+    }
+
     playerService.play(channel.streamUrl,
       channelId: channel.id,
       epgChannelId: _getEpgId(channel),
@@ -778,6 +912,7 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
       channelName: channel.name,
       vanityName: _vanityNames[channel.id],
       originalName: channel.tvgName,
+      failoverGroupUrls: failoverUrls,
     );
     setState(() {
       _selectedIndex = index;
@@ -866,6 +1001,12 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
     if (normName.isNotEmpty) {
       final byName = _epgNameToId[normName];
       if (byName != null) return byName;
+    }
+    // Fallback: match by broadcast call sign (WABC, WCBS, etc.)
+    final callSign = _extractCallSign(channel.name, channel.tvgId);
+    if (callSign != null) {
+      final byCs = _epgCallSignToId[callSign];
+      if (byCs != null) return byCs;
     }
     return null;
   }
@@ -2399,11 +2540,46 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
       );
     }
 
+    // Build failover group rows to show above the channel list
+    final failoverGroupWidgets = <Widget>[];
+    if (_failoverGroups.isNotEmpty && !_multiSelectMode && _searchQuery.isEmpty && _sidebarSearchQuery.isEmpty) {
+      // Build channel lookup map for performance
+      final channelById = <String, db.Channel>{};
+      for (final c in _allChannels) {
+        channelById[c.id] = c;
+      }
+      for (final group in _failoverGroups) {
+        final memberIds = _failoverGroupMembers[group.id] ?? [];
+        final members = memberIds
+            .map((id) => channelById[id])
+            .whereType<db.Channel>()
+            .toList();
+        if (members.isNotEmpty) {
+          failoverGroupWidgets.add(
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+              child: _buildFailoverGroupRow(group, members),
+            ),
+          );
+        }
+      }
+    }
+
     final listWidget = ListView.builder(
       controller: _channelListController,
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      itemCount: _filteredChannels.length,
+      itemCount: _filteredChannels.length + (failoverGroupWidgets.isNotEmpty ? failoverGroupWidgets.length + 1 : 0),
       itemBuilder: (context, index) {
+        // Inject failover group rows at the top
+        if (failoverGroupWidgets.isNotEmpty) {
+          if (index < failoverGroupWidgets.length) {
+            return failoverGroupWidgets[index];
+          }
+          if (index == failoverGroupWidgets.length) {
+            return const Divider(color: Colors.white12, height: 16);
+          }
+          index = index - failoverGroupWidgets.length - 1;
+        }
         final channel = _filteredChannels[index];
         final isSelected = index == _selectedIndex;
         final isFavorited = _favoritedChannelIds.contains(channel.id);
@@ -2439,16 +2615,40 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
               child: Builder(
                 builder: (context) {
                   final focused = Focus.of(context).hasFocus;
+                  final isMultiSelected = _multiSelectMode && _multiSelectedChannelIds.contains(channel.id);
                   return InkWell(
-                    onTap: () => _selectChannel(index),
-                    onDoubleTap: () => _goFullscreen(channel),
-                    onLongPress: () => _showFavoriteListSheet(channel),
+                    onTap: () {
+                      if (_multiSelectMode) {
+                        setState(() {
+                          if (_multiSelectedChannelIds.contains(channel.id)) {
+                            _multiSelectedChannelIds.remove(channel.id);
+                          } else {
+                            _multiSelectedChannelIds.add(channel.id);
+                          }
+                        });
+                      } else {
+                        _selectChannel(index);
+                      }
+                    },
+                    onDoubleTap: _multiSelectMode ? null : () => _goFullscreen(channel),
+                    onLongPress: () {
+                      if (!_multiSelectMode) {
+                        setState(() {
+                          _multiSelectMode = true;
+                          _multiSelectedChannelIds = {channel.id};
+                        });
+                      } else {
+                        _showFavoriteListSheet(channel);
+                      }
+                    },
             borderRadius: BorderRadius.circular(8),
             child: Container(
               padding:
                   const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
               decoration: BoxDecoration(
-                color: isSelected
+                color: isMultiSelected
+                    ? const Color(0xFF6C5CE7).withValues(alpha: 0.25)
+                    : isSelected
                     ? const Color(0xFF6C5CE7).withValues(alpha: 0.3)
                     : focused
                         ? const Color(0xFF6C5CE7).withValues(alpha: 0.15)
@@ -2456,6 +2656,8 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
                 borderRadius: BorderRadius.circular(8),
                 border: focused
                     ? Border.all(color: Colors.white, width: 2.0)
+                    : isMultiSelected
+                        ? Border.all(color: const Color(0xFF6C5CE7), width: 1.5)
                     : isSelected
                         ? Border.all(
                             color: const Color(0xFF6C5CE7), width: 1.5)
@@ -2463,6 +2665,16 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
               ),
               child: Row(
                 children: [
+                  // Multi-select checkbox
+                  if (_multiSelectMode)
+                    Padding(
+                      padding: const EdgeInsets.only(right: 8),
+                      child: Icon(
+                        isMultiSelected ? Icons.check_box : Icons.check_box_outline_blank,
+                        size: 20,
+                        color: isMultiSelected ? const Color(0xFF6C5CE7) : Colors.white38,
+                      ),
+                    ),
                   // Channel logo
                   ClipRRect(
                     borderRadius: BorderRadius.circular(6),
@@ -2582,7 +2794,369 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
             ),
           ),
         ),
+        // Multi-select floating action bar
+        if (_multiSelectMode)
+          Positioned(
+            left: 8, right: 8, bottom: 8,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+              decoration: BoxDecoration(
+                color: const Color(0xFF1A1A2E),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: const Color(0xFF6C5CE7), width: 1),
+                boxShadow: [BoxShadow(color: Colors.black54, blurRadius: 8)],
+              ),
+              child: Row(
+                children: [
+                  Text(
+                    '${_multiSelectedChannelIds.length} selected',
+                    style: const TextStyle(color: Colors.white70, fontSize: 13),
+                  ),
+                  const Spacer(),
+                  TextButton(
+                    onPressed: () => setState(() {
+                      _multiSelectMode = false;
+                      _multiSelectedChannelIds.clear();
+                    }),
+                    child: const Text('Cancel'),
+                  ),
+                  const SizedBox(width: 8),
+                  FilledButton.icon(
+                    onPressed: _multiSelectedChannelIds.length >= 2
+                        ? _createFailoverGroupFromSelection
+                        : null,
+                    icon: const Icon(Icons.shield_outlined, size: 16),
+                    label: const Text('Create Failover Group'),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: const Color(0xFF6C5CE7),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
       ],
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Failover group creation from multi-select
+  // ---------------------------------------------------------------------------
+
+  Future<void> _createFailoverGroupFromSelection() async {
+    if (_multiSelectedChannelIds.length < 2) return;
+    final controller = TextEditingController();
+    // Pre-fill with the first selected channel's name
+    final firstChannel = _allChannels.where((c) => _multiSelectedChannelIds.contains(c.id)).firstOrNull;
+    if (firstChannel != null) {
+      controller.text = _channelDisplayName(firstChannel);
+    }
+    final name = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF1A1A2E),
+        title: const Text('Create Failover Group', style: TextStyle(color: Colors.white)),
+        content: SizedBox(
+          width: 300,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                '${_multiSelectedChannelIds.length} channels selected. '
+                'The failover engine will cycle through these channels in order.',
+                style: const TextStyle(color: Colors.white54, fontSize: 12),
+              ),
+              const SizedBox(height: 12),
+              TextFormField(
+                controller: controller,
+                autofocus: true,
+                style: const TextStyle(color: Colors.white),
+                decoration: const InputDecoration(
+                  labelText: 'Group Name',
+                  hintText: 'e.g. ESPN Failover',
+                  hintStyle: TextStyle(color: Colors.white24),
+                ),
+                onFieldSubmitted: (v) => Navigator.pop(ctx, v.trim()),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, controller.text.trim()),
+            child: const Text('Create'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    if (name == null || name.isEmpty || !mounted) return;
+
+    final database = ref.read(databaseProvider);
+    final group = await database.createFailoverGroup(name);
+    // Preserve selection order as priority
+    final orderedIds = _filteredChannels
+        .where((c) => _multiSelectedChannelIds.contains(c.id))
+        .map((c) => c.id)
+        .toList();
+    await database.addChannelsToFailoverGroup(group.id, orderedIds);
+
+    setState(() {
+      _multiSelectMode = false;
+      _multiSelectedChannelIds.clear();
+    });
+
+    // Reload to pick up new group
+    _loadChannels();
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Failover group "$name" created with ${orderedIds.length} channels'),
+          duration: const Duration(seconds: 3),
+          behavior: SnackBarBehavior.floating,
+          width: 350,
+        ),
+      );
+    }
+  }
+
+  Widget _buildFailoverGroupRow(db.FailoverGroup group, List<db.Channel> members) {
+    final isExpanded = _expandedFailoverGroups.contains(group.id);
+    return Column(
+      children: [
+        InkWell(
+          onTap: () {
+            if (_multiSelectMode) return;
+            setState(() {
+              if (isExpanded) {
+                _expandedFailoverGroups.remove(group.id);
+              } else {
+                _expandedFailoverGroups.add(group.id);
+              }
+            });
+          },
+          onLongPress: () => _showFailoverGroupActions(group),
+          borderRadius: BorderRadius.circular(8),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+            decoration: BoxDecoration(
+              color: const Color(0xFF16213E).withValues(alpha: 0.6),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: const Color(0xFF6C5CE7).withValues(alpha: 0.3)),
+            ),
+            child: Row(
+              children: [
+                Icon(
+                  isExpanded ? Icons.expand_less : Icons.expand_more,
+                  size: 20,
+                  color: Colors.white54,
+                ),
+                const SizedBox(width: 6),
+                const Icon(Icons.shield_outlined, size: 16, color: Color(0xFF6C5CE7)),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    group.name,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 13,
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                Text(
+                  '${members.length} ch',
+                  style: const TextStyle(color: Colors.white38, fontSize: 11),
+                ),
+                const SizedBox(width: 8),
+                // Play button — plays first channel with failover through group
+                InkWell(
+                  onTap: () {
+                    if (members.isNotEmpty) _playFailoverGroup(group, members);
+                  },
+                  child: const Icon(Icons.play_circle_outline, size: 20, color: Color(0xFF6C5CE7)),
+                ),
+              ],
+            ),
+          ),
+        ),
+        if (isExpanded)
+          ...members.asMap().entries.map((entry) {
+            final idx = entry.key;
+            final ch = entry.value;
+            final globalIdx = _filteredChannels.indexWhere((c) => c.id == ch.id);
+            final isPlaying = globalIdx == _selectedIndex && globalIdx >= 0;
+            return Padding(
+              padding: const EdgeInsets.only(left: 24),
+              child: InkWell(
+                onTap: () {
+                  if (globalIdx >= 0) _selectChannel(globalIdx);
+                },
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                  child: Row(
+                    children: [
+                      Text(
+                        '#${idx + 1}',
+                        style: const TextStyle(color: Colors.white24, fontSize: 11),
+                      ),
+                      const SizedBox(width: 8),
+                      if (ch.tvgLogo != null && ch.tvgLogo!.isNotEmpty)
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(4),
+                          child: Image.network(
+                            ch.tvgLogo!,
+                            width: 24, height: 24,
+                            fit: BoxFit.cover,
+                            errorBuilder: (_, __, ___) => const SizedBox(width: 24, height: 24),
+                          ),
+                        )
+                      else
+                        const SizedBox(width: 24, height: 24),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          _channelDisplayName(ch),
+                          style: TextStyle(
+                            color: isPlaying ? Colors.white : Colors.white60,
+                            fontSize: 12,
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      if (isPlaying)
+                        const Icon(Icons.play_arrow_rounded, color: Color(0xFF6C5CE7), size: 16),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          }),
+      ],
+    );
+  }
+
+  void _playFailoverGroup(db.FailoverGroup group, List<db.Channel> members) {
+    if (members.isEmpty) return;
+    final first = members.first;
+    final globalIdx = _filteredChannels.indexWhere((c) => c.id == first.id);
+
+    final playerService = ref.read(playerServiceProvider);
+    // Pass all group member URLs as failover alternatives
+    final altUrls = members.skip(1).map((c) => c.streamUrl).toList();
+
+    playerService.play(first.streamUrl,
+      channelId: first.id,
+      epgChannelId: _getEpgId(first),
+      tvgId: first.tvgId,
+      channelName: first.name,
+      vanityName: _vanityNames[first.id],
+      originalName: first.tvgName,
+      failoverGroupUrls: altUrls,
+    );
+
+    if (globalIdx >= 0) {
+      setState(() {
+        _selectedIndex = globalIdx;
+        _previewChannel = first;
+      });
+      _showInfoOverlay(first, globalIdx);
+      _saveSession();
+    }
+  }
+
+  void _showFailoverGroupActions(db.FailoverGroup group) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: const Color(0xFF1A1A2E),
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.play_circle_outline, color: Colors.white70),
+              title: const Text('Play Group', style: TextStyle(color: Colors.white)),
+              onTap: () {
+                Navigator.pop(ctx);
+                final members = (_failoverGroupMembers[group.id] ?? [])
+                    .map((id) => _allChannels.where((c) => c.id == id).firstOrNull)
+                    .whereType<db.Channel>()
+                    .toList();
+                _playFailoverGroup(group, members);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.edit, color: Colors.white70),
+              title: const Text('Rename', style: TextStyle(color: Colors.white)),
+              onTap: () async {
+                Navigator.pop(ctx);
+                final controller = TextEditingController(text: group.name);
+                final newName = await showDialog<String>(
+                  context: context,
+                  builder: (ctx) => AlertDialog(
+                    backgroundColor: const Color(0xFF1A1A2E),
+                    title: const Text('Rename Failover Group', style: TextStyle(color: Colors.white)),
+                    content: TextFormField(
+                      controller: controller,
+                      autofocus: true,
+                      style: const TextStyle(color: Colors.white),
+                      onFieldSubmitted: (v) => Navigator.pop(ctx, v.trim()),
+                    ),
+                    actions: [
+                      TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+                      FilledButton(
+                        onPressed: () => Navigator.pop(ctx, controller.text.trim()),
+                        child: const Text('Rename'),
+                      ),
+                    ],
+                  ),
+                );
+                controller.dispose();
+                if (newName != null && newName.isNotEmpty && mounted) {
+                  final database = ref.read(databaseProvider);
+                  await database.renameFailoverGroup(group.id, newName);
+                  _loadChannels();
+                }
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.delete_outline, color: Colors.redAccent),
+              title: const Text('Delete Group', style: TextStyle(color: Colors.redAccent)),
+              onTap: () async {
+                Navigator.pop(ctx);
+                final confirm = await showDialog<bool>(
+                  context: context,
+                  builder: (ctx) => AlertDialog(
+                    backgroundColor: const Color(0xFF1A1A2E),
+                    title: const Text('Delete Failover Group?', style: TextStyle(color: Colors.white)),
+                    content: Text('Delete "${group.name}"? The channels will not be removed.',
+                        style: const TextStyle(color: Colors.white70)),
+                    actions: [
+                      TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+                      FilledButton(
+                        onPressed: () => Navigator.pop(ctx, true),
+                        style: FilledButton.styleFrom(backgroundColor: Colors.redAccent),
+                        child: const Text('Delete'),
+                      ),
+                    ],
+                  ),
+                );
+                if (confirm == true && mounted) {
+                  final database = ref.read(databaseProvider);
+                  await database.deleteFailoverGroup(group.id);
+                  _loadChannels();
+                }
+              },
+            ),
+          ],
+        ),
+      ),
     );
   }
 

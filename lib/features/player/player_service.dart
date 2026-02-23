@@ -63,6 +63,9 @@ class PlayerService {
   /// Provides the provider name or URL fragment for UI toast.
   void Function(String message)? onFailover;
 
+  /// The channel ID that failover most recently switched to, if available.
+  String? lastFailoverChannelId;
+
   bool _playerReady = false;
   final _playerReadyCompleter = Completer<void>();
 
@@ -124,6 +127,9 @@ class PlayerService {
     _healthTracker = health;
   }
 
+  // Failover group override: manual alternatives from user-created groups
+  List<String>? _failoverGroupUrls;
+
   /// Start playing a stream URL with optional channel metadata for failover.
   Future<void> play(String url, {
     String? channelId,
@@ -132,6 +138,7 @@ class PlayerService {
     String? channelName,
     String? vanityName,
     String? originalName,
+    List<String>? failoverGroupUrls,
   }) async {
     _isBuffering = false;
     _bufferStartTime = null;
@@ -143,6 +150,7 @@ class PlayerService {
     _currentChannelName = channelName;
     _currentVanityName = vanityName;
     _currentOriginalName = originalName;
+    _failoverGroupUrls = failoverGroupUrls;
     _tracksSub?.cancel();
     _failoverCheckTimer?.cancel();
     _disposeWarmPlayer();
@@ -321,7 +329,8 @@ class PlayerService {
   void _startFailoverMonitor() {
     _failoverCheckTimer?.cancel();
     _failoverCheckTimer = Timer.periodic(const Duration(seconds: 2), (_) async {
-      if (_alternatives == null || _currentUrl == null) return;
+      if (_currentUrl == null) return;
+      if (_alternatives == null && (_failoverGroupUrls == null || _failoverGroupUrls!.isEmpty)) return;
 
       final raw = await getMpvProperty('demuxer-cache-duration');
       final cacheSecs = double.tryParse(raw ?? '');
@@ -351,11 +360,20 @@ class PlayerService {
     });
   }
 
-  /// Start pre-buffering the best alternative stream in a hidden player.
-  void _startWarmPreload() {
-    if (_alternatives == null || _currentUrl == null) return;
+  /// Get failover alternative URLs, preferring manual group URLs over auto-detected.
+  List<String> _getFailoverAlternatives() {
+    if (_currentUrl == null) return [];
 
-    final alts = _alternatives!.getAlternatives(
+    // Prefer manually-defined failover group URLs
+    if (_failoverGroupUrls != null && _failoverGroupUrls!.isNotEmpty) {
+      return _failoverGroupUrls!
+          .where((u) => u != _currentUrl)
+          .toList();
+    }
+
+    // Fall back to auto-detected alternatives
+    if (_alternatives == null) return [];
+    return _alternatives!.getAlternatives(
       channelId: _currentChannelId ?? '',
       epgChannelId: _currentEpgChannelId,
       tvgId: _currentTvgId,
@@ -364,6 +382,13 @@ class PlayerService {
       originalName: _currentOriginalName,
       excludeUrl: _currentUrl!,
     );
+  }
+
+  /// Start pre-buffering the best alternative stream in a hidden player.
+  void _startWarmPreload() {
+    if (_currentUrl == null) return;
+
+    final alts = _getFailoverAlternatives();
     if (alts.isEmpty) return;
 
     final warmUrl = alts.first;
@@ -423,7 +448,8 @@ class PlayerService {
   }
 
   Future<void> _autoFailover() async {
-    if (_alternatives == null || _currentUrl == null) return;
+    if (_currentUrl == null) return;
+    if (_alternatives == null && (_failoverGroupUrls == null || _failoverGroupUrls!.isEmpty)) return;
 
     // If warm player is ready, do an instant switch
     if (_warmReady && _warmPlayer != null && _warmUrl != null) {
@@ -444,20 +470,13 @@ class PlayerService {
       _startFailoverMonitor();
 
       _currentUrlController.add(newUrl);
+      lastFailoverChannelId = _alternatives?.channelIdForUrl(newUrl);
       onFailover?.call('⚡ Switched stream (warm)');
       return;
     }
 
     // Cold failover: find best alternative and switch directly
-    final alts = _alternatives!.getAlternatives(
-      channelId: _currentChannelId ?? '',
-      epgChannelId: _currentEpgChannelId,
-      tvgId: _currentTvgId,
-      channelName: _currentChannelName,
-      vanityName: _currentVanityName,
-      originalName: _currentOriginalName,
-      excludeUrl: _currentUrl!,
-    );
+    final alts = _getFailoverAlternatives();
 
     if (alts.isEmpty) return;
 
@@ -475,6 +494,7 @@ class PlayerService {
     _startFailoverMonitor();
 
     _currentUrlController.add(newUrl);
+    lastFailoverChannelId = _alternatives?.channelIdForUrl(newUrl);
     onFailover?.call('⚡ Switched stream');
   }
 

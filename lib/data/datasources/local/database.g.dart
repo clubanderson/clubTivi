@@ -5486,6 +5486,528 @@ class ScheduledRecordingsCompanion extends UpdateCompanion<ScheduledRecording> {
   }
 }
 
+class $FailoverGroupsTable extends FailoverGroups
+    with TableInfo<$FailoverGroupsTable, FailoverGroup> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $FailoverGroupsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+    'id',
+    aliasedName,
+    false,
+    hasAutoIncrement: true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'PRIMARY KEY AUTOINCREMENT',
+    ),
+  );
+  static const VerificationMeta _nameMeta = const VerificationMeta('name');
+  @override
+  late final GeneratedColumn<String> name = GeneratedColumn<String>(
+    'name',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _createdAtMeta = const VerificationMeta(
+    'createdAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> createdAt = GeneratedColumn<DateTime>(
+    'created_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+    defaultValue: currentDateAndTime,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [id, name, createdAt];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'failover_groups';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<FailoverGroup> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('name')) {
+      context.handle(
+        _nameMeta,
+        name.isAcceptableOrUnknown(data['name']!, _nameMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_nameMeta);
+    }
+    if (data.containsKey('created_at')) {
+      context.handle(
+        _createdAtMeta,
+        createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  FailoverGroup map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return FailoverGroup(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}id'],
+      )!,
+      name: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}name'],
+      )!,
+      createdAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}created_at'],
+      )!,
+    );
+  }
+
+  @override
+  $FailoverGroupsTable createAlias(String alias) {
+    return $FailoverGroupsTable(attachedDatabase, alias);
+  }
+}
+
+class FailoverGroup extends DataClass implements Insertable<FailoverGroup> {
+  final int id;
+  final String name;
+  final DateTime createdAt;
+  const FailoverGroup({
+    required this.id,
+    required this.name,
+    required this.createdAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    map['name'] = Variable<String>(name);
+    map['created_at'] = Variable<DateTime>(createdAt);
+    return map;
+  }
+
+  FailoverGroupsCompanion toCompanion(bool nullToAbsent) {
+    return FailoverGroupsCompanion(
+      id: Value(id),
+      name: Value(name),
+      createdAt: Value(createdAt),
+    );
+  }
+
+  factory FailoverGroup.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return FailoverGroup(
+      id: serializer.fromJson<int>(json['id']),
+      name: serializer.fromJson<String>(json['name']),
+      createdAt: serializer.fromJson<DateTime>(json['createdAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'name': serializer.toJson<String>(name),
+      'createdAt': serializer.toJson<DateTime>(createdAt),
+    };
+  }
+
+  FailoverGroup copyWith({int? id, String? name, DateTime? createdAt}) =>
+      FailoverGroup(
+        id: id ?? this.id,
+        name: name ?? this.name,
+        createdAt: createdAt ?? this.createdAt,
+      );
+  FailoverGroup copyWithCompanion(FailoverGroupsCompanion data) {
+    return FailoverGroup(
+      id: data.id.present ? data.id.value : this.id,
+      name: data.name.present ? data.name.value : this.name,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('FailoverGroup(')
+          ..write('id: $id, ')
+          ..write('name: $name, ')
+          ..write('createdAt: $createdAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(id, name, createdAt);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is FailoverGroup &&
+          other.id == this.id &&
+          other.name == this.name &&
+          other.createdAt == this.createdAt);
+}
+
+class FailoverGroupsCompanion extends UpdateCompanion<FailoverGroup> {
+  final Value<int> id;
+  final Value<String> name;
+  final Value<DateTime> createdAt;
+  const FailoverGroupsCompanion({
+    this.id = const Value.absent(),
+    this.name = const Value.absent(),
+    this.createdAt = const Value.absent(),
+  });
+  FailoverGroupsCompanion.insert({
+    this.id = const Value.absent(),
+    required String name,
+    this.createdAt = const Value.absent(),
+  }) : name = Value(name);
+  static Insertable<FailoverGroup> custom({
+    Expression<int>? id,
+    Expression<String>? name,
+    Expression<DateTime>? createdAt,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (name != null) 'name': name,
+      if (createdAt != null) 'created_at': createdAt,
+    });
+  }
+
+  FailoverGroupsCompanion copyWith({
+    Value<int>? id,
+    Value<String>? name,
+    Value<DateTime>? createdAt,
+  }) {
+    return FailoverGroupsCompanion(
+      id: id ?? this.id,
+      name: name ?? this.name,
+      createdAt: createdAt ?? this.createdAt,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (name.present) {
+      map['name'] = Variable<String>(name.value);
+    }
+    if (createdAt.present) {
+      map['created_at'] = Variable<DateTime>(createdAt.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('FailoverGroupsCompanion(')
+          ..write('id: $id, ')
+          ..write('name: $name, ')
+          ..write('createdAt: $createdAt')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $FailoverGroupChannelsTable extends FailoverGroupChannels
+    with TableInfo<$FailoverGroupChannelsTable, FailoverGroupChannel> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $FailoverGroupChannelsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _groupIdMeta = const VerificationMeta(
+    'groupId',
+  );
+  @override
+  late final GeneratedColumn<int> groupId = GeneratedColumn<int>(
+    'group_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES failover_groups (id)',
+    ),
+  );
+  static const VerificationMeta _channelIdMeta = const VerificationMeta(
+    'channelId',
+  );
+  @override
+  late final GeneratedColumn<String> channelId = GeneratedColumn<String>(
+    'channel_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES channels (id)',
+    ),
+  );
+  static const VerificationMeta _priorityMeta = const VerificationMeta(
+    'priority',
+  );
+  @override
+  late final GeneratedColumn<int> priority = GeneratedColumn<int>(
+    'priority',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
+  @override
+  List<GeneratedColumn> get $columns => [groupId, channelId, priority];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'failover_group_channels';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<FailoverGroupChannel> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('group_id')) {
+      context.handle(
+        _groupIdMeta,
+        groupId.isAcceptableOrUnknown(data['group_id']!, _groupIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_groupIdMeta);
+    }
+    if (data.containsKey('channel_id')) {
+      context.handle(
+        _channelIdMeta,
+        channelId.isAcceptableOrUnknown(data['channel_id']!, _channelIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_channelIdMeta);
+    }
+    if (data.containsKey('priority')) {
+      context.handle(
+        _priorityMeta,
+        priority.isAcceptableOrUnknown(data['priority']!, _priorityMeta),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {groupId, channelId};
+  @override
+  FailoverGroupChannel map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return FailoverGroupChannel(
+      groupId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}group_id'],
+      )!,
+      channelId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}channel_id'],
+      )!,
+      priority: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}priority'],
+      )!,
+    );
+  }
+
+  @override
+  $FailoverGroupChannelsTable createAlias(String alias) {
+    return $FailoverGroupChannelsTable(attachedDatabase, alias);
+  }
+}
+
+class FailoverGroupChannel extends DataClass
+    implements Insertable<FailoverGroupChannel> {
+  final int groupId;
+  final String channelId;
+  final int priority;
+  const FailoverGroupChannel({
+    required this.groupId,
+    required this.channelId,
+    required this.priority,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['group_id'] = Variable<int>(groupId);
+    map['channel_id'] = Variable<String>(channelId);
+    map['priority'] = Variable<int>(priority);
+    return map;
+  }
+
+  FailoverGroupChannelsCompanion toCompanion(bool nullToAbsent) {
+    return FailoverGroupChannelsCompanion(
+      groupId: Value(groupId),
+      channelId: Value(channelId),
+      priority: Value(priority),
+    );
+  }
+
+  factory FailoverGroupChannel.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return FailoverGroupChannel(
+      groupId: serializer.fromJson<int>(json['groupId']),
+      channelId: serializer.fromJson<String>(json['channelId']),
+      priority: serializer.fromJson<int>(json['priority']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'groupId': serializer.toJson<int>(groupId),
+      'channelId': serializer.toJson<String>(channelId),
+      'priority': serializer.toJson<int>(priority),
+    };
+  }
+
+  FailoverGroupChannel copyWith({
+    int? groupId,
+    String? channelId,
+    int? priority,
+  }) => FailoverGroupChannel(
+    groupId: groupId ?? this.groupId,
+    channelId: channelId ?? this.channelId,
+    priority: priority ?? this.priority,
+  );
+  FailoverGroupChannel copyWithCompanion(FailoverGroupChannelsCompanion data) {
+    return FailoverGroupChannel(
+      groupId: data.groupId.present ? data.groupId.value : this.groupId,
+      channelId: data.channelId.present ? data.channelId.value : this.channelId,
+      priority: data.priority.present ? data.priority.value : this.priority,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('FailoverGroupChannel(')
+          ..write('groupId: $groupId, ')
+          ..write('channelId: $channelId, ')
+          ..write('priority: $priority')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(groupId, channelId, priority);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is FailoverGroupChannel &&
+          other.groupId == this.groupId &&
+          other.channelId == this.channelId &&
+          other.priority == this.priority);
+}
+
+class FailoverGroupChannelsCompanion
+    extends UpdateCompanion<FailoverGroupChannel> {
+  final Value<int> groupId;
+  final Value<String> channelId;
+  final Value<int> priority;
+  final Value<int> rowid;
+  const FailoverGroupChannelsCompanion({
+    this.groupId = const Value.absent(),
+    this.channelId = const Value.absent(),
+    this.priority = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  FailoverGroupChannelsCompanion.insert({
+    required int groupId,
+    required String channelId,
+    this.priority = const Value.absent(),
+    this.rowid = const Value.absent(),
+  }) : groupId = Value(groupId),
+       channelId = Value(channelId);
+  static Insertable<FailoverGroupChannel> custom({
+    Expression<int>? groupId,
+    Expression<String>? channelId,
+    Expression<int>? priority,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (groupId != null) 'group_id': groupId,
+      if (channelId != null) 'channel_id': channelId,
+      if (priority != null) 'priority': priority,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  FailoverGroupChannelsCompanion copyWith({
+    Value<int>? groupId,
+    Value<String>? channelId,
+    Value<int>? priority,
+    Value<int>? rowid,
+  }) {
+    return FailoverGroupChannelsCompanion(
+      groupId: groupId ?? this.groupId,
+      channelId: channelId ?? this.channelId,
+      priority: priority ?? this.priority,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (groupId.present) {
+      map['group_id'] = Variable<int>(groupId.value);
+    }
+    if (channelId.present) {
+      map['channel_id'] = Variable<String>(channelId.value);
+    }
+    if (priority.present) {
+      map['priority'] = Variable<int>(priority.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('FailoverGroupChannelsCompanion(')
+          ..write('groupId: $groupId, ')
+          ..write('channelId: $channelId, ')
+          ..write('priority: $priority, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$AppDatabase extends GeneratedDatabase {
   _$AppDatabase(QueryExecutor e) : super(e);
   $AppDatabaseManager get managers => $AppDatabaseManager(this);
@@ -5502,6 +6024,9 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   late final $EpgRemindersTable epgReminders = $EpgRemindersTable(this);
   late final $ScheduledRecordingsTable scheduledRecordings =
       $ScheduledRecordingsTable(this);
+  late final $FailoverGroupsTable failoverGroups = $FailoverGroupsTable(this);
+  late final $FailoverGroupChannelsTable failoverGroupChannels =
+      $FailoverGroupChannelsTable(this);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -5518,6 +6043,8 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     favoriteListChannels,
     epgReminders,
     scheduledRecordings,
+    failoverGroups,
+    failoverGroupChannels,
   ];
 }
 
@@ -6023,6 +6550,34 @@ final class $$ChannelsTableReferences
       manager.$state.copyWith(prefetchedData: cache),
     );
   }
+
+  static MultiTypedResultKey<
+    $FailoverGroupChannelsTable,
+    List<FailoverGroupChannel>
+  >
+  _failoverGroupChannelsRefsTable(_$AppDatabase db) =>
+      MultiTypedResultKey.fromTable(
+        db.failoverGroupChannels,
+        aliasName: $_aliasNameGenerator(
+          db.channels.id,
+          db.failoverGroupChannels.channelId,
+        ),
+      );
+
+  $$FailoverGroupChannelsTableProcessedTableManager
+  get failoverGroupChannelsRefs {
+    final manager = $$FailoverGroupChannelsTableTableManager(
+      $_db,
+      $_db.failoverGroupChannels,
+    ).filter((f) => f.channelId.id.sqlEquals($_itemColumn<String>('id')!));
+
+    final cache = $_typedResult.readTableOrNull(
+      _failoverGroupChannelsRefsTable($_db),
+    );
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
 }
 
 class $$ChannelsTableFilterComposer
@@ -6164,6 +6719,32 @@ class $$ChannelsTableFilterComposer
                 $removeJoinBuilderFromRootComposer,
           ),
     );
+    return f(composer);
+  }
+
+  Expression<bool> failoverGroupChannelsRefs(
+    Expression<bool> Function($$FailoverGroupChannelsTableFilterComposer f) f,
+  ) {
+    final $$FailoverGroupChannelsTableFilterComposer composer =
+        $composerBuilder(
+          composer: this,
+          getCurrentColumn: (t) => t.id,
+          referencedTable: $db.failoverGroupChannels,
+          getReferencedColumn: (t) => t.channelId,
+          builder:
+              (
+                joinBuilder, {
+                $addJoinBuilderToRootComposer,
+                $removeJoinBuilderFromRootComposer,
+              }) => $$FailoverGroupChannelsTableFilterComposer(
+                $db: $db,
+                $table: $db.failoverGroupChannels,
+                $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+                joinBuilder: joinBuilder,
+                $removeJoinBuilderFromRootComposer:
+                    $removeJoinBuilderFromRootComposer,
+              ),
+        );
     return f(composer);
   }
 }
@@ -6385,6 +6966,32 @@ class $$ChannelsTableAnnotationComposer
         );
     return f(composer);
   }
+
+  Expression<T> failoverGroupChannelsRefs<T extends Object>(
+    Expression<T> Function($$FailoverGroupChannelsTableAnnotationComposer a) f,
+  ) {
+    final $$FailoverGroupChannelsTableAnnotationComposer composer =
+        $composerBuilder(
+          composer: this,
+          getCurrentColumn: (t) => t.id,
+          referencedTable: $db.failoverGroupChannels,
+          getReferencedColumn: (t) => t.channelId,
+          builder:
+              (
+                joinBuilder, {
+                $addJoinBuilderToRootComposer,
+                $removeJoinBuilderFromRootComposer,
+              }) => $$FailoverGroupChannelsTableAnnotationComposer(
+                $db: $db,
+                $table: $db.failoverGroupChannels,
+                $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+                joinBuilder: joinBuilder,
+                $removeJoinBuilderFromRootComposer:
+                    $removeJoinBuilderFromRootComposer,
+              ),
+        );
+    return f(composer);
+  }
 }
 
 class $$ChannelsTableTableManager
@@ -6404,6 +7011,7 @@ class $$ChannelsTableTableManager
             bool providerId,
             bool epgMappingsRefs,
             bool favoriteListChannelsRefs,
+            bool failoverGroupChannelsRefs,
           })
         > {
   $$ChannelsTableTableManager(_$AppDatabase db, $ChannelsTable table)
@@ -6494,12 +7102,14 @@ class $$ChannelsTableTableManager
                 providerId = false,
                 epgMappingsRefs = false,
                 favoriteListChannelsRefs = false,
+                failoverGroupChannelsRefs = false,
               }) {
                 return PrefetchHooks(
                   db: db,
                   explicitlyWatchedTables: [
                     if (epgMappingsRefs) db.epgMappings,
                     if (favoriteListChannelsRefs) db.favoriteListChannels,
+                    if (failoverGroupChannelsRefs) db.failoverGroupChannels,
                   ],
                   addJoins:
                       <
@@ -6577,6 +7187,27 @@ class $$ChannelsTableTableManager
                               ),
                           typedResults: items,
                         ),
+                      if (failoverGroupChannelsRefs)
+                        await $_getPrefetchedData<
+                          Channel,
+                          $ChannelsTable,
+                          FailoverGroupChannel
+                        >(
+                          currentTable: table,
+                          referencedTable: $$ChannelsTableReferences
+                              ._failoverGroupChannelsRefsTable(db),
+                          managerFromTypedResult: (p0) =>
+                              $$ChannelsTableReferences(
+                                db,
+                                table,
+                                p0,
+                              ).failoverGroupChannelsRefs,
+                          referencedItemsForCurrentItem:
+                              (item, referencedItems) => referencedItems.where(
+                                (e) => e.channelId == item.id,
+                              ),
+                          typedResults: items,
+                        ),
                     ];
                   },
                 );
@@ -6601,6 +7232,7 @@ typedef $$ChannelsTableProcessedTableManager =
         bool providerId,
         bool epgMappingsRefs,
         bool favoriteListChannelsRefs,
+        bool failoverGroupChannelsRefs,
       })
     >;
 typedef $$EpgSourcesTableCreateCompanionBuilder =
@@ -9857,6 +10489,682 @@ typedef $$ScheduledRecordingsTableProcessedTableManager =
       ScheduledRecording,
       PrefetchHooks Function()
     >;
+typedef $$FailoverGroupsTableCreateCompanionBuilder =
+    FailoverGroupsCompanion Function({
+      Value<int> id,
+      required String name,
+      Value<DateTime> createdAt,
+    });
+typedef $$FailoverGroupsTableUpdateCompanionBuilder =
+    FailoverGroupsCompanion Function({
+      Value<int> id,
+      Value<String> name,
+      Value<DateTime> createdAt,
+    });
+
+final class $$FailoverGroupsTableReferences
+    extends BaseReferences<_$AppDatabase, $FailoverGroupsTable, FailoverGroup> {
+  $$FailoverGroupsTableReferences(
+    super.$_db,
+    super.$_table,
+    super.$_typedResult,
+  );
+
+  static MultiTypedResultKey<
+    $FailoverGroupChannelsTable,
+    List<FailoverGroupChannel>
+  >
+  _failoverGroupChannelsRefsTable(_$AppDatabase db) =>
+      MultiTypedResultKey.fromTable(
+        db.failoverGroupChannels,
+        aliasName: $_aliasNameGenerator(
+          db.failoverGroups.id,
+          db.failoverGroupChannels.groupId,
+        ),
+      );
+
+  $$FailoverGroupChannelsTableProcessedTableManager
+  get failoverGroupChannelsRefs {
+    final manager = $$FailoverGroupChannelsTableTableManager(
+      $_db,
+      $_db.failoverGroupChannels,
+    ).filter((f) => f.groupId.id.sqlEquals($_itemColumn<int>('id')!));
+
+    final cache = $_typedResult.readTableOrNull(
+      _failoverGroupChannelsRefsTable($_db),
+    );
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
+}
+
+class $$FailoverGroupsTableFilterComposer
+    extends Composer<_$AppDatabase, $FailoverGroupsTable> {
+  $$FailoverGroupsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get name => $composableBuilder(
+    column: $table.name,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  Expression<bool> failoverGroupChannelsRefs(
+    Expression<bool> Function($$FailoverGroupChannelsTableFilterComposer f) f,
+  ) {
+    final $$FailoverGroupChannelsTableFilterComposer composer =
+        $composerBuilder(
+          composer: this,
+          getCurrentColumn: (t) => t.id,
+          referencedTable: $db.failoverGroupChannels,
+          getReferencedColumn: (t) => t.groupId,
+          builder:
+              (
+                joinBuilder, {
+                $addJoinBuilderToRootComposer,
+                $removeJoinBuilderFromRootComposer,
+              }) => $$FailoverGroupChannelsTableFilterComposer(
+                $db: $db,
+                $table: $db.failoverGroupChannels,
+                $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+                joinBuilder: joinBuilder,
+                $removeJoinBuilderFromRootComposer:
+                    $removeJoinBuilderFromRootComposer,
+              ),
+        );
+    return f(composer);
+  }
+}
+
+class $$FailoverGroupsTableOrderingComposer
+    extends Composer<_$AppDatabase, $FailoverGroupsTable> {
+  $$FailoverGroupsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get name => $composableBuilder(
+    column: $table.name,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$FailoverGroupsTableAnnotationComposer
+    extends Composer<_$AppDatabase, $FailoverGroupsTable> {
+  $$FailoverGroupsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get name =>
+      $composableBuilder(column: $table.name, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get createdAt =>
+      $composableBuilder(column: $table.createdAt, builder: (column) => column);
+
+  Expression<T> failoverGroupChannelsRefs<T extends Object>(
+    Expression<T> Function($$FailoverGroupChannelsTableAnnotationComposer a) f,
+  ) {
+    final $$FailoverGroupChannelsTableAnnotationComposer composer =
+        $composerBuilder(
+          composer: this,
+          getCurrentColumn: (t) => t.id,
+          referencedTable: $db.failoverGroupChannels,
+          getReferencedColumn: (t) => t.groupId,
+          builder:
+              (
+                joinBuilder, {
+                $addJoinBuilderToRootComposer,
+                $removeJoinBuilderFromRootComposer,
+              }) => $$FailoverGroupChannelsTableAnnotationComposer(
+                $db: $db,
+                $table: $db.failoverGroupChannels,
+                $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+                joinBuilder: joinBuilder,
+                $removeJoinBuilderFromRootComposer:
+                    $removeJoinBuilderFromRootComposer,
+              ),
+        );
+    return f(composer);
+  }
+}
+
+class $$FailoverGroupsTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $FailoverGroupsTable,
+          FailoverGroup,
+          $$FailoverGroupsTableFilterComposer,
+          $$FailoverGroupsTableOrderingComposer,
+          $$FailoverGroupsTableAnnotationComposer,
+          $$FailoverGroupsTableCreateCompanionBuilder,
+          $$FailoverGroupsTableUpdateCompanionBuilder,
+          (FailoverGroup, $$FailoverGroupsTableReferences),
+          FailoverGroup,
+          PrefetchHooks Function({bool failoverGroupChannelsRefs})
+        > {
+  $$FailoverGroupsTableTableManager(
+    _$AppDatabase db,
+    $FailoverGroupsTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$FailoverGroupsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$FailoverGroupsTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$FailoverGroupsTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                Value<String> name = const Value.absent(),
+                Value<DateTime> createdAt = const Value.absent(),
+              }) => FailoverGroupsCompanion(
+                id: id,
+                name: name,
+                createdAt: createdAt,
+              ),
+          createCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                required String name,
+                Value<DateTime> createdAt = const Value.absent(),
+              }) => FailoverGroupsCompanion.insert(
+                id: id,
+                name: name,
+                createdAt: createdAt,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable(table),
+                  $$FailoverGroupsTableReferences(db, table, e),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback: ({failoverGroupChannelsRefs = false}) {
+            return PrefetchHooks(
+              db: db,
+              explicitlyWatchedTables: [
+                if (failoverGroupChannelsRefs) db.failoverGroupChannels,
+              ],
+              addJoins: null,
+              getPrefetchedDataCallback: (items) async {
+                return [
+                  if (failoverGroupChannelsRefs)
+                    await $_getPrefetchedData<
+                      FailoverGroup,
+                      $FailoverGroupsTable,
+                      FailoverGroupChannel
+                    >(
+                      currentTable: table,
+                      referencedTable: $$FailoverGroupsTableReferences
+                          ._failoverGroupChannelsRefsTable(db),
+                      managerFromTypedResult: (p0) =>
+                          $$FailoverGroupsTableReferences(
+                            db,
+                            table,
+                            p0,
+                          ).failoverGroupChannelsRefs,
+                      referencedItemsForCurrentItem: (item, referencedItems) =>
+                          referencedItems.where((e) => e.groupId == item.id),
+                      typedResults: items,
+                    ),
+                ];
+              },
+            );
+          },
+        ),
+      );
+}
+
+typedef $$FailoverGroupsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $FailoverGroupsTable,
+      FailoverGroup,
+      $$FailoverGroupsTableFilterComposer,
+      $$FailoverGroupsTableOrderingComposer,
+      $$FailoverGroupsTableAnnotationComposer,
+      $$FailoverGroupsTableCreateCompanionBuilder,
+      $$FailoverGroupsTableUpdateCompanionBuilder,
+      (FailoverGroup, $$FailoverGroupsTableReferences),
+      FailoverGroup,
+      PrefetchHooks Function({bool failoverGroupChannelsRefs})
+    >;
+typedef $$FailoverGroupChannelsTableCreateCompanionBuilder =
+    FailoverGroupChannelsCompanion Function({
+      required int groupId,
+      required String channelId,
+      Value<int> priority,
+      Value<int> rowid,
+    });
+typedef $$FailoverGroupChannelsTableUpdateCompanionBuilder =
+    FailoverGroupChannelsCompanion Function({
+      Value<int> groupId,
+      Value<String> channelId,
+      Value<int> priority,
+      Value<int> rowid,
+    });
+
+final class $$FailoverGroupChannelsTableReferences
+    extends
+        BaseReferences<
+          _$AppDatabase,
+          $FailoverGroupChannelsTable,
+          FailoverGroupChannel
+        > {
+  $$FailoverGroupChannelsTableReferences(
+    super.$_db,
+    super.$_table,
+    super.$_typedResult,
+  );
+
+  static $FailoverGroupsTable _groupIdTable(_$AppDatabase db) =>
+      db.failoverGroups.createAlias(
+        $_aliasNameGenerator(
+          db.failoverGroupChannels.groupId,
+          db.failoverGroups.id,
+        ),
+      );
+
+  $$FailoverGroupsTableProcessedTableManager get groupId {
+    final $_column = $_itemColumn<int>('group_id')!;
+
+    final manager = $$FailoverGroupsTableTableManager(
+      $_db,
+      $_db.failoverGroups,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_groupIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+
+  static $ChannelsTable _channelIdTable(_$AppDatabase db) =>
+      db.channels.createAlias(
+        $_aliasNameGenerator(
+          db.failoverGroupChannels.channelId,
+          db.channels.id,
+        ),
+      );
+
+  $$ChannelsTableProcessedTableManager get channelId {
+    final $_column = $_itemColumn<String>('channel_id')!;
+
+    final manager = $$ChannelsTableTableManager(
+      $_db,
+      $_db.channels,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_channelIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+}
+
+class $$FailoverGroupChannelsTableFilterComposer
+    extends Composer<_$AppDatabase, $FailoverGroupChannelsTable> {
+  $$FailoverGroupChannelsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get priority => $composableBuilder(
+    column: $table.priority,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  $$FailoverGroupsTableFilterComposer get groupId {
+    final $$FailoverGroupsTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.groupId,
+      referencedTable: $db.failoverGroups,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$FailoverGroupsTableFilterComposer(
+            $db: $db,
+            $table: $db.failoverGroups,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+
+  $$ChannelsTableFilterComposer get channelId {
+    final $$ChannelsTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.channelId,
+      referencedTable: $db.channels,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$ChannelsTableFilterComposer(
+            $db: $db,
+            $table: $db.channels,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$FailoverGroupChannelsTableOrderingComposer
+    extends Composer<_$AppDatabase, $FailoverGroupChannelsTable> {
+  $$FailoverGroupChannelsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get priority => $composableBuilder(
+    column: $table.priority,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  $$FailoverGroupsTableOrderingComposer get groupId {
+    final $$FailoverGroupsTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.groupId,
+      referencedTable: $db.failoverGroups,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$FailoverGroupsTableOrderingComposer(
+            $db: $db,
+            $table: $db.failoverGroups,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+
+  $$ChannelsTableOrderingComposer get channelId {
+    final $$ChannelsTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.channelId,
+      referencedTable: $db.channels,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$ChannelsTableOrderingComposer(
+            $db: $db,
+            $table: $db.channels,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$FailoverGroupChannelsTableAnnotationComposer
+    extends Composer<_$AppDatabase, $FailoverGroupChannelsTable> {
+  $$FailoverGroupChannelsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get priority =>
+      $composableBuilder(column: $table.priority, builder: (column) => column);
+
+  $$FailoverGroupsTableAnnotationComposer get groupId {
+    final $$FailoverGroupsTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.groupId,
+      referencedTable: $db.failoverGroups,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$FailoverGroupsTableAnnotationComposer(
+            $db: $db,
+            $table: $db.failoverGroups,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+
+  $$ChannelsTableAnnotationComposer get channelId {
+    final $$ChannelsTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.channelId,
+      referencedTable: $db.channels,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$ChannelsTableAnnotationComposer(
+            $db: $db,
+            $table: $db.channels,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$FailoverGroupChannelsTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $FailoverGroupChannelsTable,
+          FailoverGroupChannel,
+          $$FailoverGroupChannelsTableFilterComposer,
+          $$FailoverGroupChannelsTableOrderingComposer,
+          $$FailoverGroupChannelsTableAnnotationComposer,
+          $$FailoverGroupChannelsTableCreateCompanionBuilder,
+          $$FailoverGroupChannelsTableUpdateCompanionBuilder,
+          (FailoverGroupChannel, $$FailoverGroupChannelsTableReferences),
+          FailoverGroupChannel,
+          PrefetchHooks Function({bool groupId, bool channelId})
+        > {
+  $$FailoverGroupChannelsTableTableManager(
+    _$AppDatabase db,
+    $FailoverGroupChannelsTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$FailoverGroupChannelsTableFilterComposer(
+                $db: db,
+                $table: table,
+              ),
+          createOrderingComposer: () =>
+              $$FailoverGroupChannelsTableOrderingComposer(
+                $db: db,
+                $table: table,
+              ),
+          createComputedFieldComposer: () =>
+              $$FailoverGroupChannelsTableAnnotationComposer(
+                $db: db,
+                $table: table,
+              ),
+          updateCompanionCallback:
+              ({
+                Value<int> groupId = const Value.absent(),
+                Value<String> channelId = const Value.absent(),
+                Value<int> priority = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => FailoverGroupChannelsCompanion(
+                groupId: groupId,
+                channelId: channelId,
+                priority: priority,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required int groupId,
+                required String channelId,
+                Value<int> priority = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => FailoverGroupChannelsCompanion.insert(
+                groupId: groupId,
+                channelId: channelId,
+                priority: priority,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable(table),
+                  $$FailoverGroupChannelsTableReferences(db, table, e),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback: ({groupId = false, channelId = false}) {
+            return PrefetchHooks(
+              db: db,
+              explicitlyWatchedTables: [],
+              addJoins:
+                  <
+                    T extends TableManagerState<
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic
+                    >
+                  >(state) {
+                    if (groupId) {
+                      state =
+                          state.withJoin(
+                                currentTable: table,
+                                currentColumn: table.groupId,
+                                referencedTable:
+                                    $$FailoverGroupChannelsTableReferences
+                                        ._groupIdTable(db),
+                                referencedColumn:
+                                    $$FailoverGroupChannelsTableReferences
+                                        ._groupIdTable(db)
+                                        .id,
+                              )
+                              as T;
+                    }
+                    if (channelId) {
+                      state =
+                          state.withJoin(
+                                currentTable: table,
+                                currentColumn: table.channelId,
+                                referencedTable:
+                                    $$FailoverGroupChannelsTableReferences
+                                        ._channelIdTable(db),
+                                referencedColumn:
+                                    $$FailoverGroupChannelsTableReferences
+                                        ._channelIdTable(db)
+                                        .id,
+                              )
+                              as T;
+                    }
+
+                    return state;
+                  },
+              getPrefetchedDataCallback: (items) async {
+                return [];
+              },
+            );
+          },
+        ),
+      );
+}
+
+typedef $$FailoverGroupChannelsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $FailoverGroupChannelsTable,
+      FailoverGroupChannel,
+      $$FailoverGroupChannelsTableFilterComposer,
+      $$FailoverGroupChannelsTableOrderingComposer,
+      $$FailoverGroupChannelsTableAnnotationComposer,
+      $$FailoverGroupChannelsTableCreateCompanionBuilder,
+      $$FailoverGroupChannelsTableUpdateCompanionBuilder,
+      (FailoverGroupChannel, $$FailoverGroupChannelsTableReferences),
+      FailoverGroupChannel,
+      PrefetchHooks Function({bool groupId, bool channelId})
+    >;
 
 class $AppDatabaseManager {
   final _$AppDatabase _db;
@@ -9883,4 +11191,8 @@ class $AppDatabaseManager {
       $$EpgRemindersTableTableManager(_db, _db.epgReminders);
   $$ScheduledRecordingsTableTableManager get scheduledRecordings =>
       $$ScheduledRecordingsTableTableManager(_db, _db.scheduledRecordings);
+  $$FailoverGroupsTableTableManager get failoverGroups =>
+      $$FailoverGroupsTableTableManager(_db, _db.failoverGroups);
+  $$FailoverGroupChannelsTableTableManager get failoverGroupChannels =>
+      $$FailoverGroupChannelsTableTableManager(_db, _db.failoverGroupChannels);
 }
