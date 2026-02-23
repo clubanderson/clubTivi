@@ -23,6 +23,7 @@ import '../../data/services/app_update_service.dart';
 import '../../data/services/epg_refresh_service.dart';
 import '../../data/services/stream_alternatives_service.dart';
 import '../player/player_service.dart';
+import '../player/stream_info_badges.dart';
 import '../providers/provider_manager.dart';
 import '../shows/shows_providers.dart';
 import 'channel_debug_dialog.dart';
@@ -2474,7 +2475,7 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Original: ${channel.name}',
+            Text('Original: ${channel.tvgName ?? channel.name}',
                 style: const TextStyle(fontSize: 12, color: Colors.white54)),
             const SizedBox(height: 12),
             TextFormField(
@@ -3589,116 +3590,6 @@ class _EpgCandidate {
 }
 
 /// Reads mpv properties to show resolution, aspect ratio, and audio channel badges.
-class _StreamInfoBadges extends StatefulWidget {
-  final PlayerService playerService;
-  const _StreamInfoBadges({required this.playerService});
-
-  @override
-  State<_StreamInfoBadges> createState() => _StreamInfoBadgesState();
-}
-
-class _StreamInfoBadgesState extends State<_StreamInfoBadges> {
-  String? _resolution;
-  String? _aspect;
-  String? _audioChannels;
-  String? _videoCodec;
-
-  @override
-  void initState() {
-    super.initState();
-    _refresh();
-  }
-
-  @override
-  void didUpdateWidget(covariant _StreamInfoBadges old) {
-    super.didUpdateWidget(old);
-    _refresh();
-  }
-
-  Future<void> _refresh() async {
-    final ps = widget.playerService;
-    final w = await ps.getMpvProperty('video-params/w');
-    final h = await ps.getMpvProperty('video-params/h');
-    final aspect = await ps.getMpvProperty('video-params/aspect');
-    final aCh = await ps.getMpvProperty('audio-params/channel-count');
-    final codec = await ps.getMpvProperty('video-codec');
-    if (!mounted) return;
-    setState(() {
-      // Resolution label: 720p, 1080p, 1080i, 2160p, etc.
-      if (w != null && h != null) {
-        final height = int.tryParse(h) ?? 0;
-        if (height >= 2160) {
-          _resolution = '4K';
-        } else if (height > 0) {
-          _resolution = '${height}p';
-        }
-      } else {
-        _resolution = null;
-      }
-      // Aspect ratio
-      if (aspect != null) {
-        final a = double.tryParse(aspect);
-        if (a != null && a > 0) {
-          if ((a - 16 / 9).abs() < 0.05) {
-            _aspect = '16:9';
-          } else if ((a - 4 / 3).abs() < 0.05) {
-            _aspect = '4:3';
-          } else if ((a - 21 / 9).abs() < 0.1) {
-            _aspect = '21:9';
-          } else {
-            _aspect = a.toStringAsFixed(2);
-          }
-        }
-      } else {
-        _aspect = null;
-      }
-      // Audio channels
-      if (aCh != null) {
-        final count = int.tryParse(aCh) ?? 0;
-        if (count == 2) {
-          _audioChannels = '2.0';
-        } else if (count == 6) {
-          _audioChannels = '5.1';
-        } else if (count == 8) {
-          _audioChannels = '7.1';
-        } else if (count == 1) {
-          _audioChannels = 'Mono';
-        } else if (count > 0) {
-          _audioChannels = '${count}ch';
-        }
-      } else {
-        _audioChannels = null;
-      }
-      // Video codec
-      if (codec != null && codec.isNotEmpty) {
-        _videoCodec = codec.replaceAll(RegExp(r'^--'), '').split(' ').first;
-      } else {
-        _videoCodec = null;
-      }
-    });
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final badges = <String>[
-      if (_resolution != null) _resolution!,
-      if (_aspect != null) _aspect!,
-      if (_audioChannels != null) _audioChannels!,
-      if (_videoCodec != null) _videoCodec!,
-    ];
-    if (badges.isEmpty) return const SizedBox.shrink();
-    return Wrap(
-      spacing: 6,
-      runSpacing: 4,
-      children: badges.map((b) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-        decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.08),
-          borderRadius: BorderRadius.circular(4),
-          border: Border.all(color: Colors.white24, width: 0.5),
-        ),
-        child: Text(b, style: const TextStyle(fontSize: 10, color: Colors.white70, fontWeight: FontWeight.w600)),
-      )).toList(),
-    );
-  }
+class _StreamInfoBadges extends StreamInfoBadges {
+  const _StreamInfoBadges({required super.playerService});
 }

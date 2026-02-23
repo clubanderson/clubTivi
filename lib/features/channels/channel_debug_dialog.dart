@@ -78,6 +78,7 @@ class _ChannelDebugDialogState extends State<ChannelDebugDialog> {
   /// Track which alternatives are accepted (true), rejected (false), or pending (absent).
   final Map<String, bool> _decisions = {};
   bool _hasChanges = false;
+  String? _playingChannelId;
 
   @override
   void initState() {
@@ -101,7 +102,17 @@ class _ChannelDebugDialogState extends State<ChannelDebugDialog> {
           }
         }
       }
-      // Channels sharing vanity name are already accepted
+      final acceptedJson = prefs.getString('channel_failover_accepted');
+      if (acceptedJson != null) {
+        final accepted = (jsonDecode(acceptedJson) as Map<String, dynamic>);
+        final myAccepted = accepted[widget.channel.id];
+        if (myAccepted is List) {
+          for (final id in myAccepted) {
+            _decisions[id as String] = true;
+          }
+        }
+      }
+      // Channels sharing vanity name are also accepted
       final vanityJson = prefs.getString('channel_vanity_names');
       if (vanityJson != null && widget.vanityName != null) {
         final vanityMap = (jsonDecode(vanityJson) as Map<String, dynamic>);
@@ -118,6 +129,13 @@ class _ChannelDebugDialogState extends State<ChannelDebugDialog> {
   @override
   void dispose() {
     _refreshTimer?.cancel();
+    // Switch back to original channel if previewing an alternative
+    if (_playingChannelId != null) {
+      final url = widget.channel.streamUrl;
+      if (url != null && url.isNotEmpty) {
+        widget.playerService.play(url);
+      }
+    }
     super.dispose();
   }
 
@@ -129,18 +147,57 @@ class _ChannelDebugDialogState extends State<ChannelDebugDialog> {
       .where((a) => _decisions[a.channel.id] != false)
       .length;
 
-  /// Accept a channel — immediately apply vanity name to lock it in.
+  /// Switch playback to an alternative stream for preview.
+  void _previewAlternative(AlternativeDetail alt) {
+    final url = alt.channel.streamUrl;
+    if (url == null || url.isEmpty) return;
+    widget.playerService.play(url);
+    setState(() => _playingChannelId = alt.channel.id);
+  }
+
+  /// Switch back to the current (original) channel.
+  void _playOriginal() {
+    final url = widget.channel.streamUrl;
+    if (url == null || url.isEmpty) return;
+    widget.playerService.play(url);
+    setState(() => _playingChannelId = null);
+  }
+
+  /// Accept a channel — persist acceptance and apply vanity name.
   Future<void> _acceptChannel(String channelId) async {
     setState(() => _decisions[channelId] = true);
     try {
       final prefs = await SharedPreferences.getInstance();
+      // Persist accepted list
+      final acceptedJson = prefs.getString('channel_failover_accepted');
+      final accepted = acceptedJson != null
+          ? (jsonDecode(acceptedJson) as Map<String, dynamic>)
+          : <String, dynamic>{};
+      final myAccepted = (accepted[widget.channel.id] as List<dynamic>?)
+              ?.cast<String>()
+              .toSet() ??
+          <String>{};
+      myAccepted.add(channelId);
+      accepted[widget.channel.id] = myAccepted.toList();
+      await prefs.setString('channel_failover_accepted', jsonEncode(accepted));
+      // Remove from rejected if it was there
+      final rejectedJson = prefs.getString('channel_failover_rejected');
+      if (rejectedJson != null) {
+        final rejected = (jsonDecode(rejectedJson) as Map<String, dynamic>);
+        final myRejected = (rejected[widget.channel.id] as List<dynamic>?)?.cast<String>().toList();
+        if (myRejected != null) {
+          myRejected.remove(channelId);
+          rejected[widget.channel.id] = myRejected;
+          await prefs.setString('channel_failover_rejected', jsonEncode(rejected));
+        }
+      }
+      // Apply vanity name
       final vanityName = widget.vanityName ?? widget.channel.name;
       final vanityJson = prefs.getString('channel_vanity_names');
       final vanityMap = vanityJson != null
           ? (jsonDecode(vanityJson) as Map<String, dynamic>)
           : <String, dynamic>{};
       vanityMap[channelId] = vanityName;
-      // Ensure current channel also has the vanity name
       vanityMap[widget.channel.id] = vanityName;
       await prefs.setString('channel_vanity_names', jsonEncode(vanityMap));
       widget.onVanityApplied?.call([channelId], vanityName);
@@ -154,6 +211,7 @@ class _ChannelDebugDialogState extends State<ChannelDebugDialog> {
     setState(() => _decisions[channelId] = false);
     try {
       final prefs = await SharedPreferences.getInstance();
+      // Persist rejection
       final rejectedJson = prefs.getString('channel_failover_rejected');
       final rejected = rejectedJson != null
           ? (jsonDecode(rejectedJson) as Map<String, dynamic>)
@@ -165,12 +223,23 @@ class _ChannelDebugDialogState extends State<ChannelDebugDialog> {
       myRejected.add(channelId);
       rejected[widget.channel.id] = myRejected.toList();
       await prefs.setString('channel_failover_rejected', jsonEncode(rejected));
+      // Remove from accepted if it was there
+      final acceptedJson = prefs.getString('channel_failover_accepted');
+      if (acceptedJson != null) {
+        final accepted = (jsonDecode(acceptedJson) as Map<String, dynamic>);
+        final myAccepted = (accepted[widget.channel.id] as List<dynamic>?)?.cast<String>().toList();
+        if (myAccepted != null) {
+          myAccepted.remove(channelId);
+          accepted[widget.channel.id] = myAccepted;
+          await prefs.setString('channel_failover_accepted', jsonEncode(accepted));
+        }
+      }
     } catch (e) {
       debugPrint('Error rejecting failover: $e');
     }
   }
 
-  /// Reset all decisions — clear rejections and re-discover.
+  /// Reset all decisions — clear rejections, acceptances, and re-discover.
   Future<void> _resetDecisions() async {
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -179,6 +248,12 @@ class _ChannelDebugDialogState extends State<ChannelDebugDialog> {
         final rejected = (jsonDecode(rejectedJson) as Map<String, dynamic>);
         rejected.remove(widget.channel.id);
         await prefs.setString('channel_failover_rejected', jsonEncode(rejected));
+      }
+      final acceptedJson = prefs.getString('channel_failover_accepted');
+      if (acceptedJson != null) {
+        final accepted = (jsonDecode(acceptedJson) as Map<String, dynamic>);
+        accepted.remove(widget.channel.id);
+        await prefs.setString('channel_failover_accepted', jsonEncode(accepted));
       }
       if (mounted) {
         setState(() => _decisions.clear());
@@ -392,29 +467,36 @@ class _ChannelDebugDialogState extends State<ChannelDebugDialog> {
                     ),
                     const SizedBox(height: 4),
                     // Current channel (always first)
-                    _failoverRow(
-                      name: ch.name,
-                      providerName: widget.currentProviderName,
-                      badge: 'current',
-                      badgeColor: const Color(0xFF00B894),
-                      healthScore: null,
+                    InkWell(
+                      onTap: _playingChannelId != null ? _playOriginal : null,
+                      child: _failoverRow(
+                        name: ch.name,
+                        providerName: widget.currentProviderName,
+                        badge: _playingChannelId == null ? 'playing' : 'current',
+                        badgeColor: const Color(0xFF00B894),
+                        healthScore: null,
+                      ),
                     ),
                     if (widget.alternatives.isNotEmpty) ...[
                       const Divider(color: Colors.white12, height: 8),
                       ...widget.alternatives.map((alt) {
                         final decision = _decisions[alt.channel.id];
                         final isRejected = decision == false;
+                        final isPlaying = _playingChannelId == alt.channel.id;
                         return Opacity(
                           opacity: isRejected ? 0.35 : 1.0,
                           child: Row(
                             children: [
                               Expanded(
-                                child: _failoverRow(
-                                  name: alt.channel.name,
-                                  providerName: alt.providerName.isNotEmpty ? alt.providerName : null,
-                                  badge: decision == true ? 'accepted' : alt.matchReason,
-                                  badgeColor: decision == true ? const Color(0xFF00B894) : null,
-                                  healthScore: alt.healthScore,
+                                child: InkWell(
+                                  onTap: isRejected ? null : () => _previewAlternative(alt),
+                                  child: _failoverRow(
+                                    name: alt.channel.name,
+                                    providerName: alt.providerName.isNotEmpty ? alt.providerName : null,
+                                    badge: isPlaying ? 'playing' : (decision == true ? 'accepted' : alt.matchReason),
+                                    badgeColor: isPlaying ? Colors.cyanAccent : (decision == true ? const Color(0xFF00B894) : null),
+                                    healthScore: alt.healthScore,
+                                  ),
                                 ),
                               ),
                               // Accept button
