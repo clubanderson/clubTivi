@@ -53,6 +53,7 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
   /// Maps channel ID → user-set vanity name (original name preserved in DB)
   Map<String, String> _vanityNames = {};
   Set<String> _validEpgChannelIds = {};
+  Map<String, String> _rawToPrefixedEpg = {}; // XMLTV channelId → prefixed id
   bool _showGuideView = true;
   final _searchController = TextEditingController();
   final _searchFocusNode = FocusNode();
@@ -270,8 +271,9 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
       final mapped = _epgMappings[c.id];
       if (mapped != null && mapped.isNotEmpty) {
         epgChannelIds.add(mapped);
-      } else if (c.tvgId != null && c.tvgId!.isNotEmpty && _validEpgChannelIds.contains(c.tvgId)) {
-        epgChannelIds.add(c.tvgId!);
+      } else if (c.tvgId != null && c.tvgId!.isNotEmpty) {
+        final prefixed = _rawToPrefixedEpg[c.tvgId!];
+        if (prefixed != null) epgChannelIds.add(prefixed);
       }
     }
     if (epgChannelIds.isEmpty) return;
@@ -488,10 +490,12 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
     final epgSources = await database.getAllEpgSources();
     final currentSourceIds = epgSources.map((s) => s.id).toSet();
     final validIds = <String>{};
+    final rawToPrefixed = <String, String>{}; // XMLTV channelId → prefixed id
     for (final src in epgSources) {
       final chs = await database.getEpgChannelsForSource(src.id);
       for (final ch in chs) {
         validIds.add(ch.id); // prefixed: sourceId_channelId
+        rawToPrefixed[ch.channelId] = ch.id;
       }
     }
 
@@ -541,8 +545,9 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
       final mapped = epgMap[c.id];
       if (mapped != null && mapped.isNotEmpty) {
         epgChannelIds.add(mapped);
-      } else if (c.tvgId != null && c.tvgId!.isNotEmpty && validIds.contains(c.tvgId)) {
-        epgChannelIds.add(c.tvgId!);
+      } else if (c.tvgId != null && c.tvgId!.isNotEmpty) {
+        final prefixed = rawToPrefixed[c.tvgId!];
+        if (prefixed != null) epgChannelIds.add(prefixed);
       }
     }
     List<db.EpgProgramme> nowPlaying = [];
@@ -570,6 +575,7 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
       _nowPlaying = nowPlaying;
       _epgMappings = epgMap;
       _validEpgChannelIds = validIds;
+      _rawToPrefixedEpg = rawToPrefixed;
       _favoriteLists = favLists;
       _favoritedChannelIds = favChannelIds;
       _isLoading = false;
@@ -652,7 +658,8 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
       // Group filters only apply when not searching
       if (_selectedGroup == 'Favorites') {
         channels =
-            channels.where((c) => _favoritedChannelIds.contains(c.id)).toList();
+            channels.where((c) => _favoritedChannelIds.contains(c.id)).toList()
+              ..sort((a, b) => _channelDisplayName(a).toLowerCase().compareTo(_channelDisplayName(b).toLowerCase()));
       } else if (_selectedGroup.startsWith('fav:')) {
         final listId = _selectedGroup.substring(4);
         _applyFavoriteListFilter(listId);
@@ -720,6 +727,7 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
           })
           .toList();
     }
+    channels.sort((a, b) => _channelDisplayName(a).toLowerCase().compareTo(_channelDisplayName(b).toLowerCase()));
     if (!mounted) return;
     setState(() {
       _filteredChannels = channels;
@@ -827,8 +835,9 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
   String? _getEpgId(db.Channel channel) {
     final mapped = _epgMappings[channel.id];
     if (mapped != null && mapped.isNotEmpty) return mapped;
-    if (channel.tvgId != null && channel.tvgId!.isNotEmpty && _validEpgChannelIds.contains(channel.tvgId)) {
-      return channel.tvgId;
+    if (channel.tvgId != null && channel.tvgId!.isNotEmpty) {
+      final prefixed = _rawToPrefixedEpg[channel.tvgId!];
+      if (prefixed != null) return prefixed;
     }
     return null;
   }
@@ -2479,19 +2488,15 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
                               _qualityBadge(channel.name)!,
                           ],
                         ),
-                        if (channel.groupTitle != null &&
-                            channel.groupTitle!.isNotEmpty)
+                        if (_getProviderName(channel.providerId).isNotEmpty ||
+                            (channel.groupTitle != null && channel.groupTitle!.isNotEmpty))
                           Text(
-                            '${channel.groupTitle!} · ${_getProviderName(channel.providerId)}',
-                            style: const TextStyle(
-                              color: Colors.white38,
-                              fontSize: 11,
-                            ),
-                            overflow: TextOverflow.ellipsis,
-                          )
-                        else if (_getProviderName(channel.providerId).isNotEmpty)
-                          Text(
-                            _getProviderName(channel.providerId),
+                            [
+                              if (_getProviderName(channel.providerId).isNotEmpty)
+                                _getProviderName(channel.providerId),
+                              if (channel.groupTitle != null && channel.groupTitle!.isNotEmpty)
+                                channel.groupTitle!,
+                            ].join(' · '),
                             style: const TextStyle(
                               color: Colors.white38,
                               fontSize: 11,
@@ -2783,6 +2788,14 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
     final checkedIds = listsForChannel.map((l) => l.id).toSet();
 
     if (!mounted) return;
+    Timer? autoCloseTimer;
+    void resetAutoClose(NavigatorState nav) {
+      autoCloseTimer?.cancel();
+      autoCloseTimer = Timer(const Duration(seconds: 5), () {
+        if (nav.canPop()) nav.pop();
+      });
+    }
+    bool autoCloseStarted = false;
     await showModalBottomSheet<void>(
       context: context,
       backgroundColor: const Color(0xFF1A1A2E),
@@ -2790,6 +2803,10 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
         borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
       ),
       builder: (ctx) {
+        if (!autoCloseStarted) {
+          autoCloseStarted = true;
+          resetAutoClose(Navigator.of(ctx));
+        }
         return StatefulBuilder(
           builder: (ctx, setSheetState) {
             return Padding(
@@ -2836,12 +2853,14 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
                           checkedIds.remove(list.id);
                         }
                         setSheetState(() {});
+                        resetAutoClose(Navigator.of(ctx));
                       },
                     );
                   }),
                   const Divider(color: Colors.white12),
                   TextButton.icon(
                     onPressed: () async {
+                      autoCloseTimer?.cancel();
                       final name = await _showCreateListDialog();
                       if (name != null && name.isNotEmpty) {
                         final newList = await database.createFavoriteList(name);
@@ -2852,6 +2871,7 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
                         setState(() => _favoriteLists = updated);
                         setSheetState(() {});
                       }
+                      if (ctx.mounted) resetAutoClose(Navigator.of(ctx));
                     },
                     icon: const Icon(Icons.add_rounded, size: 18),
                     label: const Text('Create new list'),
@@ -2865,6 +2885,7 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
         );
       },
     );
+    autoCloseTimer?.cancel();
     // Refresh favorited state after sheet closes
     final favIds = await database.getAllFavoritedChannelIds();
     if (mounted) {
@@ -3318,7 +3339,11 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
                                               overflow: TextOverflow.ellipsis,
                                             ),
                                             Text(
-                                              _getProviderName(channel.providerId),
+                                              [
+                                                _getProviderName(channel.providerId),
+                                                if (channel.groupTitle != null && channel.groupTitle!.isNotEmpty)
+                                                  channel.groupTitle!,
+                                              ].join(' · '),
                                               style: const TextStyle(fontSize: 9, color: Colors.white30),
                                               maxLines: 1,
                                               overflow: TextOverflow.ellipsis,
