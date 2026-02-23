@@ -1240,7 +1240,7 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
   // Keyboard navigation
   // ---------------------------------------------------------------------------
 
-  void _handleKeyEvent(KeyEvent event) {
+  KeyEventResult _handleKeyEvent(KeyEvent event) {
     // On Android/TV, arrow keys are used for D-pad focus navigation.
     // Channel switching uses dedicated channelUp/channelDown keys.
     final isAndroid = Platform.isAndroid;
@@ -1256,7 +1256,7 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
             currentProviderName: ref.read(streamAlternativesProvider).providerName(_previewChannel!.providerId),
             alternatives: alts);
       }
-      return;
+      return KeyEventResult.handled;
     }
 
     if (event.logicalKey == LogicalKeyboardKey.channelUp ||
@@ -1266,7 +1266,7 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
         _selectChannel(newIndex);
         _scrollToIndex(newIndex);
       }
-      return;
+      return KeyEventResult.handled;
     }
 
     if (event.logicalKey == LogicalKeyboardKey.channelDown ||
@@ -1276,7 +1276,7 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
         _selectChannel(newIndex);
         _scrollToIndex(newIndex);
       }
-      return;
+      return KeyEventResult.handled;
     }
 
     if (event.logicalKey == LogicalKeyboardKey.enter ||
@@ -1284,24 +1284,26 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
       if (_previewChannel != null) {
         _goFullscreen(_previewChannel!);
       }
-      return;
+      return KeyEventResult.handled;
     }
 
     if (!isAndroid && event.logicalKey == LogicalKeyboardKey.arrowLeft) {
       _adjustVolume(-5);
-      return;
+      return KeyEventResult.handled;
     }
 
     if (!isAndroid && event.logicalKey == LogicalKeyboardKey.arrowRight) {
       _adjustVolume(5);
-      return;
+      return KeyEventResult.handled;
     }
 
     // Backspace → go back in channel history
     if (event.logicalKey == LogicalKeyboardKey.backspace) {
       _goBackChannel();
-      return;
+      return KeyEventResult.handled;
     }
+
+    return KeyEventResult.ignored;
   }
 
   void _scrollToIndex(int index) {
@@ -1374,6 +1376,8 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
           onKeyEvent: (node, event) {
             if (event is! KeyDownEvent) return KeyEventResult.ignored;
             if (_searchFocusNode.hasFocus) return KeyEventResult.ignored;
+            // Don't swallow keys when a dialog/overlay is open
+            if (ModalRoute.of(context)?.isCurrent != true) return KeyEventResult.ignored;
             final key = event.logicalKey;
             // Let Flutter's spatial focus system handle D-pad arrows
             if (key == LogicalKeyboardKey.arrowUp ||
@@ -1382,8 +1386,7 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
                 key == LogicalKeyboardKey.arrowRight) {
               return KeyEventResult.ignored;
             }
-            _handleKeyEvent(event);
-            return KeyEventResult.handled;
+            return _handleKeyEvent(event);
           },
           child: Scaffold(
             backgroundColor: const Color(0xFF1A1A2E),
