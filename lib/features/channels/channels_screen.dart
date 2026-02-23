@@ -16,6 +16,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../core/countdown_snackbar.dart';
 import '../../core/fuzzy_match.dart';
 import '../../core/platform_info.dart';
+import '../../core/weather_clock_widget.dart';
 import '../../data/datasources/local/database.dart' as db;
 import '../../data/datasources/remote/tmdb_client.dart';
 import '../../data/services/app_update_service.dart';
@@ -1154,6 +1155,7 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
               ),
             ),
           ),
+          const WeatherClockWidget(),
           Flexible(
             child: SingleChildScrollView(
               scrollDirection: Axis.horizontal,

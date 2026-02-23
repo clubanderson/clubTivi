@@ -21,6 +21,7 @@ dependencies:
 
   # Networking
   dio: ^5.7.0
+  http: ^1.2.2
 
   # Local database (SQLite)
   drift: ^2.22.1
