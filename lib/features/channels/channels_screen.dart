@@ -3552,7 +3552,6 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
   void _playFailoverGroup(db.FailoverGroup group, List<db.Channel> members) {
     if (members.isEmpty) return;
     final first = members.first;
-    final globalIdx = _filteredChannels.indexWhere((c) => c.id == first.id);
 
     final playerService = ref.read(playerServiceProvider);
     // Pass all group member URLs as failover alternatives
@@ -3568,14 +3567,13 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
       failoverGroupUrls: altUrls,
     );
 
-    if (globalIdx >= 0) {
-      setState(() {
-        _selectedIndex = globalIdx;
-        _previewChannel = first;
-      });
-      _showInfoOverlay(first, globalIdx);
-      _saveSession();
-    }
+    // Always update preview — grouped channels are filtered out of
+    // _filteredChannels so indexWhere returns -1; update state regardless.
+    setState(() {
+      _previewChannel = first;
+    });
+    _showInfoOverlay(first, _selectedIndex);
+    _saveSession();
   }
 
   void _showMemberActions(db.FailoverGroup group, db.Channel channel) {
