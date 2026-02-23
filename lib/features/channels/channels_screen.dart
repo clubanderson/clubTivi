@@ -63,6 +63,7 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
   late final ScrollController _guideScrollController;
   Timer? _guideIdleTimer;
   DateTime? _guideDayStart; // stored for snap-back calculation
+  Timer? _searchDebounce;
 
   // Overlay state
   bool _showOverlay = false;
@@ -451,6 +452,7 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
     _channelListController.dispose();
     _guideScrollController.dispose();
     _guideIdleTimer?.cancel();
+    _searchDebounce?.cancel();
     _overlayTimer?.cancel();
     _nowPlayingTimer?.cancel();
     _volumeOverlayTimer?.cancel();
@@ -528,7 +530,9 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
         }
       }
     }
-    debugPrint('[EPG] Scoped to ${favChannelIds.length} favorites + ${epgScopeIds.length - favChannelIds.length} failover alts (${allChannels.length} total channels)');
+    if (_isLoading) {
+      debugPrint('[EPG] Scoped to ${favChannelIds.length} favorites + ${epgScopeIds.length - favChannelIds.length} failover alts (${allChannels.length} total channels)');
+    }
 
     // Load now-playing EPG data only for scoped channels
     final epgChannelIds = <String>{};
@@ -675,31 +679,14 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
     }
 
     // Top-bar search: when active, search ALL channels across ALL providers
-    // regardless of group selection. Matches channel name, group, tvgId, and
-    // now-playing programme titles (AND across tokens).
+    // regardless of group selection. Single-pass haystack for speed.
     if (_searchQuery.isNotEmpty) {
       final tokens = _searchQuery.toLowerCase().split(RegExp(r'\s+')).where((t) => t.isNotEmpty).toList();
       if (tokens.isNotEmpty) {
-        // Search the full channel list, not the group-filtered subset
         channels = _allChannels.where((c) {
-          final name = c.name.toLowerCase();
-          final vanity = (_vanityNames[c.id] ?? '').toLowerCase();
-          final group = (c.groupTitle ?? '').toLowerCase();
-          final tvgId = (c.tvgId ?? '').toLowerCase();
-          final programmeTitles = _getChannelProgrammeTitles(c)
-              .map((t) => t.toLowerCase())
-              .toList();
-          // AND: channel matches only if EVERY token hits name, vanity name, group, tvgId, or a programme title
-          return tokens.every((token) {
-            if (name.contains(token)) return true;
-            if (vanity.isNotEmpty && vanity.contains(token)) return true;
-            if (group.contains(token)) return true;
-            if (tvgId.contains(token)) return true;
-            for (final title in programmeTitles) {
-              if (title.contains(token)) return true;
-            }
-            return false;
-          });
+          final haystack = '${c.name}\x00${_vanityNames[c.id] ?? ''}\x00${c.groupTitle ?? ''}\x00${c.tvgId ?? ''}'
+              .toLowerCase();
+          return tokens.every((t) => haystack.contains(t));
         }).toList();
       }
     }
@@ -718,23 +705,9 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
       if (tokens.isNotEmpty) {
         // Search ALL channels, not just favorites
         channels = _allChannels.where((c) {
-          final name = c.name.toLowerCase();
-          final vanity = (_vanityNames[c.id] ?? '').toLowerCase();
-          final group = (c.groupTitle ?? '').toLowerCase();
-          final tvgId = (c.tvgId ?? '').toLowerCase();
-          final programmeTitles = _getChannelProgrammeTitles(c)
-              .map((t) => t.toLowerCase())
-              .toList();
-          return tokens.every((token) {
-            if (name.contains(token)) return true;
-            if (vanity.isNotEmpty && vanity.contains(token)) return true;
-            if (group.contains(token)) return true;
-            if (tvgId.contains(token)) return true;
-            for (final title in programmeTitles) {
-              if (title.contains(token)) return true;
-            }
-            return false;
-          });
+          final haystack = '${c.name}\x00${_vanityNames[c.id] ?? ''}\x00${c.groupTitle ?? ''}\x00${c.tvgId ?? ''}'
+              .toLowerCase();
+          return tokens.every((t) => haystack.contains(t));
         }).toList();
       }
     }
@@ -1302,9 +1275,10 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
                           : null,
                     ),
                     onChanged: (value) {
-                      setState(() {
-                        _searchQuery = value;
-                        _applyFilters();
+                      _searchDebounce?.cancel();
+                      _searchQuery = value;
+                      _searchDebounce = Timer(const Duration(milliseconds: 300), () {
+                        if (mounted) setState(() => _applyFilters());
                       });
                     },
                     onSubmitted: (value) {

@@ -98,10 +98,16 @@ class EpgRefreshService {
     }
   }
 
-  /// Refresh all enabled EPG sources.
-  Future<void> refreshAllSources() async {
+  /// Refresh all enabled EPG sources (skips sources refreshed within the last 4 hours).
+  Future<void> refreshAllSources({bool force = false}) async {
     final sources = await _db.getAllEpgSources();
+    final now = DateTime.now();
     for (final source in sources.where((s) => s.enabled)) {
+      if (!force && source.lastRefresh != null &&
+          now.difference(source.lastRefresh!).inHours < 4) {
+        debugPrint('[EPG] Skipping ${source.name} — refreshed ${now.difference(source.lastRefresh!).inMinutes}m ago');
+        continue;
+      }
       try {
         await refreshSource(source.id);
       } catch (e) {
