@@ -71,14 +71,14 @@ class PlayerService {
   Future<void> _initPlayer(Player p) async {
     final np = p.platform;
     if (np is native_player.NativePlayer) {
-      // Force FFmpeg software decoders for AC-3/EAC-3 (AudioToolbox decoders
-      // silently fail on surround streams and non-standard MPEG-TS codec tags)
-      await np.setProperty('ad', 'lavc:eac3,lavc:ac3,');
+      // Force all audio through FFmpeg software decoder — AudioToolbox
+      // silently fails on EAC-3/AC-3 surround and non-standard MPEG-TS tags
+      await np.setProperty('ad', 'lavc');
       // Allow non-standard codec tags (e.g. 0x0087 for EAC-3 in MPEG-TS)
       await np.setProperty('ad-lavc-o', 'strict=-2');
       // Give the demuxer enough data to detect non-standard audio codecs
-      await np.setProperty('demuxer-lavf-probesize', '5000000');
-      await np.setProperty('demuxer-lavf-analyzeduration', '5000000');
+      await np.setProperty('demuxer-lavf-probesize', '10000000');
+      await np.setProperty('demuxer-lavf-analyzeduration', '10000000');
       // Enable non-strict MPEG-TS parsing for non-standard codec tags
       await np.setProperty('demuxer-lavf-o', 'strict=-2');
       // Downmix surround to stereo for output compatibility
