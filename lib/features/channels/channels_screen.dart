@@ -3162,7 +3162,7 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
                   ? _addToExistingFailoverGroup
                   : null,
               icon: const Icon(Icons.add, size: 16),
-              label: const Text('Add to Group'),
+              label: const Text('Add to Smart Channel'),
               style: FilledButton.styleFrom(
                 backgroundColor: const Color(0xFF2D3436),
               ),
@@ -3173,7 +3173,7 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
                 ? _createFailoverGroupFromSelection
                 : null,
             icon: const Icon(Icons.shield_outlined, size: 16),
-            label: const Text('New Group'),
+            label: const Text('New Smart Channel'),
             style: FilledButton.styleFrom(
               backgroundColor: const Color(0xFF6C5CE7),
             ),
@@ -3199,7 +3199,7 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: const Color(0xFF1A1A2E),
-        title: const Text('Create Failover Group', style: TextStyle(color: Colors.white)),
+        title: const Text('Create Smart Channel', style: TextStyle(color: Colors.white)),
         content: SizedBox(
           width: 300,
           child: Column(
@@ -3207,7 +3207,7 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
             children: [
               Text(
                 '${_multiSelectedChannelIds.length} channels selected. '
-                'The failover engine will cycle through these channels in order.',
+                'Streams will auto-switch when buffering is detected.',
                 style: const TextStyle(color: Colors.white54, fontSize: 12),
               ),
               const SizedBox(height: 12),
@@ -3217,7 +3217,7 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
                 style: const TextStyle(color: Colors.white),
                 decoration: const InputDecoration(
                   labelText: 'Group Name',
-                  hintText: 'e.g. ESPN Failover',
+                  hintText: 'e.g. ESPN Smart',
                   hintStyle: TextStyle(color: Colors.white24),
                 ),
                 onFieldSubmitted: (v) => Navigator.pop(ctx, v.trim()),
@@ -3258,7 +3258,7 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Failover group "$name" created with ${orderedIds.length} channels'),
+          content: Text('Smart channel "$name" created with ${orderedIds.length} streams'),
           duration: const Duration(seconds: 3),
           behavior: SnackBarBehavior.floating,
           width: 350,
@@ -3278,7 +3278,7 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
           children: [
             const Padding(
               padding: EdgeInsets.all(16),
-              child: Text('Add to Failover Group',
+              child: Text('Add to Smart Channel',
                   style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
             ),
             ..._failoverGroups.map((g) {
@@ -3307,7 +3307,7 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('All selected channels are already in this group'),
+            content: Text('All selected streams are already in this smart channel'),
             duration: Duration(seconds: 2),
             behavior: SnackBarBehavior.floating,
             width: 350,
@@ -3327,7 +3327,7 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Added ${newIds.length} channel${newIds.length == 1 ? '' : 's'} to "${selected.name}"'),
+          content: Text('Added ${newIds.length} stream${newIds.length == 1 ? '' : 's'} to "${selected.name}"'),
           duration: const Duration(seconds: 3),
           behavior: SnackBarBehavior.floating,
           width: 350,
@@ -3416,7 +3416,7 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
                         ],
                       ),
                       Text(
-                        '${members.length} streams · failover group',
+                        '${members.length} streams · smart channel',
                         style: const TextStyle(color: Colors.white38, fontSize: 11),
                         overflow: TextOverflow.ellipsis,
                       ),
@@ -3593,7 +3593,7 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
             ),
             ListTile(
               leading: const Icon(Icons.remove_circle_outline, color: Colors.orangeAccent),
-              title: const Text('Remove from Group', style: TextStyle(color: Colors.orangeAccent)),
+              title: const Text('Remove from Smart Channel', style: TextStyle(color: Colors.orangeAccent)),
               onTap: () async {
                 Navigator.pop(ctx);
                 final database = ref.read(databaseProvider);
@@ -3627,7 +3627,7 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
           children: [
             ListTile(
               leading: const Icon(Icons.play_circle_outline, color: Colors.white70),
-              title: const Text('Play Group', style: TextStyle(color: Colors.white)),
+              title: const Text('Play Smart Channel', style: TextStyle(color: Colors.white)),
               onTap: () {
                 Navigator.pop(ctx);
                 final members = (_failoverGroupMembers[group.id] ?? [])
@@ -3647,7 +3647,7 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
                   context: context,
                   builder: (ctx) => AlertDialog(
                     backgroundColor: const Color(0xFF1A1A2E),
-                    title: const Text('Rename Failover Group', style: TextStyle(color: Colors.white)),
+                    title: const Text('Rename Smart Channel', style: TextStyle(color: Colors.white)),
                     content: TextFormField(
                       controller: controller,
                       autofocus: true,
@@ -3673,15 +3673,15 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
             ),
             ListTile(
               leading: const Icon(Icons.delete_outline, color: Colors.redAccent),
-              title: const Text('Delete Group', style: TextStyle(color: Colors.redAccent)),
+              title: const Text('Delete Smart Channel', style: TextStyle(color: Colors.redAccent)),
               onTap: () async {
                 Navigator.pop(ctx);
                 final confirm = await showDialog<bool>(
                   context: context,
                   builder: (ctx) => AlertDialog(
                     backgroundColor: const Color(0xFF1A1A2E),
-                    title: const Text('Delete Failover Group?', style: TextStyle(color: Colors.white)),
-                    content: Text('Delete "${group.name}"? The channels will not be removed.',
+                    title: const Text('Delete Smart Channel?', style: TextStyle(color: Colors.white)),
+                    content: Text('Delete "${group.name}"? The individual streams will be kept.',
                         style: const TextStyle(color: Colors.white70)),
                     actions: [
                       TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
