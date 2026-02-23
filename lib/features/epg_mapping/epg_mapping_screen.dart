@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -25,11 +26,19 @@ class _EpgMappingScreenState extends ConsumerState<EpgMappingScreen> {
   Widget build(BuildContext context) {
     final state = ref.watch(epgMappingProvider);
 
-    return Scaffold(
+    return CallbackShortcuts(
+      bindings: {
+        const SingleActivator(LogicalKeyboardKey.escape): () {
+          context.go('/settings');
+        },
+      },
+      child: Focus(
+        autofocus: true,
+        child: Scaffold(
       appBar: AppBar(
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
-          onPressed: () => context.go('/'),
+          onPressed: () => context.go('/settings'),
         ),
         title: const Text('EPG Mappings'),
         actions: [
@@ -138,6 +147,7 @@ class _EpgMappingScreenState extends ConsumerState<EpgMappingScreen> {
                 const SizedBox(width: 12),
                 Expanded(
                   child: TextField(
+                    style: const TextStyle(color: Colors.white),
                     decoration: InputDecoration(
                       hintText: 'Search channels...',
                       prefixIcon: const Icon(Icons.search),
@@ -188,6 +198,8 @@ class _EpgMappingScreenState extends ConsumerState<EpgMappingScreen> {
           ),
         ],
       ),
+    ),
+    ),
     );
   }
 

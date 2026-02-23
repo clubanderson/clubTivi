@@ -1,8 +1,9 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io' show Platform;
+import 'dart:io' show Directory, Platform;
 
 import 'package:drift/drift.dart' show Value;
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -17,13 +18,10 @@ import '../../data/datasources/local/database.dart' as db;
 import '../../data/datasources/remote/tmdb_client.dart';
 import '../../data/services/app_update_service.dart';
 import '../../data/services/epg_refresh_service.dart';
-import '../casting/cast_service.dart';
-import '../casting/cast_dialog.dart';
 import '../player/player_service.dart';
 import '../providers/provider_manager.dart';
 import '../shows/shows_providers.dart';
 import 'channel_debug_dialog.dart';
-import 'channel_info_overlay.dart';
 
 class ChannelsScreen extends ConsumerStatefulWidget {
   const ChannelsScreen({super.key});
@@ -1110,38 +1108,7 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
             tooltip: 'Shows & Movies',
             onPressed: () => context.push('/shows'),
           ),
-          IconButton(
-            icon: Icon(
-              ref.read(castServiceProvider).isCasting
-                  ? Icons.cast_connected_rounded
-                  : Icons.cast_rounded,
-              color: ref.read(castServiceProvider).isCasting
-                  ? Colors.amber
-                  : Colors.white70,
-            ),
-            tooltip: 'Cast to device',
-            onPressed: () async {
-              final device = await showCastDialog(context, ref);
-              if (device != null && mounted && _selectedIndex >= 0 && _selectedIndex < _filteredChannels.length) {
-                final channel = _filteredChannels[_selectedIndex];
-                final success = await ref.read(castServiceProvider).castTo(
-                  device,
-                  channel.streamUrl,
-                  title: channel.name,
-                );
-                if (success && mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text('Casting to ${device.name}'),
-                      backgroundColor: Colors.green.shade800,
-                      duration: const Duration(seconds: 2),
-                    ),
-                  );
-                  setState(() {});
-                }
-              }
-            },
-          ),
+          // Cast icon removed — available in fullscreen player
                 ],
               ),
             ),
@@ -1733,6 +1700,11 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
                 _buildTreeItem(group, group, null, indent: 1),
             ],
           ),
+        // Quick actions
+        const Divider(height: 1, color: Colors.white10),
+        _buildTreeItem('Recordings', 'action:recordings', Icons.videocam_rounded, indent: 0),
+        _buildTreeItem('Play File', 'action:play_file', Icons.play_circle_outline_rounded, indent: 0),
+        _buildTreeItem('Play URL', 'action:play_url', Icons.link_rounded, indent: 0),
       ],
     );
   }
@@ -1872,6 +1844,125 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
     );
   }
 
+  void _handleQuickAction(String action) {
+    switch (action) {
+      case 'recordings':
+        _showRecordings();
+        break;
+      case 'play_file':
+        _playLocalFile();
+        break;
+      case 'play_url':
+        _playUrlStream();
+        break;
+    }
+  }
+
+  Future<void> _showRecordings() async {
+    final prefs = await SharedPreferences.getInstance();
+    final folder = prefs.getString('recordings_folder');
+    if (!mounted) return;
+    if (folder == null || folder.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('No recording folder set. Go to Settings → Recordings to choose one.'),
+          action: SnackBarAction(
+            label: 'Settings',
+            onPressed: () => context.push('/settings'),
+          ),
+        ),
+      );
+      return;
+    }
+    // List recordings from the folder
+    final dir = Directory(folder);
+    if (!await dir.exists()) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Recording folder no longer exists. Update in Settings.')),
+        );
+      }
+      return;
+    }
+    final files = await dir.list().where((f) =>
+        f.path.endsWith('.mp4') || f.path.endsWith('.ts') || f.path.endsWith('.mkv')).toList();
+    if (!mounted) return;
+    if (files.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No recordings found.')),
+      );
+      return;
+    }
+    final picked = await showDialog<String>(
+      context: context,
+      builder: (ctx) => SimpleDialog(
+        title: const Text('Recordings'),
+        children: [
+          for (final f in files)
+            SimpleDialogOption(
+              onPressed: () => Navigator.pop(ctx, f.path),
+              child: Row(
+                children: [
+                  const Icon(Icons.videocam_rounded, size: 18, color: Colors.white54),
+                  const SizedBox(width: 12),
+                  Expanded(child: Text(f.path.split('/').last, overflow: TextOverflow.ellipsis)),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+    if (picked != null && mounted) {
+      final playerService = ref.read(playerServiceProvider);
+      await playerService.play(picked);
+      if (mounted) context.push('/player');
+    }
+  }
+
+  Future<void> _playLocalFile() async {
+    final result = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: ['mp4', 'mkv', 'ts', 'avi', 'mov', 'm3u8', 'mpd'],
+      dialogTitle: 'Choose a video file',
+    );
+    if (result != null && result.files.single.path != null && mounted) {
+      final playerService = ref.read(playerServiceProvider);
+      await playerService.play(result.files.single.path!);
+      if (mounted) context.push('/player');
+    }
+  }
+
+  Future<void> _playUrlStream() async {
+    final controller = TextEditingController();
+    final url = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Play Network Stream'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          decoration: const InputDecoration(
+            hintText: 'http:// or rtsp:// stream URL',
+            isDense: true,
+          ),
+          onSubmitted: (v) => Navigator.pop(ctx, v.trim()),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, controller.text.trim()),
+            child: const Text('Play'),
+          ),
+        ],
+      ),
+    );
+    if (url != null && url.isNotEmpty && mounted) {
+      final playerService = ref.read(playerServiceProvider);
+      await playerService.play(url);
+      if (mounted) context.push('/player');
+    }
+  }
+
   Widget _buildTreeItem(String label, String filterKey, IconData? icon, {int indent = 0, VoidCallback? onSecondaryTap, Widget? trailing, FocusNode? focusNode}) {
     final isSelected = _selectedGroup == filterKey;
     return GestureDetector(
@@ -1901,6 +1992,11 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
             final hasFocus = Focus.of(context).hasFocus;
             return InkWell(
               onTap: () {
+                // Handle quick actions
+                if (filterKey.startsWith('action:')) {
+                  _handleQuickAction(filterKey.substring(7));
+                  return;
+                }
                 setState(() {
                   _selectedGroup = filterKey;
                   _applyFilters();
@@ -3109,6 +3205,19 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
               final width = durationMin * _pixelsPerMinute;
               final isCurrent =
                   now.isAfter(shiftedStart) && now.isBefore(shiftedStop);
+
+              // For the current programme, clamp text so it stays visible
+              // when the cell starts before the visible scroll area
+              double textPadLeft = 4.0;
+              if (isCurrent && _guideScrollController.hasClients) {
+                final scrollOffset = _guideScrollController.position.pixels;
+                if (left < scrollOffset && left + width > scrollOffset) {
+                  textPadLeft = (scrollOffset - left) + 4.0;
+                  // Don't push text past 60% of cell width
+                  textPadLeft = textPadLeft.clamp(4.0, width * 0.6);
+                }
+              }
+
               return Positioned(
                 left: left,
                 width: width,
@@ -3116,7 +3225,7 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
                 bottom: 2,
                 child: Container(
                   margin: const EdgeInsets.symmetric(horizontal: 0.5),
-                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                  padding: EdgeInsets.only(left: textPadLeft, right: 4, top: 2, bottom: 2),
                   decoration: BoxDecoration(
                     color: isCurrent
                         ? const Color(0xFF6C5CE7).withValues(alpha: 0.3)
