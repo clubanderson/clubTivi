@@ -1,24 +1,29 @@
 # ⚡ clubTivi
 
-**The open-source IPTV player that never buffers.** Combine multiple providers into one seamless experience with Smart Channels, intelligent EPG matching, and automatic stream failover.
+**The open-source IPTV player that never buffers.** Combine all your sources — free TV, paid services, debrids — into one unified interface with Smart Channels, intelligent EPG matching, and automatic stream failover.
 
 Built with [Flutter](https://flutter.dev) for Android, macOS, Linux, and Windows.
+
+<p align="center">
+  <img src="docs/images/clubtivi-screenshot.png" alt="clubTivi — Smart Channels, EPG Guide, Multi-Provider" width="900">
+</p>
 
 ---
 
 ## Why clubTivi?
 
-Most IPTV players let you watch one provider at a time. When a stream buffers, you're stuck. clubTivi changes that — it **combines all your providers** into a single unified experience and **automatically switches streams** when problems are detected. No more buffering. No more manually hunting for a working channel.
+Most IPTV players let you watch one provider at a time. When a stream buffers, you're stuck. And your free channels, paid services, and debrids are all in separate apps. clubTivi changes that — it **brings everything into one interface** and **automatically switches streams** when problems are detected. No more buffering. No more app-hopping. No more manually hunting for a working channel.
 
 ---
 
 ## ✨ Features
 
 ### ⚡ Smart Channels
-The headline feature that sets clubTivi apart. Group the same channel from multiple providers into a single **Smart Channel**:
+The headline feature that sets clubTivi apart. Group the same channel from multiple sources — free TV, paid services, debrids — into a single **Smart Channel**:
 
 - **One-click creation** — multi-select matching channels, hit "New Smart Channel"
 - **Automatic failover** — when buffering is detected, instantly switches to the next healthy stream
+- **Mix any source** — combine free, paid, and debrid streams for the same channel in one group
 - **Priority ordering** — arrange streams in your preferred order; the best source plays first
 - **Full EPG integration** — Smart Channels show the same guide data as regular channels
 - **Visual indicators** — amber ⚡ bolt icon, playing-stream highlight, expand to see all members
@@ -33,8 +38,8 @@ The headline feature that sets clubTivi apart. Group the same channel from multi
 - **Now-playing text** on every channel row — see what's on without opening the guide
 
 ### 🔄 Multi-Provider Management
-- **Unlimited providers** — add as many M3U, M3U Plus, or Xtream Codes sources as you want
-- **Unified channel list** — all providers merge into one searchable, filterable view
+- **Unlimited providers** — add free TV (Pluto TV, etc.), paid IPTV services, debrids, and more
+- **One unified interface** — all sources merge into one searchable, filterable channel list
 - **Provider badges** — see which provider each stream comes from at a glance
 - **324K+ channels tested** — handles massive playlists with instant startup via phased loading
 
