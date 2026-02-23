@@ -296,27 +296,11 @@ class _PlayerControlBarState extends ConsumerState<PlayerControlBar> {
                       ),
                       const SizedBox(width: 8),
 
-                      // Resolution badge
-                      _badge(_resolutionLabel()),
-                      const SizedBox(width: 4),
-
-                      // Interlaced badge (only shown if interlaced)
-                      if (_isInterlaced)
-                        _badge('INT',
-                            bgColor: Colors.red.shade700, fontSize: 10),
-                      if (_isInterlaced)
-                        const SizedBox(width: 4),
-
                       // Record
                       _iconBtn(Icons.fiber_manual_record,
                           color: Colors.red.shade400,
                           size: 16,
                           onTap: () => _comingSoon('Recording')),
-                      const SizedBox(width: 4),
-
-                      // Codec label
-                      if (_codecLabel.isNotEmpty)
-                        _badge(_codecLabel, fontSize: 10),
 
                       const Spacer(),
 

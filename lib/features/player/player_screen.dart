@@ -19,6 +19,7 @@ import '../casting/cast_dialog.dart';
 import '../channels/channel_debug_dialog.dart';
 import 'player_control_bar.dart';
 import 'player_service.dart';
+import 'stream_info_badges.dart';
 
 /// Full-screen video player with overlay controls and keyboard navigation.
 class PlayerScreen extends ConsumerStatefulWidget {
@@ -65,8 +66,11 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
   // EPG state
   String? _nowPlayingTitle;
   String? _nowPlayingTime;
+  String? _nowDescription;
   String? _nextTitle;
   String? _nextTime;
+  String? _groupTitle;
+  String? _providerName;
 
   // Favorite lists
   List<db.FavoriteList> _favoriteLists = [];
@@ -82,6 +86,11 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
     _channelIndex = widget.currentIndex;
     _currentChannelName = widget.channelName;
     _currentChannelLogo = widget.channelLogo;
+    if (widget.channels.isNotEmpty) {
+      final ch = widget.channels[_channelIndex];
+      _groupTitle = ch['groupTitle']?.toString();
+      _providerName = ref.read(streamAlternativesProvider).providerName(ch['providerId']?.toString() ?? '');
+    }
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
     _startPlayback();
     _autoHideOverlay();
@@ -114,6 +123,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
         setState(() {
           _nowPlayingTitle = null;
           _nowPlayingTime = null;
+          _nowDescription = null;
           _nextTitle = null;
           _nextTime = null;
         });
@@ -147,6 +157,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
       _nowPlayingTime = current != null
           ? '${_fmtTime(current.start)} – ${_fmtTime(current.stop)}'
           : null;
+      _nowDescription = current?.description;
       _nextTitle = next?.title;
       _nextTime = next != null
           ? '${_fmtTime(next.start)} – ${_fmtTime(next.stop)}'
@@ -154,8 +165,13 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
     });
   }
 
-  String _fmtTime(DateTime t) =>
-      '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
+  String _fmtTime(DateTime t) {
+    final tod = TimeOfDay.fromDateTime(t);
+    final hour = tod.hourOfPeriod == 0 ? 12 : tod.hourOfPeriod;
+    final min = tod.minute.toString().padLeft(2, '0');
+    final period = tod.period == DayPeriod.am ? 'AM' : 'PM';
+    return '$hour:$min $period';
+  }
 
   void _startPlayback() {
     final playerService = ref.read(playerServiceProvider);
@@ -445,6 +461,8 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
       final ch = widget.channels[_channelIndex];
       _currentChannelName = ch['name'] as String? ?? '';
       _currentChannelLogo = ch['tvgLogo'] as String?;
+      _groupTitle = ch['groupTitle']?.toString();
+      _providerName = ref.read(streamAlternativesProvider).providerName(ch['providerId']?.toString() ?? '');
       _currentUrlIndex = 0;
       _showOverlay = true;
     });
@@ -534,16 +552,23 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
                   left: 0,
                   right: 0,
                   child: Container(
-                    padding: const EdgeInsets.fromLTRB(48, 4, 8, 8),
+                    padding: const EdgeInsets.fromLTRB(48, 4, 12, 12),
                     decoration: const BoxDecoration(
                       gradient: LinearGradient(
                         begin: Alignment.topCenter,
                         end: Alignment.bottomCenter,
-                        colors: [Colors.black87, Colors.transparent],
+                        colors: [
+                          Colors.black87,
+                          Colors.black54,
+                          Colors.transparent,
+                        ],
+                        stops: [0.0, 0.7, 1.0],
                       ),
                     ),
                     child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
+                        // Col 1: Channel name + group
                         if (_currentChannelLogo != null)
                           Padding(
                             padding: const EdgeInsets.only(right: 8),
@@ -551,11 +576,11 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
                               _currentChannelLogo!,
                               width: 24,
                               height: 24,
-                              errorBuilder: (c, e, s) =>
-                                  const SizedBox(),
+                              errorBuilder: (c, e, s) => const SizedBox(),
                             ),
                           ),
                         Expanded(
+                          flex: 2,
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             mainAxisSize: MainAxisSize.min,
@@ -569,29 +594,99 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
                                 ),
                                 overflow: TextOverflow.ellipsis,
                               ),
-                              if (_nowPlayingTitle != null) ...[
-                                const SizedBox(height: 2),
+                              if (_groupTitle != null && _groupTitle!.isNotEmpty)
                                 Text(
-                                  '▶ $_nowPlayingTitle${_nowPlayingTime != null ? '  $_nowPlayingTime' : ''}',
-                                  style: const TextStyle(
-                                    color: Colors.white70,
-                                    fontSize: 11,
-                                  ),
+                                  _groupTitle!,
+                                  style: const TextStyle(color: Colors.white38, fontSize: 11),
                                   overflow: TextOverflow.ellipsis,
                                 ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 16),
+                        // Col 2: Programme name + time + next
+                        Expanded(
+                          flex: 2,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              if (_nowPlayingTitle != null) ...[
+                                Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    const Icon(Icons.play_circle_outline, size: 14, color: Colors.cyanAccent),
+                                    const SizedBox(width: 4),
+                                    Flexible(
+                                      child: Text(
+                                        _nowPlayingTitle!,
+                                        style: const TextStyle(color: Colors.white, fontSize: 13),
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                if (_nowPlayingTime != null)
+                                  Text(
+                                    _nowPlayingTime!,
+                                    style: const TextStyle(color: Colors.white38, fontSize: 11),
+                                  ),
                               ],
                               if (_nextTitle != null) ...[
+                                const SizedBox(height: 2),
                                 Text(
                                   'Next: $_nextTitle${_nextTime != null ? '  $_nextTime' : ''}',
-                                  style: const TextStyle(
-                                    color: Colors.white38,
-                                    fontSize: 10,
-                                  ),
+                                  style: const TextStyle(color: Colors.white38, fontSize: 10),
                                   overflow: TextOverflow.ellipsis,
                                 ),
                               ],
                             ],
                           ),
+                        ),
+                        const SizedBox(width: 16),
+                        // Col 3: Description
+                        Expanded(
+                          flex: 3,
+                          child: (_nowDescription != null && _nowDescription!.isNotEmpty)
+                              ? Text(
+                                  _nowDescription!,
+                                  style: const TextStyle(color: Colors.white54, fontSize: 11),
+                                  maxLines: 3,
+                                  overflow: TextOverflow.ellipsis,
+                                )
+                              : const SizedBox.shrink(),
+                        ),
+                        const SizedBox(width: 16),
+                        // Col 4: Stream badges + provider + time
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.end,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                StreamInfoBadges(playerService: ref.read(playerServiceProvider)),
+                                if (_providerName != null && _providerName!.isNotEmpty) ...[
+                                  const SizedBox(width: 6),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFF6C5CE7).withValues(alpha: 0.3),
+                                      borderRadius: BorderRadius.circular(4),
+                                      border: Border.all(color: const Color(0xFF6C5CE7), width: 0.5),
+                                    ),
+                                    child: Text(_providerName!,
+                                        style: const TextStyle(fontSize: 10, color: Color(0xFFA29BFE), fontWeight: FontWeight.w600)),
+                                  ),
+                                ],
+                              ],
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              TimeOfDay.now().format(context),
+                              style: const TextStyle(color: Colors.white38, fontSize: 11),
+                            ),
+                          ],
                         ),
                       ],
                     ),
@@ -881,9 +976,9 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
       } catch (_) {}
     }
 
-    final originalName = ch['name'] as String? ?? '';
+    final originalName = ch['tvgName']?.toString() ?? ch['originalName']?.toString() ?? ch['name']?.toString() ?? '';
     final currentVanity = vanityNames[channelId];
-    final controller = TextEditingController(text: currentVanity ?? originalName);
+    final controller = TextEditingController(text: currentVanity ?? ch['name']?.toString() ?? originalName);
 
     if (!mounted) return;
     final result = await showDialog<String>(
