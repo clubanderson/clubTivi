@@ -3240,7 +3240,9 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
         ],
       ),
     );
-    controller.dispose();
+    // Dispose after the dialog exit animation completes to avoid
+    // "TextEditingController used after being disposed" errors.
+    WidgetsBinding.instance.addPostFrameCallback((_) => controller.dispose());
     if (name == null || name.isEmpty || !mounted) return;
 
     final database = ref.read(databaseProvider);
@@ -3666,7 +3668,7 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
                     ],
                   ),
                 );
-                controller.dispose();
+                WidgetsBinding.instance.addPostFrameCallback((_) => controller.dispose());
                 if (newName != null && newName.isNotEmpty && mounted) {
                   final database = ref.read(databaseProvider);
                   await database.renameFailoverGroup(group.id, newName);
@@ -3749,7 +3751,7 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
         ],
       ),
     );
-    controller.dispose();
+    WidgetsBinding.instance.addPostFrameCallback((_) => controller.dispose());
     if (result == null) return;
 
     if (result == '\x00RESET') {
@@ -4235,7 +4237,7 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
         ),
       );
     } finally {
-      controller.dispose();
+      WidgetsBinding.instance.addPostFrameCallback((_) => controller.dispose());
     }
   }
 
@@ -4897,7 +4899,7 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
         ],
       ),
     );
-    controller.dispose();
+    WidgetsBinding.instance.addPostFrameCallback((_) => controller.dispose());
     if (newName != null && newName.isNotEmpty && newName != list.name) {
       if (!mounted) return;
       final database = ref.read(databaseProvider);
