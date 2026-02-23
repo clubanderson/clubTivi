@@ -132,6 +132,7 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
   /// channelId → list of group memberships (for fast player lookup)
   Map<String, List<db.FailoverGroupMembership>> _failoverGroupIndex = {};
   final Set<int> _expandedFailoverGroups = {};
+  bool _lastClickShift = false;
 
   // Time format
   bool _use24HourTime = false;
@@ -2666,6 +2667,24 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
                 // Track this node so sidebar can navigate back
                 if (event is! KeyDownEvent) return KeyEventResult.ignored;
                 final key = event.logicalKey;
+                // SHIFT+ENTER → toggle multi-select
+                if ((key == LogicalKeyboardKey.select || key == LogicalKeyboardKey.enter) &&
+                    HardwareKeyboard.instance.logicalKeysPressed.any((k) =>
+                        k == LogicalKeyboardKey.shiftLeft || k == LogicalKeyboardKey.shiftRight)) {
+                  setState(() {
+                    if (!_multiSelectMode) {
+                      _multiSelectMode = true;
+                      _multiSelectedChannelIds = {channel.id};
+                    } else {
+                      if (_multiSelectedChannelIds.contains(channel.id)) {
+                        _multiSelectedChannelIds.remove(channel.id);
+                      } else {
+                        _multiSelectedChannelIds.add(channel.id);
+                      }
+                    }
+                  });
+                  return KeyEventResult.handled;
+                }
                 // SELECT/ENTER → fullscreen
                 if (key == LogicalKeyboardKey.select ||
                     key == LogicalKeyboardKey.enter ||
@@ -2684,12 +2703,19 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
                 builder: (context) {
                   final focused = Focus.of(context).hasFocus;
                   final isMultiSelected = _multiSelectMode && _multiSelectedChannelIds.contains(channel.id);
-                  return InkWell(
+                  return Listener(
+                    onPointerDown: (event) {
+                      // Capture shift/meta state from the raw pointer event
+                      _lastClickShift = event.buttons > 0 &&
+                          (HardwareKeyboard.instance.logicalKeysPressed.contains(LogicalKeyboardKey.shiftLeft) ||
+                           HardwareKeyboard.instance.logicalKeysPressed.contains(LogicalKeyboardKey.shiftRight) ||
+                           HardwareKeyboard.instance.logicalKeysPressed.contains(LogicalKeyboardKey.metaLeft) ||
+                           HardwareKeyboard.instance.logicalKeysPressed.contains(LogicalKeyboardKey.metaRight));
+                    },
+                    child: InkWell(
                     onTap: () {
-                      final shiftHeld = HardwareKeyboard.instance.logicalKeysPressed
-                          .any((k) => k == LogicalKeyboardKey.shiftLeft || k == LogicalKeyboardKey.shiftRight);
-                      if (shiftHeld) {
-                        // Shift+click: enter multi-select or toggle selection
+                      if (_lastClickShift) {
+                        // Shift/Cmd+click: toggle multi-select
                         setState(() {
                           if (!_multiSelectMode) {
                             _multiSelectMode = true;
@@ -2712,16 +2738,6 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
                         });
                       } else {
                         _selectChannel(index);
-                      }
-                    },
-                    onDoubleTap: () {
-                      if (!_multiSelectMode) {
-                        setState(() {
-                          _multiSelectMode = true;
-                          _multiSelectedChannelIds = {channel.id};
-                        });
-                      } else {
-                        _showFavoriteListSheet(channel);
                       }
                     },
                     onLongPress: _multiSelectMode ? null : () => _goFullscreen(channel),
@@ -2857,12 +2873,13 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
                 ],
               ),
             ),
-          );
-          },
-          ),
-          ),
-          ),
-        );
+          ),  // InkWell
+          );  // Listener + return
+          },  // Builder builder
+          ),  // Builder
+          ),  // Focus
+          ),  // GestureDetector
+        );    // Material
       },
     );
 
