@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 import 'package:path_provider/path_provider.dart';
 
@@ -66,6 +67,11 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
 
   // Favorite lists
   List<db.FavoriteList> _favoriteLists = [];
+
+  // Track selection state
+  bool _subtitlesEnabled = false;
+  List<SubtitleTrack> _subtitleTracks = [];
+  List<AudioTrack> _audioTracks = [];
 
   @override
   void initState() {
@@ -161,6 +167,11 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
       playerService.play(urls[_currentUrlIndex]);
     }
 
+    // Load track info once tracks become available
+    playerService.player.stream.tracks.listen((tracks) {
+      if (mounted) _loadTrackInfo();
+    });
+
     playerService.bufferingStream.listen((buffering) {
       playerService.onBufferingChanged(buffering);
       if (playerService.shouldFailover && _hasAlternativeStreams) {
@@ -201,6 +212,144 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
         setState(() {});
       }
     }
+  }
+
+  void _loadTrackInfo() {
+    final player = ref.read(playerServiceProvider).player;
+    final tracks = player.state.tracks;
+    setState(() {
+      _subtitleTracks = tracks.subtitle
+          .where((t) => t.id != 'auto' && t.id != 'no')
+          .toList();
+      _audioTracks = tracks.audio
+          .where((t) => t.id != 'auto' && t.id != 'no')
+          .toList();
+      _subtitlesEnabled = player.state.track.subtitle.id != 'no' &&
+          player.state.track.subtitle.id != 'auto';
+    });
+  }
+
+  void _toggleSubtitles() {
+    final player = ref.read(playerServiceProvider).player;
+    if (_subtitlesEnabled) {
+      player.setSubtitleTrack(SubtitleTrack.no());
+      setState(() => _subtitlesEnabled = false);
+    } else if (_subtitleTracks.isNotEmpty) {
+      player.setSubtitleTrack(_subtitleTracks.first);
+      setState(() => _subtitlesEnabled = true);
+    }
+  }
+
+  void _showSubtitlePicker() {
+    _loadTrackInfo();
+    final player = ref.read(playerServiceProvider).player;
+    final currentId = player.state.track.subtitle.id;
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: const Color(0xFF1A1A2E),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (ctx) {
+        return Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Row(
+                children: [
+                  Icon(Icons.closed_caption, color: Colors.white, size: 20),
+                  SizedBox(width: 8),
+                  Text('Subtitles', style: TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.bold)),
+                ],
+              ),
+              const SizedBox(height: 8),
+              ListTile(
+                dense: true,
+                leading: Icon(Icons.block, color: currentId == 'no' ? Colors.greenAccent : Colors.white54, size: 20),
+                title: const Text('Off', style: TextStyle(color: Colors.white70, fontSize: 13)),
+                trailing: currentId == 'no' ? const Icon(Icons.check, color: Colors.greenAccent, size: 18) : null,
+                onTap: () {
+                  player.setSubtitleTrack(SubtitleTrack.no());
+                  setState(() => _subtitlesEnabled = false);
+                  Navigator.of(ctx).pop();
+                },
+              ),
+              ..._subtitleTracks.map((t) {
+                final isActive = t.id == currentId;
+                return ListTile(
+                  dense: true,
+                  title: Text(
+                    t.title ?? t.language ?? t.id,
+                    style: TextStyle(color: isActive ? Colors.white : Colors.white70, fontSize: 13),
+                  ),
+                  subtitle: t.language != null
+                      ? Text(t.language!, style: const TextStyle(color: Colors.white38, fontSize: 11))
+                      : null,
+                  trailing: isActive ? const Icon(Icons.check, color: Colors.greenAccent, size: 18) : null,
+                  onTap: () {
+                    player.setSubtitleTrack(t);
+                    setState(() => _subtitlesEnabled = true);
+                    Navigator.of(ctx).pop();
+                  },
+                );
+              }),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  void _showAudioPicker() {
+    _loadTrackInfo();
+    final player = ref.read(playerServiceProvider).player;
+    final currentId = player.state.track.audio.id;
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: const Color(0xFF1A1A2E),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (ctx) {
+        return Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Row(
+                children: [
+                  Icon(Icons.audiotrack, color: Colors.white, size: 20),
+                  SizedBox(width: 8),
+                  Text('Audio Tracks', style: TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.bold)),
+                ],
+              ),
+              const SizedBox(height: 8),
+              ..._audioTracks.map((t) {
+                final isActive = t.id == currentId;
+                return ListTile(
+                  dense: true,
+                  title: Text(
+                    t.title ?? t.language ?? t.id,
+                    style: TextStyle(color: isActive ? Colors.white : Colors.white70, fontSize: 13),
+                  ),
+                  subtitle: t.language != null
+                      ? Text(t.language!, style: const TextStyle(color: Colors.white38, fontSize: 11))
+                      : null,
+                  trailing: isActive ? const Icon(Icons.check, color: Colors.greenAccent, size: 18) : null,
+                  onTap: () {
+                    player.setAudioTrack(t);
+                    Navigator.of(ctx).pop();
+                  },
+                );
+              }),
+            ],
+          ),
+        );
+      },
+    );
   }
 
   void _autoHideOverlay() {
@@ -333,6 +482,12 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
               PlayerControlBar(
                 isCasting: ref.read(castServiceProvider).isCasting,
                 isFavorite: _isFavorite,
+                hasSubtitles: _subtitleTracks.isNotEmpty,
+                subtitlesEnabled: _subtitlesEnabled,
+                onSubtitleToggle: _toggleSubtitles,
+                onSubtitleSelect: _showSubtitlePicker,
+                audioTrackCount: _audioTracks.length,
+                onAudioSelect: _showAudioPicker,
                 onCastTap: () => _showCastPicker(),
                 onBackTap: () {
                   GoRouter.of(context).canPop()
@@ -700,6 +855,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
       sortOrder: 0,
     );
     final ps = ref.read(playerServiceProvider);
-    ChannelDebugDialog.show(context, channel, ps);
+    final epgId = ch['epgId'] as String?;
+    ChannelDebugDialog.show(context, channel, ps, mappedEpgId: epgId);
   }
 }
