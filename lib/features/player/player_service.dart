@@ -8,6 +8,7 @@ import 'package:media_kit/src/player/native/player/real.dart' as native_player;
 import 'package:media_kit_video/media_kit_video.dart';
 
 import 'adaptive_buffer.dart';
+import 'stream_proxy.dart';
 import '../../data/services/stream_alternatives_service.dart';
 import '../../data/services/stream_health_tracker.dart';
 
@@ -43,6 +44,8 @@ class PlayerService {
   StreamHealthTracker? _healthTracker;
   Timer? _failoverCheckTimer;
   int _consecutiveLowBuffer = 0;
+  final StreamProxy _streamProxy = StreamProxy();
+  bool _proxyActive = false;
 
   /// Broadcast current stream URL changes (for UI like failover dialog).
   final _currentUrlController = StreamController<String?>.broadcast();
@@ -71,16 +74,6 @@ class PlayerService {
   Future<void> _initPlayer(Player p) async {
     final np = p.platform;
     if (np is native_player.NativePlayer) {
-      // Force all audio through FFmpeg software decoder — AudioToolbox
-      // silently fails on EAC-3/AC-3 surround and non-standard MPEG-TS tags
-      await np.setProperty('ad', 'lavc');
-      // Allow non-standard codec tags (e.g. 0x0087 for EAC-3 in MPEG-TS)
-      await np.setProperty('ad-lavc-o', 'strict=-2');
-      // Give the demuxer enough data to detect non-standard audio codecs
-      await np.setProperty('demuxer-lavf-probesize', '10000000');
-      await np.setProperty('demuxer-lavf-analyzeduration', '10000000');
-      // Enable non-strict MPEG-TS parsing for non-standard codec tags
-      await np.setProperty('demuxer-lavf-o', 'strict=-2');
       // Downmix surround to stereo for output compatibility
       await np.setProperty('audio-channels', 'stereo');
       // Normalize volume when downmixing surround to stereo
@@ -143,18 +136,16 @@ class PlayerService {
     _currentOriginalName = originalName;
     _tracksSub?.cancel();
     _failoverCheckTimer?.cancel();
+    _proxyActive = false;
+    await _streamProxy.stop();
     await _ensureReady();
     await player.open(Media(url));
     await _bufferManager.applyForStream(url, this);
     await player.setVolume(100.0);
 
-    // Log audio track info for debugging
-    player.stream.tracks.first.then((tracks) {
-      debugPrint('[Player] Audio tracks: ${tracks.audio.length}');
-      for (final a in tracks.audio) {
-        debugPrint('[Player]   audio: id=${a.id} title=${a.title} lang=${a.language}');
-      }
-    }).ignore();
+    // Check for missing audio after a brief delay and retry through
+    // ffmpeg proxy if needed (fixes EAC-3 with non-standard codec tags)
+    _scheduleAudioCheck(url);
 
     // Reset and start buffer tracking for the new stream
     bufferHistory.fillRange(0, 60, false);
@@ -162,6 +153,49 @@ class PlayerService {
     bufferingSeconds = 0;
     startBufferTracking();
     _startFailoverMonitor();
+  }
+
+  /// Check audio tracks after playback starts; retry through ffmpeg proxy
+  /// if no real audio tracks are detected.
+  void _scheduleAudioCheck(String originalUrl) {
+    _tracksSub?.cancel();
+    // Give mpv 3 seconds to detect audio tracks before checking
+    _tracksSub = Stream<void>.fromFuture(
+      Future<void>.delayed(const Duration(seconds: 3)),
+    ).asyncMap((_) => player.state.tracks).listen((tracks) {
+      _tracksSub?.cancel();
+      if (_proxyActive || _currentUrl != originalUrl) return;
+
+      final realAudio = tracks.audio.where((a) => a.id != 'auto' && a.id != 'no').length;
+      if (realAudio > 0) {
+        debugPrint('[Player] Audio OK: $realAudio tracks detected');
+        return;
+      }
+
+      // No real audio detected — try ffmpeg proxy
+      debugPrint('[Player] No audio tracks after 3s, trying ffmpeg proxy for $originalUrl');
+      _retryWithProxy(originalUrl);
+    });
+  }
+
+  /// Re-open the stream through the local ffmpeg proxy.
+  Future<void> _retryWithProxy(String originalUrl) async {
+    if (_proxyActive) return; // Avoid recursive retry
+    final proxyUrl = await _streamProxy.start(originalUrl);
+    if (proxyUrl == null) {
+      debugPrint('[Player] ffmpeg proxy unavailable, keeping direct playback');
+      return;
+    }
+    // Verify the stream URL hasn't changed while we were starting the proxy
+    if (_currentUrl != originalUrl) {
+      await _streamProxy.stop();
+      return;
+    }
+    _proxyActive = true;
+    debugPrint('[Player] Switching to proxied stream: $proxyUrl');
+    await player.open(Media(proxyUrl));
+    await _bufferManager.applyForStream(originalUrl, this);
+    await player.setVolume(100.0);
   }
 
   /// Whether audio tracks are available on the current stream.
@@ -320,6 +354,8 @@ class PlayerService {
     // Switch stream (keep channel metadata — it's the same content)
     _failoverCheckTimer?.cancel();
     _currentUrl = newUrl;
+    _proxyActive = false;
+    await _streamProxy.stop();
     await player.open(Media(newUrl));
     await _bufferManager.applyForStream(newUrl, this);
     await player.setVolume(100.0);
@@ -335,6 +371,7 @@ class PlayerService {
     _bufferTrackTimer?.cancel();
     _failoverCheckTimer?.cancel();
     _healthTracker?.save();
+    _streamProxy.stop();
     _player?.dispose();
   }
 }

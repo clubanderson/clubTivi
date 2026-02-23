@@ -98,10 +98,14 @@ class LogoResolverService {
   static String _normalizeChannelName(String name) {
     var n = name.toLowerCase().trim();
 
-    // Strip IPTV prefixes only when a separator is present:
+    // Strip IPTV prefixes:
     // "US-P| CBS" → "CBS", "UK| BBC" → "BBC", "CA: CBC" → "CBC"
     n = n.replaceAll(RegExp(r'^[a-z]{2}[-]?[a-z]?\|\s*'), '');
     n = n.replaceAll(RegExp(r'^[a-z]{2}:\s+'), '');
+    // "CA HGTV" → "HGTV", "US ESPN" → "ESPN" (2-letter country code + space)
+    n = n.replaceAll(RegExp(r'^[a-z]{2}\s+'), '');
+    // "[US] HGTV" → "HGTV", "CA-P| HGTV" already handled above
+    n = n.replaceAll(RegExp(r'^\[?[a-z]{2}\]?\s+'), '');
     if (n.isEmpty) n = name.toLowerCase().trim();
 
     // Remove quality tags
@@ -192,6 +196,12 @@ class LogoResolverService {
       aliases.add(normalized.substring(4));
     }
     if (normalized.startsWith('us-')) {
+      aliases.add(normalized.substring(3));
+    }
+    if (normalized.startsWith('ca-')) {
+      aliases.add(normalized.substring(3));
+    }
+    if (normalized.startsWith('uk-')) {
       aliases.add(normalized.substring(3));
     }
     // Try adding common suffixes

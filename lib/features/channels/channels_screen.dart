@@ -132,6 +132,8 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
     _ensureEpgSources();
     _startTopBarFade();
     _initFailoverListener();
+    // Resolve missing logos on startup (in background)
+    ref.read(providerManagerProvider).resolveAllMissingLogos().catchError((_) {});
     // Auto-failover toast
     final ps = ref.read(playerServiceProvider);
     ps.onFailover = (message) {
