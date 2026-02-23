@@ -1409,7 +1409,18 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
                               _buildPreviewRow(),
                               if (_showFailoverBanner && _failoverSuggestion != null)
                                 _buildFailoverBanner(),
-                              Expanded(child: _showGuideView ? _buildGuideView() : _buildChannelList()),
+                              Expanded(
+                                child: Stack(
+                                  children: [
+                                    _showGuideView ? _buildGuideView() : _buildChannelList(),
+                                    if (_multiSelectMode)
+                                      Positioned(
+                                        left: 8, right: 8, bottom: 8,
+                                        child: _buildMultiSelectBar(),
+                                      ),
+                                  ],
+                                ),
+                              ),
                             ],
                           ),
                         ),
@@ -2916,48 +2927,46 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
             ),
           ),
         ),
-        // Multi-select floating action bar
-        if (_multiSelectMode)
-          Positioned(
-            left: 8, right: 8, bottom: 8,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-              decoration: BoxDecoration(
-                color: const Color(0xFF1A1A2E),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: const Color(0xFF6C5CE7), width: 1),
-                boxShadow: [BoxShadow(color: Colors.black54, blurRadius: 8)],
-              ),
-              child: Row(
-                children: [
-                  Text(
-                    '${_multiSelectedChannelIds.length} selected',
-                    style: const TextStyle(color: Colors.white70, fontSize: 13),
-                  ),
-                  const Spacer(),
-                  TextButton(
-                    onPressed: () => setState(() {
-                      _multiSelectMode = false;
-                      _multiSelectedChannelIds.clear();
-                    }),
-                    child: const Text('Cancel'),
-                  ),
-                  const SizedBox(width: 8),
-                  FilledButton.icon(
-                    onPressed: _multiSelectedChannelIds.length >= 2
-                        ? _createFailoverGroupFromSelection
-                        : null,
-                    icon: const Icon(Icons.shield_outlined, size: 16),
-                    label: const Text('Create Failover Group'),
-                    style: FilledButton.styleFrom(
-                      backgroundColor: const Color(0xFF6C5CE7),
-                    ),
-                  ),
-                ],
-              ),
+      ],
+    );
+  }
+
+  Widget _buildMultiSelectBar() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1A1A2E),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFF6C5CE7), width: 1),
+        boxShadow: [BoxShadow(color: Colors.black54, blurRadius: 8)],
+      ),
+      child: Row(
+        children: [
+          Text(
+            '${_multiSelectedChannelIds.length} selected',
+            style: const TextStyle(color: Colors.white70, fontSize: 13),
+          ),
+          const Spacer(),
+          TextButton(
+            onPressed: () => setState(() {
+              _multiSelectMode = false;
+              _multiSelectedChannelIds.clear();
+            }),
+            child: const Text('Cancel'),
+          ),
+          const SizedBox(width: 8),
+          FilledButton.icon(
+            onPressed: _multiSelectedChannelIds.length >= 2
+                ? _createFailoverGroupFromSelection
+                : null,
+            icon: const Icon(Icons.shield_outlined, size: 16),
+            label: const Text('Create Failover Group'),
+            style: FilledButton.styleFrom(
+              backgroundColor: const Color(0xFF6C5CE7),
             ),
           ),
-      ],
+        ],
+      ),
     );
   }
 
