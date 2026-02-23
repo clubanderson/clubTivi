@@ -480,12 +480,10 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
         epgChannelIds.add(c.tvgId!);
       }
     }
-    debugPrint('[EPG] mappings=${mappings.length}, resolved=${epgMap.length}, epgChannelIds=${epgChannelIds.length}, sources=${epgSources.length}');
     List<db.EpgProgramme> nowPlaying = [];
     if (epgChannelIds.isNotEmpty) {
       nowPlaying = await database.getNowPlaying(epgChannelIds.toList());
     }
-    debugPrint('[EPG] nowPlaying=${nowPlaying.length}');
 
     // Load favorite lists
     final favLists = await database.getAllFavoriteLists();

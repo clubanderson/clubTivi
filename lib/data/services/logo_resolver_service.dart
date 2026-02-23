@@ -248,4 +248,9 @@ class LogoResolverService {
     await prefs.remove(_cacheKey);
     await prefs.remove(_cacheTimestampKey);
   }
+
+  /// Pre-load the logo index so batch resolution doesn't re-fetch per call.
+  static Future<void> ensureIndex() async {
+    await _getIndex();
+  }
 }

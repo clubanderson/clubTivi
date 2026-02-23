@@ -79,6 +79,16 @@ class AppDatabase extends _$AppDatabase {
       (update(channels)..where((t) => t.id.equals(channelId)))
           .write(ChannelsCompanion(tvgLogo: Value(logoUrl)));
 
+  /// Batch-update logos for multiple channels in a single transaction.
+  Future<void> updateChannelLogos(Map<String, String> idToLogoUrl) async {
+    await batch((b) {
+      for (final entry in idToLogoUrl.entries) {
+        b.update(channels, ChannelsCompanion(tvgLogo: Value(entry.value)),
+            where: (t) => t.id.equals(entry.key));
+      }
+    });
+  }
+
   Future<void> renameChannel(String channelId, String providerId, String newName) =>
       (update(channels)..where((t) => t.id.equals(channelId)))
           .write(ChannelsCompanion(name: Value(newName)));

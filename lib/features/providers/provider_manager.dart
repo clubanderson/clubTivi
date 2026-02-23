@@ -1,6 +1,7 @@
 import 'package:drift/drift.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../../data/datasources/local/database.dart' as db;
 import '../../data/datasources/parsers/m3u_parser.dart';
 import '../../data/datasources/remote/xtream_client.dart';
@@ -138,6 +139,8 @@ class ProviderManager {
     if (needsLogo.isEmpty) return;
     debugPrint('[Logo] ${needsLogo.length} channels need logos');
 
+    final resolved = <String, String>{};
+
     // First try EPG icons for channels that have EPG mappings
     try {
       final epgChannels = await _db.select(_db.epgChannels).get();
@@ -148,7 +151,6 @@ class ProviderManager {
           epgIconMap[ec.channelId.toLowerCase()] = ec.iconUrl!;
         }
       }
-      final beforeEpg = needsLogo.length;
       for (final ch in needsLogo.toList()) {
         final stripped = ch.name.toLowerCase()
             .replaceAll(RegExp(r'^[a-z]{2}[-]?[a-z]?\|\s*'), '')
@@ -157,67 +159,138 @@ class ProviderManager {
             .replaceAll(RegExp(r'^[a-z]{2}\s+'), '');
         final icon = epgIconMap[ch.name.toLowerCase()] ?? epgIconMap[stripped];
         if (icon != null) {
-          await _db.updateChannelLogo(ch.id, icon);
+          resolved[ch.id] = icon;
           needsLogo.removeWhere((c) => c.id == ch.id);
         }
       }
-      debugPrint('[Logo] EPG icons resolved ${beforeEpg - needsLogo.length} channels');
+      debugPrint('[Logo] EPG icons resolved ${resolved.length} channels');
     } catch (_) {}
 
     // Then resolve remaining from tv-logo/tv-logos GitHub repo
     if (needsLogo.isNotEmpty) {
       debugPrint('[Logo] Resolving ${needsLogo.length} via GitHub tv-logos...');
-      final resolved = await LogoResolverService.resolveLogosForChannels(needsLogo);
-      debugPrint('[Logo] GitHub resolved ${resolved.length} logos');
-      for (final entry in resolved.entries) {
-        await _db.updateChannelLogo(entry.key, entry.value);
-      }
+      final ghResolved = await LogoResolverService.resolveLogosForChannels(needsLogo);
+      debugPrint('[Logo] GitHub resolved ${ghResolved.length} logos');
+      resolved.addAll(ghResolved);
+    }
+
+    // Batch-write all resolved logos in a single transaction
+    if (resolved.isNotEmpty) {
+      await _db.updateChannelLogos(resolved);
     }
   }
 
-  /// Resolve missing logos for all channels in the database.
+  static const _logoResolvedKey = 'logo_last_resolved';
+  static const _logoChannelCountKey = 'logo_channel_count';
+  static const _logoCooldown = Duration(hours: 6);
+  static const _logoBatchSize = 200;
+
+  /// Resolve missing logos progressively: favorites first, then the rest
+  /// in small batches so the UI stays responsive.
+  /// Skips entirely if resolved recently and channel count hasn't changed.
   Future<void> resolveAllMissingLogos() async {
+    final prefs = await SharedPreferences.getInstance();
+    final lastResolved = prefs.getInt(_logoResolvedKey) ?? 0;
+    final lastCount = prefs.getInt(_logoChannelCountKey) ?? 0;
+    final age = DateTime.now().millisecondsSinceEpoch - lastResolved;
+
     final allChannels = await _db.getAllChannels();
+
+    // Skip if resolved recently AND no new channels were added
+    if (age < _logoCooldown.inMilliseconds && allChannels.length == lastCount) {
+      return;
+    }
+
     final needsLogo = allChannels
         .where((c) => c.tvgLogo == null || c.tvgLogo!.isEmpty)
         .map((c) => (id: c.id, name: c.name, tvgLogo: c.tvgLogo))
         .toList();
 
-    if (needsLogo.isEmpty) return;
-    debugPrint('[Logo] Startup: ${needsLogo.length} channels missing logos');
+    if (needsLogo.isEmpty) {
+      await prefs.setInt(_logoResolvedKey, DateTime.now().millisecondsSinceEpoch);
+      await prefs.setInt(_logoChannelCountKey, allChannels.length);
+      return;
+    }
 
-    // Try EPG icons first
+    // Build lookup maps once
+    final epgIconMap = await _buildEpgIconMap();
+    await LogoResolverService.ensureIndex(); // pre-load GitHub index
+
+    // Partition: favorites first, then the rest
+    final favIds = await _db.getAllFavoritedChannelIds();
+    final favorites = needsLogo.where((c) => favIds.contains(c.id)).toList();
+    final rest = needsLogo.where((c) => !favIds.contains(c.id)).toList();
+
+    debugPrint('[Logo] ${needsLogo.length} missing (${favorites.length} favorites, ${rest.length} other)');
+
+    // Resolve favorites immediately
+    if (favorites.isNotEmpty) {
+      final resolved = await _resolveLogoBatch(favorites, epgIconMap);
+      if (resolved.isNotEmpty) {
+        await _db.updateChannelLogos(resolved);
+        debugPrint('[Logo] Favorites: resolved ${resolved.length} logos');
+      }
+    }
+
+    // Resolve rest in small batches with yields between
+    for (var i = 0; i < rest.length; i += _logoBatchSize) {
+      final batch = rest.sublist(i, (i + _logoBatchSize).clamp(0, rest.length));
+      final resolved = await _resolveLogoBatch(batch, epgIconMap);
+      if (resolved.isNotEmpty) {
+        await _db.updateChannelLogos(resolved);
+      }
+      // Yield to UI between batches
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+    }
+
+    debugPrint('[Logo] Resolution complete');
+    await prefs.setInt(_logoResolvedKey, DateTime.now().millisecondsSinceEpoch);
+    await prefs.setInt(_logoChannelCountKey, allChannels.length);
+  }
+
+  /// Build EPG icon lookup map (display name / channel ID → icon URL).
+  Future<Map<String, String>> _buildEpgIconMap() async {
+    final map = <String, String>{};
     try {
       final epgChannels = await _db.select(_db.epgChannels).get();
-      final epgIconMap = <String, String>{};
       for (final ec in epgChannels) {
         if (ec.iconUrl != null && ec.iconUrl!.isNotEmpty) {
-          epgIconMap[ec.displayName.toLowerCase()] = ec.iconUrl!;
-          epgIconMap[ec.channelId.toLowerCase()] = ec.iconUrl!;
-        }
-      }
-      for (final ch in needsLogo.toList()) {
-        final stripped = ch.name.toLowerCase()
-            .replaceAll(RegExp(r'^[a-z]{2}[-]?[a-z]?\|\s*'), '')
-            .replaceAll(RegExp(r'^[a-z]{2}:\s+'), '')
-            .replaceAll(RegExp(r'^\[?[a-z]{2}\]?\s+'), '')
-            .replaceAll(RegExp(r'^[a-z]{2}\s+'), '');
-        final icon = epgIconMap[ch.name.toLowerCase()] ?? epgIconMap[stripped];
-        if (icon != null) {
-          await _db.updateChannelLogo(ch.id, icon);
-          needsLogo.removeWhere((c) => c.id == ch.id);
+          map[ec.displayName.toLowerCase()] = ec.iconUrl!;
+          map[ec.channelId.toLowerCase()] = ec.iconUrl!;
         }
       }
     } catch (_) {}
+    return map;
+  }
 
-    // Then GitHub tv-logos
-    if (needsLogo.isNotEmpty) {
-      final resolved = await LogoResolverService.resolveLogosForChannels(needsLogo);
-      debugPrint('[Logo] Startup resolved ${resolved.length} logos');
-      for (final entry in resolved.entries) {
-        await _db.updateChannelLogo(entry.key, entry.value);
+  /// Resolve logos for a batch of channels using EPG icons + GitHub tv-logos.
+  Future<Map<String, String>> _resolveLogoBatch(
+    List<({String id, String name, String? tvgLogo})> channels,
+    Map<String, String> epgIconMap,
+  ) async {
+    final resolved = <String, String>{};
+    final remaining = <({String id, String name, String? tvgLogo})>[];
+
+    for (final ch in channels) {
+      final stripped = ch.name.toLowerCase()
+          .replaceAll(RegExp(r'^[a-z]{2}[-]?[a-z]?\|\s*'), '')
+          .replaceAll(RegExp(r'^[a-z]{2}:\s+'), '')
+          .replaceAll(RegExp(r'^\[?[a-z]{2}\]?\s+'), '')
+          .replaceAll(RegExp(r'^[a-z]{2}\s+'), '');
+      final icon = epgIconMap[ch.name.toLowerCase()] ?? epgIconMap[stripped];
+      if (icon != null) {
+        resolved[ch.id] = icon;
+      } else {
+        remaining.add(ch);
       }
     }
+
+    if (remaining.isNotEmpty) {
+      final ghResolved = await LogoResolverService.resolveLogosForChannels(remaining);
+      resolved.addAll(ghResolved);
+    }
+
+    return resolved;
   }
 }
 
