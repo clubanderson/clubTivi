@@ -3063,23 +3063,11 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
         .toList();
     await database.addChannelsToFailoverGroup(group.id, orderedIds);
 
-    // Reload failover groups directly into state (no full reload needed)
-    final foGroups = await database.getAllFailoverGroups();
-    final foGroupMembers = <int, List<String>>{};
-    for (final g in foGroups) {
-      final members = await database.getFailoverGroupMembers(g.id);
-      foGroupMembers[g.id] = members.map((m) => m.channelId).toList();
-    }
-    final foGroupIndex = await database.getFailoverGroupIndex();
-
-    if (!mounted) return;
     setState(() {
       _multiSelectMode = false;
       _multiSelectedChannelIds.clear();
-      _failoverGroups = foGroups;
-      _failoverGroupMembers = foGroupMembers;
-      _failoverGroupIndex = foGroupIndex;
     });
+    await _reloadFailoverGroups();
 
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -3095,17 +3083,17 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
 
   Widget _buildFailoverGroupRow(db.FailoverGroup group, List<db.Channel> members) {
     final isExpanded = _expandedFailoverGroups.contains(group.id);
+    // EPG from first member channel
+    final epgText = members.isNotEmpty ? _getChannelNowPlaying(members.first) : null;
     return Column(
       children: [
         InkWell(
           onTap: () {
-            // Tap plays the group (first channel with failover through all members)
             if (_multiSelectMode) return;
             if (members.isNotEmpty) _playFailoverGroup(group, members);
           },
           onSecondaryTap: () => _showFailoverGroupActions(group),
           onDoubleTap: () {
-            // Double-tap toggles expand/collapse
             setState(() {
               if (isExpanded) {
                 _expandedFailoverGroups.remove(group.id);
@@ -3127,14 +3115,25 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
                 const Icon(Icons.shield_outlined, size: 16, color: Color(0xFF6C5CE7)),
                 const SizedBox(width: 8),
                 Expanded(
-                  child: Text(
-                    group.name,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 13,
-                    ),
-                    overflow: TextOverflow.ellipsis,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        group.name,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 13,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      if (epgText != null)
+                        Text(
+                          epgText,
+                          style: const TextStyle(color: Colors.white38, fontSize: 11),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                    ],
                   ),
                 ),
                 Text(
@@ -3142,7 +3141,6 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
                   style: const TextStyle(color: Colors.white38, fontSize: 11),
                 ),
                 const SizedBox(width: 4),
-                // Expand/collapse chevron
                 InkWell(
                   onTap: () {
                     setState(() {
@@ -3174,6 +3172,7 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
                 onTap: () {
                   if (globalIdx >= 0) _selectChannel(globalIdx);
                 },
+                onSecondaryTap: () => _showMemberActions(group, ch),
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
                   child: Row(
@@ -3218,6 +3217,24 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
     );
   }
 
+  /// Reload failover group state from DB and update UI immediately.
+  Future<void> _reloadFailoverGroups() async {
+    final database = ref.read(databaseProvider);
+    final foGroups = await database.getAllFailoverGroups();
+    final foGroupMembers = <int, List<String>>{};
+    for (final g in foGroups) {
+      final members = await database.getFailoverGroupMembers(g.id);
+      foGroupMembers[g.id] = members.map((m) => m.channelId).toList();
+    }
+    final foGroupIndex = await database.getFailoverGroupIndex();
+    if (!mounted) return;
+    setState(() {
+      _failoverGroups = foGroups;
+      _failoverGroupMembers = foGroupMembers;
+      _failoverGroupIndex = foGroupIndex;
+    });
+  }
+
   void _playFailoverGroup(db.FailoverGroup group, List<db.Channel> members) {
     if (members.isEmpty) return;
     final first = members.first;
@@ -3245,6 +3262,50 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
       _showInfoOverlay(first, globalIdx);
       _saveSession();
     }
+  }
+
+  void _showMemberActions(db.FailoverGroup group, db.Channel channel) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: const Color(0xFF1A1A2E),
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.play_circle_outline, color: Colors.white70),
+              title: Text('Play ${_channelDisplayName(channel)}',
+                  style: const TextStyle(color: Colors.white)),
+              onTap: () {
+                Navigator.pop(ctx);
+                final globalIdx = _filteredChannels.indexWhere((c) => c.id == channel.id);
+                if (globalIdx >= 0) _selectChannel(globalIdx);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.remove_circle_outline, color: Colors.orangeAccent),
+              title: const Text('Remove from Group', style: TextStyle(color: Colors.orangeAccent)),
+              onTap: () async {
+                Navigator.pop(ctx);
+                final database = ref.read(databaseProvider);
+                await database.removeChannelFromFailoverGroup(group.id, channel.id);
+                await _reloadFailoverGroups();
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('Removed "${_channelDisplayName(channel)}" from "${group.name}"'),
+                      duration: const Duration(seconds: 2),
+                      behavior: SnackBarBehavior.floating,
+                      width: 350,
+                    ),
+                  );
+                }
+              },
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   void _showFailoverGroupActions(db.FailoverGroup group) {
@@ -3297,7 +3358,7 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
                 if (newName != null && newName.isNotEmpty && mounted) {
                   final database = ref.read(databaseProvider);
                   await database.renameFailoverGroup(group.id, newName);
-                  _loadChannels();
+                  _reloadFailoverGroups();
                 }
               },
             ),
@@ -3326,7 +3387,7 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
                 if (confirm == true && mounted) {
                   final database = ref.read(databaseProvider);
                   await database.deleteFailoverGroup(group.id);
-                  _loadChannels();
+                  _reloadFailoverGroups();
                 }
               },
             ),

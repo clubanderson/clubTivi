@@ -435,6 +435,11 @@ class AppDatabase extends _$AppDatabase {
   Future<void> renameFailoverGroup(int groupId, String name) =>
       (update(failoverGroups)..where((t) => t.id.equals(groupId)))
           .write(FailoverGroupsCompanion(name: Value(name)));
+
+  Future<void> removeChannelFromFailoverGroup(int groupId, String channelId) =>
+      (delete(failoverGroupChannels)
+            ..where((t) => t.groupId.equals(groupId) & t.channelId.equals(channelId)))
+          .go();
 }
 
 LazyDatabase _openConnection() {
