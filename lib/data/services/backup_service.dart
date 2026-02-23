@@ -13,7 +13,7 @@ final _log = Logger(printer: SimplePrinter());
 const _backupPrefKeys = [
   'shows_trakt_client_id',
   'shows_tmdb_api_key',
-  'shows_debrid_api_token',
+  'shows_debrid_tokens',
   'shows_favorites',
   'last_group',
   'last_channel_id',

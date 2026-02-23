@@ -11,20 +11,29 @@ import 'player_service.dart';
 /// - Top row: volume, resolution badge, transport controls, action icons
 /// - Bottom row: position, seek bar, duration
 class PlayerControlBar extends ConsumerStatefulWidget {
-  /// Callback to show the cast picker dialog.
   final VoidCallback? onCastTap;
-
-  /// Callback to navigate back / exit fullscreen.
   final VoidCallback? onBackTap;
-
-  /// Whether the cast session is active.
+  final VoidCallback? onScreenshot;
+  final VoidCallback? onFavorite;
+  final VoidCallback? onPip;
+  final VoidCallback? onInfo;
+  final VoidCallback? onSettings;
+  final VoidCallback? onChannelList;
   final bool isCasting;
+  final bool isFavorite;
 
   const PlayerControlBar({
     super.key,
     this.onCastTap,
     this.onBackTap,
+    this.onScreenshot,
+    this.onFavorite,
+    this.onPip,
+    this.onInfo,
+    this.onSettings,
+    this.onChannelList,
     this.isCasting = false,
+    this.isFavorite = false,
   });
 
   @override
@@ -45,14 +54,47 @@ class _PlayerControlBarState extends ConsumerState<PlayerControlBar> {
   bool _isSeeking = false;
   double _seekValue = 0.0;
 
-  // Stream subscriptions
+  // Mute toggle state
+  double _preMuteVolume = 100.0;
   final List<StreamSubscription> _subs = [];
+  Timer? _fpsTimer;
+  String _fpsLabel = '—';
+  String _codecLabel = '';
+  bool _isInterlaced = false;
+  final List<double> _fpsHistory = [];
 
   @override
   void initState() {
     super.initState();
     _scheduleHide();
     _subscribeToPlayer();
+    _startInfoPolling();
+  }
+
+  void _startInfoPolling() {
+    _fpsTimer = Timer.periodic(const Duration(seconds: 1), (_) async {
+      if (!mounted) return;
+      final ps = ref.read(playerServiceProvider);
+      final results = await Future.wait([
+        ps.getMpvProperty('estimated-vf-fps'),
+        ps.getMpvProperty('video-codec'),
+        ps.getMpvProperty('video-params/pixelformat'),
+      ]);
+      if (!mounted) return;
+      final fps = double.tryParse(results[0] ?? '');
+      final codec = results[1] ?? '';
+      final pixFmt = results[2] ?? '';
+      setState(() {
+        _fpsLabel = fps != null ? fps.toStringAsFixed(1) : '—';
+        if (fps != null) {
+          _fpsHistory.add(fps);
+          if (_fpsHistory.length > 60) _fpsHistory.removeAt(0);
+        }
+        // Extract short codec name (e.g. "h264" from "h264 (High)")
+        _codecLabel = codec.split(' ').first.toUpperCase();
+        _isInterlaced = pixFmt.contains('interlaced') || pixFmt.contains('tff') || pixFmt.contains('bff');
+      });
+    });
   }
 
   void _subscribeToPlayer() {
@@ -135,6 +177,7 @@ class _PlayerControlBarState extends ConsumerState<PlayerControlBar> {
   @override
   void dispose() {
     _hideTimer?.cancel();
+    _fpsTimer?.cancel();
     for (final s in _subs) {
       s.cancel();
     }
@@ -167,15 +210,28 @@ class _PlayerControlBarState extends ConsumerState<PlayerControlBar> {
                       _iconBtn(Icons.arrow_back, onTap: widget.onBackTap),
                       const SizedBox(width: 4),
 
-                      // Volume icon + slider
-                      Icon(
-                        _volume == 0
-                            ? Icons.volume_off
-                            : _volume < 50
-                                ? Icons.volume_down
-                                : Icons.volume_up,
-                        color: Colors.white,
-                        size: 20,
+                      // Volume icon (tap to toggle mute) + slider
+                      GestureDetector(
+                        onTap: () {
+                          if (_volume > 0) {
+                            _preMuteVolume = _volume;
+                            setState(() => _volume = 0);
+                            ref.read(playerServiceProvider).setVolume(0);
+                          } else {
+                            setState(() => _volume = _preMuteVolume > 0 ? _preMuteVolume : 100);
+                            ref.read(playerServiceProvider).setVolume(_volume);
+                          }
+                          _scheduleHide();
+                        },
+                        child: Icon(
+                          _volume == 0
+                              ? Icons.volume_off
+                              : _volume < 50
+                                  ? Icons.volume_down
+                                  : Icons.volume_up,
+                          color: Colors.white,
+                          size: 20,
+                        ),
                       ),
                       SizedBox(
                         width: 100,
@@ -208,10 +264,12 @@ class _PlayerControlBarState extends ConsumerState<PlayerControlBar> {
                       _badge(_resolutionLabel()),
                       const SizedBox(width: 4),
 
-                      // Interlaced badge
-                      _badge('inv',
-                          bgColor: Colors.red.shade700, fontSize: 10),
-                      const SizedBox(width: 4),
+                      // Interlaced badge (only shown if interlaced)
+                      if (_isInterlaced)
+                        _badge('INT',
+                            bgColor: Colors.red.shade700, fontSize: 10),
+                      if (_isInterlaced)
+                        const SizedBox(width: 4),
 
                       // Record
                       _iconBtn(Icons.fiber_manual_record,
@@ -220,8 +278,9 @@ class _PlayerControlBarState extends ConsumerState<PlayerControlBar> {
                           onTap: () => _comingSoon('Recording')),
                       const SizedBox(width: 4),
 
-                      // Encoding label
-                      _badge('E', fontSize: 10),
+                      // Codec label
+                      if (_codecLabel.isNotEmpty)
+                        _badge(_codecLabel, fontSize: 10),
 
                       const Spacer(),
 
@@ -257,11 +316,14 @@ class _PlayerControlBarState extends ConsumerState<PlayerControlBar> {
 
                       // ── Right side icons ──
                       _iconBtn(Icons.camera_alt_outlined,
-                          onTap: () => _comingSoon('Screenshot')),
-                      _iconBtn(Icons.star_border,
-                          onTap: () => _comingSoon('Favorite')),
+                          onTap: widget.onScreenshot),
+                      _iconBtn(
+                        widget.isFavorite ? Icons.star : Icons.star_border,
+                        color: widget.isFavorite ? Colors.amber : Colors.white,
+                        onTap: widget.onFavorite,
+                      ),
                       _iconBtn(Icons.picture_in_picture_alt,
-                          onTap: () => _comingSoon('PiP')),
+                          onTap: widget.onPip),
                       _iconBtn(
                         widget.isCasting
                             ? Icons.cast_connected
@@ -271,16 +333,27 @@ class _PlayerControlBarState extends ConsumerState<PlayerControlBar> {
                         onTap: widget.onCastTap,
                       ),
                       _iconBtn(Icons.info_outline,
-                          onTap: () => _comingSoon('Info')),
+                          onTap: widget.onInfo),
                       _iconBtn(Icons.settings,
-                          onTap: () => _comingSoon('Settings')),
+                          onTap: widget.onSettings),
                       _iconBtn(Icons.list,
-                          onTap: () => _comingSoon('Channel list')),
-                      _iconBtn(Icons.sort,
-                          onTap: () => _comingSoon('Sort/filter')),
+                          onTap: widget.onChannelList),
                       _badge('EPG', fontSize: 10),
                       const SizedBox(width: 6),
-                      _badge('-- fps', fontSize: 10),
+                      Tooltip(
+                        richMessage: WidgetSpan(
+                          child: _FpsSparkline(history: _fpsHistory),
+                        ),
+                        waitDuration: const Duration(milliseconds: 300),
+                        preferBelow: false,
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF1A1A2E),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: Colors.white24),
+                        ),
+                        padding: const EdgeInsets.all(10),
+                        child: _badge('$_fpsLabel fps', fontSize: 10),
+                      ),
                     ],
                   ),
                 ),
@@ -396,4 +469,101 @@ class _PlayerControlBarState extends ConsumerState<PlayerControlBar> {
       ),
     );
   }
+}
+
+/// Sparkline chart for FPS history, shown in tooltip.
+class _FpsSparkline extends StatelessWidget {
+  final List<double> history;
+  const _FpsSparkline({required this.history});
+
+  @override
+  Widget build(BuildContext context) {
+    if (history.length < 2) {
+      return const SizedBox(
+        width: 180, height: 60,
+        child: Center(child: Text('Collecting data…', style: TextStyle(color: Colors.white54, fontSize: 11))),
+      );
+    }
+
+    final min = history.reduce((a, b) => a < b ? a : b);
+    final max = history.reduce((a, b) => a > b ? a : b);
+    final avg = history.reduce((a, b) => a + b) / history.length;
+    final actualRange = max - min;
+    // When FPS is stable (range < 1), use a fixed window around the avg
+    // so the sparkline isn't just a flat line at the edge.
+    final displayMin = actualRange < 1.0 ? avg - 5.0 : min;
+    final displayRange = actualRange < 1.0 ? 10.0 : actualRange;
+
+    return SizedBox(
+      width: 200,
+      height: 80,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'FPS  min: ${min.toStringAsFixed(1)}  avg: ${avg.toStringAsFixed(1)}  max: ${max.toStringAsFixed(1)}',
+            style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w600),
+          ),
+          const SizedBox(height: 4),
+          Expanded(
+            child: CustomPaint(
+              size: const Size(200, 50),
+              painter: _SparklinePainter(history, displayMin, displayRange),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SparklinePainter extends CustomPainter {
+  final List<double> data;
+  final double min;
+  final double range;
+
+  _SparklinePainter(this.data, this.min, this.range);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (data.length < 2) return;
+
+    final linePaint = Paint()
+      ..color = const Color(0xFF6C5CE7)
+      ..strokeWidth = 1.5
+      ..style = PaintingStyle.stroke
+      ..strokeJoin = StrokeJoin.round;
+
+    final fillPaint = Paint()
+      ..shader = const LinearGradient(
+        begin: Alignment.topCenter,
+        end: Alignment.bottomCenter,
+        colors: [Color(0x806C5CE7), Color(0x006C5CE7)],
+      ).createShader(Rect.fromLTWH(0, 0, size.width, size.height));
+
+    final path = Path();
+    final fillPath = Path();
+
+    for (var i = 0; i < data.length; i++) {
+      final x = (i / (data.length - 1)) * size.width;
+      final y = size.height - ((data[i] - min) / range) * size.height;
+      if (i == 0) {
+        path.moveTo(x, y);
+        fillPath.moveTo(x, size.height);
+        fillPath.lineTo(x, y);
+      } else {
+        path.lineTo(x, y);
+        fillPath.lineTo(x, y);
+      }
+    }
+
+    fillPath.lineTo(size.width, size.height);
+    fillPath.close();
+
+    canvas.drawPath(fillPath, fillPaint);
+    canvas.drawPath(path, linePaint);
+  }
+
+  @override
+  bool shouldRepaint(covariant _SparklinePainter old) => true;
 }

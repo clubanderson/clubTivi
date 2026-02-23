@@ -34,7 +34,7 @@ class _EpgMappingScreenState extends ConsumerState<EpgMappingScreen> {
             pf!.unfocus();
             return;
           }
-          WidgetsBinding.instance.addPostFrameCallback((_) {
+          Future.microtask(() {
             context.go('/settings');
           });
         },
