@@ -1764,6 +1764,9 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
                 _buildTreeItem(group, group, null, indent: 1),
             ],
           ),
+        // Shows & Movies
+        const Divider(height: 1, color: Colors.white10),
+        _buildTreeItem('Shows & Movies', 'action:shows', Icons.movie_rounded, indent: 0),
         // Quick actions
         const Divider(height: 1, color: Colors.white10),
         _buildTreeItem('Recordings', 'action:recordings', Icons.videocam_rounded, indent: 0),
@@ -1916,6 +1919,9 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
       case 'play_file':
         _playLocalFile();
         break;
+      case 'shows':
+        context.push('/shows');
+        break;
       case 'play_url':
         _playUrlStream();
         break;
@@ -2047,6 +2053,10 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
           }
           if (event.logicalKey == LogicalKeyboardKey.select ||
               event.logicalKey == LogicalKeyboardKey.enter) {
+            if (filterKey.startsWith('action:')) {
+              _handleQuickAction(filterKey.substring(7));
+              return KeyEventResult.handled;
+            }
             setState(() {
               _selectedGroup = filterKey;
               _applyFilters();
