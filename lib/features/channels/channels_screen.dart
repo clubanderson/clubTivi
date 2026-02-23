@@ -4000,14 +4000,58 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
                           final hasFocus = Focus.of(context).hasFocus;
                           return GestureDetector(
                           behavior: HitTestBehavior.opaque,
-                          onTap: () => _selectChannel(index),
+                          onTap: () {
+                            // Check modifier keys for multi-select
+                            final hwPressed = HardwareKeyboard.instance.logicalKeysPressed;
+                            // ignore: deprecated_member_use
+                            final rawPressed = RawKeyboard.instance.keysPressed;
+                            final shiftOrCmd = hwPressed.contains(LogicalKeyboardKey.shiftLeft) ||
+                                 hwPressed.contains(LogicalKeyboardKey.shiftRight) ||
+                                 hwPressed.contains(LogicalKeyboardKey.metaLeft) ||
+                                 hwPressed.contains(LogicalKeyboardKey.metaRight) ||
+                                 rawPressed.contains(LogicalKeyboardKey.shiftLeft) ||
+                                 rawPressed.contains(LogicalKeyboardKey.shiftRight) ||
+                                 rawPressed.contains(LogicalKeyboardKey.metaLeft) ||
+                                 rawPressed.contains(LogicalKeyboardKey.metaRight);
+                            try {
+                              File('/tmp/click_debug.log').writeAsStringSync(
+                                '${DateTime.now()} GUIDE-TAP ch=${channel.name} shift=$shiftOrCmd multiMode=$_multiSelectMode hw=${hwPressed.map((k) => k.debugName).join(",")}\n',
+                                mode: FileMode.append);
+                            } catch (_) {}
+                            if (shiftOrCmd) {
+                              setState(() {
+                                if (!_multiSelectMode) {
+                                  _multiSelectMode = true;
+                                  _multiSelectedChannelIds = {channel.id};
+                                } else {
+                                  if (_multiSelectedChannelIds.contains(channel.id)) {
+                                    _multiSelectedChannelIds.remove(channel.id);
+                                  } else {
+                                    _multiSelectedChannelIds.add(channel.id);
+                                  }
+                                }
+                              });
+                            } else if (_multiSelectMode) {
+                              setState(() {
+                                if (_multiSelectedChannelIds.contains(channel.id)) {
+                                  _multiSelectedChannelIds.remove(channel.id);
+                                } else {
+                                  _multiSelectedChannelIds.add(channel.id);
+                                }
+                              });
+                            } else {
+                              _selectChannel(index);
+                            }
+                          },
                           onSecondaryTapUp: (details) => _showGuideChannelMenu(
                             channel, details.globalPosition,
                           ),
                           child: Container(
                             height: 48,
                             decoration: BoxDecoration(
-                              color: isSelected
+                              color: (_multiSelectMode && _multiSelectedChannelIds.contains(channel.id))
+                                  ? const Color(0xFF6C5CE7).withValues(alpha: 0.25)
+                                  : isSelected
                                   ? const Color(0xFF6C5CE7).withValues(alpha: 0.25)
                                   : hasFocus
                                       ? const Color(0xFF6C5CE7).withValues(alpha: 0.15)
@@ -4023,6 +4067,15 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
                             ),
                             child: Row(
                               children: [
+                                if (_multiSelectMode)
+                                  Padding(
+                                    padding: const EdgeInsets.only(left: 4, right: 4),
+                                    child: Icon(
+                                      _multiSelectedChannelIds.contains(channel.id) ? Icons.check_box : Icons.check_box_outline_blank,
+                                      size: 18,
+                                      color: _multiSelectedChannelIds.contains(channel.id) ? const Color(0xFF6C5CE7) : Colors.white38,
+                                    ),
+                                  ),
                                 // Fixed channel name
                                 Container(
                                   width: 200,
