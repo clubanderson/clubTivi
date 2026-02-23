@@ -19,8 +19,14 @@ class PlayerControlBar extends ConsumerStatefulWidget {
   final VoidCallback? onInfo;
   final VoidCallback? onSettings;
   final VoidCallback? onChannelList;
+  final VoidCallback? onSubtitleToggle;
+  final VoidCallback? onSubtitleSelect;
+  final VoidCallback? onAudioSelect;
   final bool isCasting;
   final bool isFavorite;
+  final bool hasSubtitles;
+  final bool subtitlesEnabled;
+  final int audioTrackCount;
 
   const PlayerControlBar({
     super.key,
@@ -32,8 +38,14 @@ class PlayerControlBar extends ConsumerStatefulWidget {
     this.onInfo,
     this.onSettings,
     this.onChannelList,
+    this.onSubtitleToggle,
+    this.onSubtitleSelect,
+    this.onAudioSelect,
     this.isCasting = false,
     this.isFavorite = false,
+    this.hasSubtitles = false,
+    this.subtitlesEnabled = false,
+    this.audioTrackCount = 0,
   });
 
   @override
@@ -61,6 +73,7 @@ class _PlayerControlBarState extends ConsumerState<PlayerControlBar> {
   String _fpsLabel = '—';
   String _codecLabel = '';
   bool _isInterlaced = false;
+  String _bufferDuration = '—';
   final List<double> _fpsHistory = [];
 
   @override
@@ -79,12 +92,15 @@ class _PlayerControlBarState extends ConsumerState<PlayerControlBar> {
         ps.getMpvProperty('estimated-vf-fps'),
         ps.getMpvProperty('video-codec'),
         ps.getMpvProperty('video-params/pixelformat'),
+        ps.getMpvProperty('demuxer-cache-duration'),
       ]);
       if (!mounted) return;
       final fps = double.tryParse(results[0] ?? '');
       final codec = results[1] ?? '';
       final pixFmt = results[2] ?? '';
+      final bufDur = double.tryParse(results[3] ?? '');
       setState(() {
+        _bufferDuration = bufDur != null ? bufDur.toStringAsFixed(1) : '—';
         _fpsLabel = fps != null ? fps.toStringAsFixed(1) : '—';
         if (fps != null) {
           _fpsHistory.add(fps);
@@ -315,6 +331,55 @@ class _PlayerControlBarState extends ConsumerState<PlayerControlBar> {
                       const Spacer(),
 
                       // ── Right side icons ──
+                      // CC (subtitle) toggle + long-press picker
+                      GestureDetector(
+                        onTap: widget.onSubtitleToggle,
+                        onLongPress: widget.onSubtitleSelect,
+                        child: Padding(
+                          padding: const EdgeInsets.all(6),
+                          child: Icon(
+                            widget.subtitlesEnabled
+                                ? Icons.closed_caption
+                                : Icons.closed_caption_disabled,
+                            color: widget.subtitlesEnabled
+                                ? Colors.white
+                                : Colors.white38,
+                            size: 20,
+                          ),
+                        ),
+                      ),
+                      // Audio track selector (only if > 1 track)
+                      if (widget.audioTrackCount > 1)
+                        InkWell(
+                          borderRadius: BorderRadius.circular(16),
+                          onTap: widget.onAudioSelect,
+                          child: Padding(
+                            padding: const EdgeInsets.all(6),
+                            child: Stack(
+                              clipBehavior: Clip.none,
+                              children: [
+                                const Icon(Icons.audiotrack, color: Colors.white, size: 20),
+                                Positioned(
+                                  right: -6,
+                                  top: -4,
+                                  child: Container(
+                                    padding: const EdgeInsets.all(2),
+                                    decoration: const BoxDecoration(
+                                      color: Color(0xFF6C5CE7),
+                                      shape: BoxShape.circle,
+                                    ),
+                                    constraints: const BoxConstraints(minWidth: 14, minHeight: 14),
+                                    child: Text(
+                                      '${widget.audioTrackCount}',
+                                      style: const TextStyle(color: Colors.white, fontSize: 8, fontWeight: FontWeight.bold),
+                                      textAlign: TextAlign.center,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
                       _iconBtn(Icons.camera_alt_outlined,
                           onTap: widget.onScreenshot),
                       _iconBtn(
@@ -354,6 +419,8 @@ class _PlayerControlBarState extends ConsumerState<PlayerControlBar> {
                         padding: const EdgeInsets.all(10),
                         child: _badge('$_fpsLabel fps', fontSize: 10),
                       ),
+                      const SizedBox(width: 4),
+                      _badge('buf: ${_bufferDuration}s', fontSize: 10),
                     ],
                   ),
                 ),
