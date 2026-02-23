@@ -2948,23 +2948,182 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
     }).length;
   }
 
-  List<Widget> _buildGuideFailoverGroups() {
+  Widget _buildGuideFailoverGroupRow(int foIndex, db.AppDatabase database, double hOffset,
+      DateTime dayStart, DateTime dayEnd, {required int totalMinutes, required double totalWidth}) {
+    // Resolve the foIndex-th non-empty failover group
     final channelById = <String, db.Channel>{};
     for (final c in _allChannels) channelById[c.id] = c;
-    final widgets = <Widget>[];
-    for (final group in _failoverGroups) {
-      final memberIds = _failoverGroupMembers[group.id] ?? [];
-      final members = memberIds.map((id) => channelById[id]).whereType<db.Channel>().toList();
-      if (members.isNotEmpty) {
-        widgets.add(
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-            child: _buildFailoverGroupRow(group, members),
-          ),
-        );
+    var count = 0;
+    late db.FailoverGroup group;
+    late List<db.Channel> members;
+    for (final g in _failoverGroups) {
+      final memberIds = _failoverGroupMembers[g.id] ?? [];
+      final resolved = memberIds.map((id) => channelById[id]).whereType<db.Channel>().toList();
+      if (resolved.isNotEmpty) {
+        if (count == foIndex) {
+          group = g;
+          members = resolved;
+          break;
+        }
+        count++;
       }
     }
-    return widgets;
+    final primary = members.first;
+    final isExpanded = _expandedFailoverGroups.contains(group.id);
+
+    // Find EPG channel from any member
+    db.Channel? epgMember;
+    for (final m in members) {
+      if (_getEpgId(m) != null) { epgMember = m; break; }
+    }
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        // Main group row — same layout as regular guide row
+        GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: () => _playFailoverGroup(group, members),
+          onSecondaryTapUp: (_) => _showFailoverGroupActions(group),
+          onDoubleTap: () {
+            setState(() {
+              if (isExpanded) { _expandedFailoverGroups.remove(group.id); }
+              else { _expandedFailoverGroups.add(group.id); }
+            });
+          },
+          child: Container(
+            height: 48,
+            decoration: BoxDecoration(
+              border: Border(
+                bottom: const BorderSide(color: Colors.white10, width: 0.5),
+                left: const BorderSide(color: Color(0xFF6C5CE7), width: 2),
+              ),
+            ),
+            child: Row(
+              children: [
+                // Fixed channel info panel
+                Container(
+                  width: 200,
+                  decoration: const BoxDecoration(
+                    border: Border(right: BorderSide(color: Colors.white10, width: 0.5)),
+                  ),
+                  padding: const EdgeInsets.symmetric(horizontal: 4),
+                  child: Row(
+                    children: [
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(4),
+                        child: primary.tvgLogo != null && primary.tvgLogo!.isNotEmpty
+                            ? Image.network(primary.tvgLogo!, width: 28, height: 28, fit: BoxFit.contain,
+                                errorBuilder: (_, __, ___) => Container(width: 28, height: 28, color: const Color(0xFF16213E),
+                                    child: const Icon(Icons.shield_outlined, size: 14, color: Color(0xFF6C5CE7))))
+                            : Container(width: 28, height: 28, color: const Color(0xFF16213E),
+                                child: const Icon(Icons.shield_outlined, size: 14, color: Color(0xFF6C5CE7))),
+                      ),
+                      const SizedBox(width: 4),
+                      Expanded(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                const Icon(Icons.shield_outlined, size: 10, color: Color(0xFF6C5CE7)),
+                                const SizedBox(width: 2),
+                                Flexible(
+                                  child: Text(group.name,
+                                    style: const TextStyle(fontSize: 11, color: Colors.white, fontWeight: FontWeight.bold),
+                                    maxLines: 1, overflow: TextOverflow.ellipsis),
+                                ),
+                              ],
+                            ),
+                            Text('${members.length} streams',
+                              style: const TextStyle(fontSize: 9, color: Colors.white30),
+                              maxLines: 1, overflow: TextOverflow.ellipsis),
+                          ],
+                        ),
+                      ),
+                      InkWell(
+                        onTap: () {
+                          setState(() {
+                            if (isExpanded) { _expandedFailoverGroups.remove(group.id); }
+                            else { _expandedFailoverGroups.add(group.id); }
+                          });
+                        },
+                        child: Icon(isExpanded ? Icons.expand_less : Icons.expand_more, size: 18, color: Colors.white54),
+                      ),
+                    ],
+                  ),
+                ),
+                // Programme blocks from EPG member
+                Expanded(
+                  child: LayoutBuilder(
+                    builder: (context, constraints) {
+                      if (epgMember == null) {
+                        return const Center(child: Text('No EPG', style: TextStyle(fontSize: 10, color: Colors.white24)));
+                      }
+                      return ClipRect(
+                        child: OverflowBox(
+                          alignment: Alignment.centerLeft,
+                          maxWidth: totalWidth,
+                          child: Transform.translate(
+                            offset: Offset(-hOffset, 0),
+                            child: _buildGuideRowProgrammes(epgMember!, database, dayStart, dayEnd, totalMinutes: totalMinutes, totalWidth: totalWidth),
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        // Expanded member rows
+        if (isExpanded)
+          ...members.asMap().entries.map((entry) {
+            final idx = entry.key;
+            final ch = entry.value;
+            return GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () => _playFailoverGroup(group, members),
+              onSecondaryTapUp: (_) => _showMemberActions(group, ch),
+              child: Container(
+                height: 36,
+                decoration: const BoxDecoration(
+                  color: Color(0xFF0D1117),
+                  border: Border(bottom: BorderSide(color: Colors.white10, width: 0.5)),
+                ),
+                padding: const EdgeInsets.only(left: 24),
+                child: Row(
+                  children: [
+                    Text('#${idx + 1}', style: const TextStyle(color: Colors.white24, fontSize: 10)),
+                    const SizedBox(width: 6),
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(3),
+                      child: SizedBox(
+                        width: 22, height: 22,
+                        child: ch.tvgLogo != null && ch.tvgLogo!.isNotEmpty
+                            ? Image.network(ch.tvgLogo!, fit: BoxFit.contain,
+                                errorBuilder: (_, __, ___) => const Icon(Icons.tv, size: 12, color: Colors.white24))
+                            : const Icon(Icons.tv, size: 12, color: Colors.white24),
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(_channelDisplayName(ch),
+                        style: const TextStyle(color: Colors.white54, fontSize: 10),
+                        maxLines: 1, overflow: TextOverflow.ellipsis),
+                    ),
+                    Text(_getProviderName(ch.providerId),
+                      style: const TextStyle(color: Colors.white24, fontSize: 9)),
+                    const SizedBox(width: 8),
+                  ],
+                ),
+              ),
+            );
+          }),
+      ],
+    );
   }
 
   Widget _buildMultiSelectBar() {
@@ -4212,7 +4371,7 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
                       itemBuilder: (context, index) {
                         // Inject failover group rows at the top
                         if (index < _guideFailoverGroupCount) {
-                          return _buildGuideFailoverGroups()[index];
+                          return _buildGuideFailoverGroupRow(index, database, hOffset, dayStart, dayEnd, totalMinutes: totalMinutes, totalWidth: totalWidth);
                         }
                         index = index - _guideFailoverGroupCount;
                         final channel = _filteredChannels[index];
