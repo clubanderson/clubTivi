@@ -605,6 +605,7 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
     if (isFirstLoad) _restoreSession();
 
     // ── Background: sidebar groups + failover groups (non-blocking) ──
+    if (mounted) setState(() => _loadStatus = 'Loading Smart Channel groups…');
     final bgResults = await Future.wait([
       database.getProviderGroups(),
       database.getAllFailoverGroups(),
@@ -2981,6 +2982,12 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
       if (_getEpgId(m) != null) { epgMember = m; break; }
     }
 
+    // Check if any member is currently playing
+    final ps = ref.read(playerServiceProvider);
+    final isGroupPlaying = members.any((m) =>
+        ps.currentChannelId == m.id ||
+        (ps.currentChannelId == null && ps.currentUrl == m.streamUrl));
+
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -2998,9 +3005,10 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
           child: Container(
             height: 48,
             decoration: BoxDecoration(
+              color: isGroupPlaying ? const Color(0xFF6C5CE7).withValues(alpha: 0.2) : null,
               border: Border(
                 bottom: const BorderSide(color: Colors.white10, width: 0.5),
-                left: const BorderSide(color: Color(0xFF6C5CE7), width: 2),
+                left: BorderSide(color: const Color(0xFF6C5CE7), width: isGroupPlaying ? 3 : 2),
               ),
             ),
             child: Row(
@@ -3019,9 +3027,9 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
                         child: primary.tvgLogo != null && primary.tvgLogo!.isNotEmpty
                             ? Image.network(primary.tvgLogo!, width: 28, height: 28, fit: BoxFit.contain,
                                 errorBuilder: (_, __, ___) => Container(width: 28, height: 28, color: const Color(0xFF16213E),
-                                    child: const Icon(Icons.shield_outlined, size: 14, color: Color(0xFF6C5CE7))))
+                                    child: const Icon(Icons.bolt, size: 14, color: Colors.amber)))
                             : Container(width: 28, height: 28, color: const Color(0xFF16213E),
-                                child: const Icon(Icons.shield_outlined, size: 14, color: Color(0xFF6C5CE7))),
+                                child: const Icon(Icons.bolt, size: 14, color: Colors.amber)),
                       ),
                       const SizedBox(width: 4),
                       Expanded(
@@ -3031,7 +3039,7 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
                           children: [
                             Row(
                               children: [
-                                const Icon(Icons.shield_outlined, size: 10, color: Color(0xFF6C5CE7)),
+                                const Icon(Icons.bolt, size: 10, color: Colors.amber),
                                 const SizedBox(width: 2),
                                 Flexible(
                                   child: Text(group.name,
@@ -3091,7 +3099,7 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
             final isPlaying = ps.currentChannelId == ch.id || (ps.currentChannelId == null && ps.currentUrl == ch.streamUrl);
             return GestureDetector(
               behavior: HitTestBehavior.opaque,
-              onTap: () => _playFailoverGroup(group, members),
+              onTap: () => _playFailoverGroup(group, members, playChannel: ch),
               onSecondaryTapUp: (_) => _showMemberActions(group, ch),
               child: Container(
                 height: 36,
@@ -3175,7 +3183,7 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
             onPressed: _multiSelectedChannelIds.length >= 2
                 ? _createFailoverGroupFromSelection
                 : null,
-            icon: const Icon(Icons.shield_outlined, size: 16),
+            icon: const Icon(Icons.bolt, size: 16),
             label: const Text('New Smart Channel'),
             style: FilledButton.styleFrom(
               backgroundColor: const Color(0xFF6C5CE7),
@@ -3289,7 +3297,7 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
             ..._failoverGroups.map((g) {
               final count = _failoverGroupMembers[g.id]?.length ?? 0;
               return ListTile(
-                leading: const Icon(Icons.shield_outlined, color: Color(0xFF6C5CE7)),
+                leading: const Icon(Icons.bolt, color: Colors.amber),
                 title: Text(g.name, style: const TextStyle(color: Colors.white)),
                 subtitle: Text('$count channels', style: const TextStyle(color: Colors.white38, fontSize: 12)),
                 onTap: () => Navigator.pop(ctx, g),
@@ -3350,6 +3358,11 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
       epgText = _getChannelNowPlaying(m);
       if (epgText != null) break;
     }
+    // Check if any member of this group is currently playing
+    final ps = ref.read(playerServiceProvider);
+    final isPlaying = members.any((m) =>
+        ps.currentChannelId == m.id ||
+        (ps.currentChannelId == null && ps.currentUrl == m.streamUrl));
     return Column(
       children: [
         InkWell(
@@ -3372,7 +3385,10 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: const Color(0xFF6C5CE7).withValues(alpha: 0.3)),
+              color: isPlaying ? const Color(0xFF6C5CE7).withValues(alpha: 0.25) : null,
+              border: Border.all(color: isPlaying
+                  ? const Color(0xFF6C5CE7)
+                  : const Color(0xFF6C5CE7).withValues(alpha: 0.3)),
             ),
             child: Row(
               children: [
@@ -3388,12 +3404,12 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
                             fit: BoxFit.cover,
                             errorBuilder: (_, __, ___) => Container(
                               color: const Color(0xFF16213E),
-                              child: const Icon(Icons.shield_outlined, size: 18, color: Color(0xFF6C5CE7)),
+                              child: const Icon(Icons.bolt, size: 18, color: Colors.amber),
                             ),
                           )
                         : Container(
                             color: const Color(0xFF16213E),
-                            child: const Icon(Icons.shield_outlined, size: 18, color: Color(0xFF6C5CE7)),
+                            child: const Icon(Icons.bolt, size: 18, color: Colors.amber),
                           ),
                   ),
                 ),
@@ -3405,7 +3421,7 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
                     children: [
                       Row(
                         children: [
-                          const Icon(Icons.shield_outlined, size: 12, color: Color(0xFF6C5CE7)),
+                          const Icon(Icons.bolt, size: 12, color: Colors.amber),
                           const SizedBox(width: 4),
                           Flexible(
                             child: Text(
@@ -3469,7 +3485,7 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
               padding: const EdgeInsets.only(left: 32),
               child: InkWell(
                 onTap: () {
-                  _playFailoverGroup(group, members);
+                  _playFailoverGroup(group, members, playChannel: ch);
                 },
                 onSecondaryTap: () => _showMemberActions(group, ch),
                 child: Container(
@@ -3549,30 +3565,35 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
     });
   }
 
-  void _playFailoverGroup(db.FailoverGroup group, List<db.Channel> members) {
+  void _playFailoverGroup(db.FailoverGroup group, List<db.Channel> members, {db.Channel? playChannel}) {
     if (members.isEmpty) return;
-    final first = members.first;
+    final target = playChannel ?? members.first;
 
     final playerService = ref.read(playerServiceProvider);
-    // Pass all group member URLs as failover alternatives
-    final altUrls = members.skip(1).map((c) => c.streamUrl).toList();
+    // Other members are failover alternatives
+    final altUrls = members
+        .where((c) => c.id != target.id)
+        .map((c) => c.streamUrl)
+        .toList();
 
-    playerService.play(first.streamUrl,
-      channelId: first.id,
-      epgChannelId: _getEpgId(first),
-      tvgId: first.tvgId,
-      channelName: first.name,
-      vanityName: _vanityNames[first.id],
-      originalName: first.tvgName,
+    playerService.play(target.streamUrl,
+      channelId: target.id,
+      epgChannelId: _getEpgId(target),
+      tvgId: target.tvgId,
+      channelName: target.name,
+      vanityName: _vanityNames[target.id],
+      originalName: target.tvgName,
       failoverGroupUrls: altUrls,
     );
 
     // Always update preview — grouped channels are filtered out of
     // _filteredChannels so indexWhere returns -1; update state regardless.
+    // Clear _selectedIndex so no individual channel row stays highlighted.
     setState(() {
-      _previewChannel = first;
+      _selectedIndex = -1;
+      _previewChannel = target;
     });
-    _showInfoOverlay(first, _selectedIndex);
+    _showInfoOverlay(target, _selectedIndex);
     _saveSession();
   }
 
