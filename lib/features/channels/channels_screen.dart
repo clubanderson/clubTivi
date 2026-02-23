@@ -628,6 +628,7 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
       _failoverGroups = foGroups;
       _failoverGroupMembers = foGroupMembers;
       _failoverGroupIndex = foGroupIndex;
+      _applyFilters(); // Re-filter to hide grouped channels
     });
 
     // ── Background: EPG for favorites ──
@@ -3083,15 +3084,17 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
           ...members.asMap().entries.map((entry) {
             final idx = entry.key;
             final ch = entry.value;
+            final ps = ref.read(playerServiceProvider);
+            final isPlaying = ps.currentChannelId == ch.id || (ps.currentChannelId == null && ps.currentUrl == ch.streamUrl);
             return GestureDetector(
               behavior: HitTestBehavior.opaque,
               onTap: () => _playFailoverGroup(group, members),
               onSecondaryTapUp: (_) => _showMemberActions(group, ch),
               child: Container(
                 height: 36,
-                decoration: const BoxDecoration(
-                  color: Color(0xFF0D1117),
-                  border: Border(bottom: BorderSide(color: Colors.white10, width: 0.5)),
+                decoration: BoxDecoration(
+                  color: isPlaying ? const Color(0xFF6C5CE7).withValues(alpha: 0.2) : const Color(0xFF0D1117),
+                  border: const Border(bottom: BorderSide(color: Colors.white10, width: 0.5)),
                 ),
                 padding: const EdgeInsets.only(left: 24),
                 child: Row(
@@ -3111,9 +3114,12 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
                     const SizedBox(width: 6),
                     Expanded(
                       child: Text(_channelDisplayName(ch),
-                        style: const TextStyle(color: Colors.white54, fontSize: 10),
+                        style: TextStyle(color: isPlaying ? Colors.white : Colors.white54, fontSize: 10,
+                            fontWeight: isPlaying ? FontWeight.bold : FontWeight.normal),
                         maxLines: 1, overflow: TextOverflow.ellipsis),
                     ),
+                    if (isPlaying)
+                      const Icon(Icons.play_arrow_rounded, color: Color(0xFF6C5CE7), size: 14),
                     Text(_getProviderName(ch.providerId),
                       style: const TextStyle(color: Colors.white24, fontSize: 9)),
                     const SizedBox(width: 8),
@@ -3452,16 +3458,21 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
           ...members.asMap().entries.map((entry) {
             final idx = entry.key;
             final ch = entry.value;
+            final ps = ref.read(playerServiceProvider);
+            final isPlaying = ps.currentChannelId == ch.id || (ps.currentChannelId == null && ps.currentUrl == ch.streamUrl);
             return Padding(
               padding: const EdgeInsets.only(left: 32),
               child: InkWell(
                 onTap: () {
-                  // Play this specific member with failover through others
                   _playFailoverGroup(group, members);
                 },
                 onSecondaryTap: () => _showMemberActions(group, ch),
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+                  decoration: BoxDecoration(
+                    color: isPlaying ? const Color(0xFF6C5CE7).withValues(alpha: 0.2) : null,
+                    borderRadius: BorderRadius.circular(6),
+                  ),
                   child: Row(
                     children: [
                       Text(
@@ -3486,7 +3497,11 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
                           children: [
                             Text(
                               _channelDisplayName(ch),
-                              style: const TextStyle(color: Colors.white60, fontSize: 12),
+                              style: TextStyle(
+                                color: isPlaying ? Colors.white : Colors.white60,
+                                fontSize: 12,
+                                fontWeight: isPlaying ? FontWeight.bold : FontWeight.normal,
+                              ),
                               overflow: TextOverflow.ellipsis,
                             ),
                             if (_getProviderName(ch.providerId).isNotEmpty)
@@ -3498,6 +3513,8 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
                           ],
                         ),
                       ),
+                      if (isPlaying)
+                        const Icon(Icons.play_arrow_rounded, color: Color(0xFF6C5CE7), size: 16),
                     ],
                   ),
                 ),
@@ -3523,6 +3540,7 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
       _failoverGroups = foGroups;
       _failoverGroupMembers = foGroupMembers;
       _failoverGroupIndex = foGroupIndex;
+      _applyFilters(); // Re-filter to hide/unhide grouped channels
     });
   }
 
