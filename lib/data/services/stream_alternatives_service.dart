@@ -220,6 +220,70 @@ class StreamAlternativesService {
     return count.clamp(0, 999);
   }
 
+  /// Get detailed alternative channels with match reasons for UI display.
+  List<AlternativeDetail> getAlternativeDetails({
+    required String channelId,
+    String? epgChannelId,
+    String? tvgId,
+    String? channelName,
+    String? vanityName,
+    required String excludeUrl,
+  }) {
+    final seen = <String>{excludeUrl};
+    final results = <AlternativeDetail>[];
+
+    void addTagged(List<Channel>? channels, String reason) {
+      if (channels == null) return;
+      for (final ch in channels) {
+        if (ch.id != channelId &&
+            ch.streamUrl.isNotEmpty &&
+            seen.add(ch.streamUrl)) {
+          results.add(AlternativeDetail(
+            channel: ch,
+            matchReason: reason,
+            healthScore: _health.getScore(ch.streamUrl),
+          ));
+        }
+      }
+    }
+
+    // Priority 1: Same vanity name
+    if (vanityName != null && vanityName.isNotEmpty) {
+      final key = vanityName.toLowerCase().trim();
+      addTagged(_vanityIndex[key], 'vanity name');
+    }
+
+    // Priority 2: Same tvgId
+    if (tvgId != null && tvgId.isNotEmpty) {
+      addTagged(_tvgIdIndex[tvgId], 'tvgId');
+    }
+
+    // Priority 3: Same EPG + call sign
+    if (epgChannelId != null && epgChannelId.isNotEmpty) {
+      final callSign = _extractCallSign(channelName ?? '');
+      final epgGroup = _epgIndex[epgChannelId];
+      if (epgGroup != null && callSign != null) {
+        final sameCall = epgGroup.where((ch) {
+          final other = _extractCallSign(ch.name);
+          return other != null && other == callSign;
+        }).toList();
+        addTagged(sameCall, 'EPG+call sign');
+      } else if (callSign == null) {
+        addTagged(epgGroup, 'EPG');
+      }
+    }
+
+    // Priority 4: Normalized name
+    if (channelName != null && channelName.isNotEmpty) {
+      final normName = _normalizeName(channelName);
+      addTagged(_nameIndex[normName], 'name');
+    }
+
+    // Sort by health score descending
+    results.sort((a, b) => b.healthScore.compareTo(a.healthScore));
+    return results;
+  }
+
   /// Extract a US broadcast call sign from a channel name.
   /// Returns null for cable/satellite channels (ESPN, CNN, etc.).
   /// Examples: "ABC 7 (WABC) NEW YORK" → "WABC", "CBS 2 WCBS" → "WCBS"
@@ -285,3 +349,16 @@ final streamAlternativesProvider = Provider<StreamAlternativesService>((ref) {
   service.rebuild(); // initial build
   return service;
 });
+
+/// A single failover alternative with match metadata for UI display.
+class AlternativeDetail {
+  final Channel channel;
+  final String matchReason;
+  final double healthScore;
+
+  const AlternativeDetail({
+    required this.channel,
+    required this.matchReason,
+    required this.healthScore,
+  });
+}
