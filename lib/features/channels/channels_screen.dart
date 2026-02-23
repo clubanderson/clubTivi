@@ -48,6 +48,8 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
 
   /// Maps channel ID → mapped EPG channel ID (from epg_mappings table)
   Map<String, String> _epgMappings = {};
+  /// Maps channel ID → user-set vanity name (original name preserved in DB)
+  Map<String, String> _vanityNames = {};
   Set<String> _validEpgChannelIds = {};
   bool _showGuideView = true;
   final _searchController = TextEditingController();
@@ -128,6 +130,20 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
     _ensureEpgSources();
     _startTopBarFade();
     _initFailoverListener();
+    // Auto-failover toast
+    final ps = ref.read(playerServiceProvider);
+    ps.onFailover = (message) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(message),
+            duration: const Duration(seconds: 3),
+            behavior: SnackBarBehavior.floating,
+            width: 250,
+          ),
+        );
+      }
+    };
     // Watch providers table — reload when providers or channels change
     final database = ref.read(databaseProvider);
     Timer? debounce;
@@ -334,7 +350,13 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
     } else {
       // Channel not in current filter — play directly
       final playerService = ref.read(playerServiceProvider);
-      playerService.play(_failoverSuggestion!.streamUrl);
+      playerService.play(_failoverSuggestion!.streamUrl,
+        channelId: _failoverSuggestion!.id,
+        epgChannelId: _getEpgId(_failoverSuggestion!),
+        tvgId: _failoverSuggestion!.tvgId,
+        channelName: _failoverSuggestion!.name,
+        vanityName: _vanityNames[_failoverSuggestion!.id],
+      );
       setState(() {
         _previewChannel = _failoverSuggestion;
       });
@@ -487,6 +509,19 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
       _favoriteLists = favLists;
       _favoritedChannelIds = favChannelIds;
       _isLoading = false;
+    });
+
+    // Load vanity names
+    final prefs = await SharedPreferences.getInstance();
+    final vanityJson = prefs.getString('channel_vanity_names');
+    if (vanityJson != null) {
+      try {
+        final decoded = jsonDecode(vanityJson) as Map<String, dynamic>;
+        _vanityNames = decoded.map((k, v) => MapEntry(k, v as String));
+      } catch (_) {}
+    }
+
+    setState(() {
       _applyFilters();
     });
 
@@ -588,14 +623,16 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
         // Search the full channel list, not the group-filtered subset
         channels = _allChannels.where((c) {
           final name = c.name.toLowerCase();
+          final vanity = (_vanityNames[c.id] ?? '').toLowerCase();
           final group = (c.groupTitle ?? '').toLowerCase();
           final tvgId = (c.tvgId ?? '').toLowerCase();
           final programmeTitles = _getChannelProgrammeTitles(c)
               .map((t) => t.toLowerCase())
               .toList();
-          // AND: channel matches only if EVERY token hits name, group, tvgId, or a programme title
+          // AND: channel matches only if EVERY token hits name, vanity name, group, tvgId, or a programme title
           return tokens.every((token) {
             if (name.contains(token)) return true;
+            if (vanity.isNotEmpty && vanity.contains(token)) return true;
             if (group.contains(token)) return true;
             if (tvgId.contains(token)) return true;
             for (final title in programmeTitles) {
@@ -622,6 +659,7 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
         // Search ALL channels, not just favorites
         channels = _allChannels.where((c) {
           final name = c.name.toLowerCase();
+          final vanity = (_vanityNames[c.id] ?? '').toLowerCase();
           final group = (c.groupTitle ?? '').toLowerCase();
           final tvgId = (c.tvgId ?? '').toLowerCase();
           final programmeTitles = _getChannelProgrammeTitles(c)
@@ -629,6 +667,7 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
               .toList();
           return tokens.every((token) {
             if (name.contains(token)) return true;
+            if (vanity.isNotEmpty && vanity.contains(token)) return true;
             if (group.contains(token)) return true;
             if (tvgId.contains(token)) return true;
             for (final title in programmeTitles) {
@@ -641,7 +680,11 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
     }
     if (_sidebarSearchQuery.isNotEmpty) {
       channels = channels
-          .where((c) => c.name.toLowerCase().contains(_sidebarSearchQuery))
+          .where((c) {
+            final q = _sidebarSearchQuery;
+            return c.name.toLowerCase().contains(q) ||
+                (_vanityNames[c.id]?.toLowerCase().contains(q) ?? false);
+          })
           .toList();
     }
     if (!mounted) return;
@@ -665,7 +708,13 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
     }
     final channel = _filteredChannels[index];
     final playerService = ref.read(playerServiceProvider);
-    playerService.play(channel.streamUrl);
+    playerService.play(channel.streamUrl,
+      channelId: channel.id,
+      epgChannelId: _getEpgId(channel),
+      tvgId: channel.tvgId,
+      channelName: channel.name,
+      vanityName: _vanityNames[channel.id],
+    );
     setState(() {
       _selectedIndex = index;
       _previewChannel = channel;
@@ -681,7 +730,13 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
     _previousIndex = _selectedIndex;
     final channel = _filteredChannels[swapTo];
     final playerService = ref.read(playerServiceProvider);
-    playerService.play(channel.streamUrl);
+    playerService.play(channel.streamUrl,
+      channelId: channel.id,
+      epgChannelId: _getEpgId(channel),
+      tvgId: channel.tvgId,
+      channelName: channel.name,
+      vanityName: _vanityNames[channel.id],
+    );
     setState(() {
       _selectedIndex = swapTo;
       _previewChannel = channel;
@@ -704,7 +759,7 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
         .map((c) => <String, dynamic>{
               'id': c.id,
               'providerId': c.providerId,
-              'name': c.name,
+              'name': _channelDisplayName(c),
               'streamUrl': c.streamUrl,
               'tvgLogo': c.tvgLogo,
               'tvgId': c.tvgId,
@@ -712,12 +767,14 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
               'groupTitle': c.groupTitle,
               'streamType': c.streamType,
               'epgId': _getEpgId(c),
+              'epgChannelId': _getEpgId(c),
+              'vanityName': _vanityNames[c.id],
               'alternativeUrls': <String>[],
             })
         .toList();
     await context.push('/player', extra: {
       'streamUrl': channel.streamUrl,
-      'channelName': channel.name,
+      'channelName': _channelDisplayName(channel),
       'channelLogo': channel.tvgLogo,
       'alternativeUrls': <String>[],
       'channels': channelMaps,
@@ -754,6 +811,10 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
         _nowPlaying.where((p) => p.epgChannelId == epgId).toList();
     return match.isNotEmpty ? match.first.title : null;
   }
+
+  /// Display name for a channel — vanity name if set, otherwise original name.
+  String _channelDisplayName(db.Channel channel) =>
+      _vanityNames[channel.id] ?? channel.name;
 
   /// All current/upcoming programme titles for a channel (for search).
   List<String> _getChannelProgrammeTitles(db.Channel channel) {
@@ -1155,7 +1216,6 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
               ),
             ),
           ),
-          const WeatherClockWidget(),
           Flexible(
             child: SingleChildScrollView(
               scrollDirection: Axis.horizontal,
@@ -1179,6 +1239,8 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
               ),
             ),
           ),
+          const Spacer(),
+          const WeatherClockWidget(),
         ],
       ),
     );
@@ -1278,7 +1340,7 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
                                     Text(
-                                      _previewChannel!.name,
+                                      _channelDisplayName(_previewChannel!),
                                       style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 15),
                                       overflow: TextOverflow.ellipsis,
                                     ),
@@ -2274,7 +2336,7 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
                           children: [
                             Flexible(
                               child: Text(
-                                channel.name,
+                                _channelDisplayName(channel),
                                 style: TextStyle(
                                   color: isSelected
                                       ? Colors.white
@@ -2373,17 +2435,32 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
 
   /// Bottom sheet to add/remove a channel from favorite lists.
   Future<void> _renameChannel(db.Channel channel) async {
-    final controller = TextEditingController(text: channel.name);
+    final currentVanity = _vanityNames[channel.id];
+    final controller = TextEditingController(text: currentVanity ?? channel.name);
     final result = await showDialog<String>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Rename Channel'),
-        content: TextFormField(
-          controller: controller,
-          autofocus: true,
-          decoration: const InputDecoration(labelText: 'Channel Name'),
+        title: const Text('Set Display Name'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Original: ${channel.name}',
+                style: const TextStyle(fontSize: 12, color: Colors.white54)),
+            const SizedBox(height: 12),
+            TextFormField(
+              controller: controller,
+              autofocus: true,
+              decoration: const InputDecoration(labelText: 'Display Name'),
+            ),
+          ],
         ),
         actions: [
+          if (currentVanity != null)
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, '\x00RESET'),
+              child: const Text('Reset to Original'),
+            ),
           TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
           FilledButton(
             onPressed: () => Navigator.pop(ctx, controller.text.trim()),
@@ -2393,28 +2470,23 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
       ),
     );
     controller.dispose();
-    if (result != null && result.isNotEmpty && result != channel.name) {
-      final database = ref.read(databaseProvider);
-      await database.renameChannel(channel.id, channel.providerId, result);
-      if (!mounted) return;
-      // Update local lists immediately so the UI reflects the rename
-      setState(() {
-        final updateList = (List<db.Channel> list) {
-          final idx = list.indexWhere((c) => c.id == channel.id && c.providerId == channel.providerId);
-          if (idx >= 0) {
-            list[idx] = list[idx].copyWith(name: result);
-          }
-        };
-        updateList(_allChannels);
-        updateList(_filteredChannels);
-        if (_previewChannel?.id == channel.id) {
-          _previewChannel = _filteredChannels.firstWhere(
-            (c) => c.id == channel.id,
-            orElse: () => _previewChannel!,
-          );
-        }
-      });
+    if (result == null) return;
+
+    if (result == '\x00RESET') {
+      // Remove vanity name — revert to original
+      _vanityNames.remove(channel.id);
+    } else if (result.isNotEmpty && result != channel.name) {
+      _vanityNames[channel.id] = result;
+    } else {
+      return;
     }
+
+    // Persist vanity names
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('channel_vanity_names', jsonEncode(_vanityNames));
+
+    if (!mounted) return;
+    setState(() {});
   }
 
   /// Show inline EPG mapping dialog for a single channel.

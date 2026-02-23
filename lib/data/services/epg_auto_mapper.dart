@@ -206,6 +206,7 @@ class EpgAutoMapper {
   /// Clean channel name for matching.
   /// Handles pipe-separated names like "NY | New York | ABC 7 WABC"
   /// by using the most specific (last) segment.
+  /// Also extracts parenthesized call signs for matching.
   String _cleanChannelName(String name) {
     // Split on pipe separators and use the last (most specific) segment
     final segments = name.split(RegExp(r'\s*\|\s*'));
@@ -221,14 +222,24 @@ class EpgAutoMapper {
     );
     // Remove "24/7" prefix
     cleaned = cleaned.replaceAll(RegExp(r'^24[/\-]7\s*', caseSensitive: false), '');
-    // Remove quality suffixes
-    cleaned = cleaned.replaceAll(
-      RegExp(r'\s*(HD|FHD|UHD|4K|SD|HEVC|H\.?265|H\.?264)\s*',
-          caseSensitive: false),
-      ' ',
-    );
-    // Remove parenthesized content like "(USA)", "(FHD)"
-    cleaned = cleaned.replaceAll(RegExp(r'\([^)]*\)'), '');
+
+    // Extract call sign from parentheses like "(WABC)" and prepend it
+    final callSignMatch = RegExp(r'\(([A-Z]{3,5})\)', caseSensitive: false).firstMatch(cleaned);
+    if (callSignMatch != null) {
+      final callSign = callSignMatch.group(1)!;
+      // Use call sign as the primary name for matching
+      cleaned = callSign;
+    } else {
+      // Remove quality suffixes
+      cleaned = cleaned.replaceAll(
+        RegExp(r'\s*(HD|FHD|UHD|4K|SD|HEVC|H\.?265|H\.?264)\s*',
+            caseSensitive: false),
+        ' ',
+      );
+      // Remove parenthesized content like "(USA)", "(FHD)"
+      cleaned = cleaned.replaceAll(RegExp(r'\([^)]*\)'), '');
+    }
+
     // Collapse whitespace
     cleaned = cleaned.replaceAll(RegExp(r'\s+'), ' ').trim();
     return cleaned;
@@ -236,13 +247,40 @@ class EpgAutoMapper {
 
   /// Normalize an ID for comparison.
   /// "ESPN_US_HD" → "espnus", "ESPN.us" → "espnus"
+  /// Also extracts call signs: "abcwabc.us" → "wabcus", "ABC.(WABC).New.York,.NY.us" → "wabcus"
   String _normalizeId(String id) {
     var normalized = id.toLowerCase();
+
+    // Extract call sign from parenthesized patterns like "ABC.(WABC).New.York"
+    final parenMatch = RegExp(r'\((\w+)\)').firstMatch(normalized);
+    if (parenMatch != null) {
+      final callSign = parenMatch.group(1)!;
+      // Extract country suffix (.us, .uk, etc.)
+      final suffix = RegExp(r'\.(us|uk|ca|au|nz|de|fr|es|it|mx)$')
+          .firstMatch(normalized)?.group(0) ?? '';
+      return (callSign + suffix).replaceAll(RegExp(r'[._\-\s]'), '');
+    }
+
+    // Handle "abcwabc.us" pattern — strip network prefix before call sign
+    // Common US networks: abc, cbs, nbc, fox, pbs, cw
+    final prefixMatch = RegExp(r'^(abc|cbs|nbc|fox|pbs|cw)(\w{3,})(.*)$')
+        .firstMatch(normalized.replaceAll(RegExp(r'[._\-\s]'), ''));
+    if (prefixMatch != null) {
+      final callSign = prefixMatch.group(2)!;
+      final rest = prefixMatch.group(3)!;
+      return callSign + rest;
+    }
+
     // Remove separators
-    normalized = normalized.replaceAll(RegExp(r'[._\-\s]'), '');
+    normalized = normalized.replaceAll(RegExp(r'[._\-\s,]'), '');
     // Remove quality suffixes
     normalized = normalized.replaceAll(
       RegExp(r'(hd|fhd|uhd|4k|sd|hevc|h265|h264)'),
+      '',
+    );
+    // Remove geographic info (state, city fragments)
+    normalized = normalized.replaceAll(
+      RegExp(r'(newyork|losangeles|chicago|sanfrancisco|washington|detroit|denver|boston|houston|dallas|philadelphia|atlanta|miami|seattle|portland|phoenix|tampa)'),
       '',
     );
     return normalized;
