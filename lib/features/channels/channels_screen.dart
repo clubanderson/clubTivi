@@ -1,6 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io' show Directory, Platform;
+import 'dart:io' show Directory, File, FileMode, Platform;
 
 import 'package:drift/drift.dart' show Value;
 import 'package:file_picker/file_picker.dart';
@@ -1332,11 +1332,16 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const SizedBox(
-                width: 48, height: 48,
-                child: CircularProgressIndicator(strokeWidth: 3, color: Color(0xFF6C5CE7)),
-              ),
+              Image.asset('assets/icon/clubtivi-icon.png', width: 80, height: 80,
+                errorBuilder: (_, __, ___) => const Icon(Icons.tv, size: 64, color: Color(0xFF6C5CE7))),
+              const SizedBox(height: 12),
+              const Text('clubTivi', style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold)),
               const SizedBox(height: 20),
+              const SizedBox(
+                width: 32, height: 32,
+                child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF6C5CE7)),
+              ),
+              const SizedBox(height: 16),
               Text(_loadStatus,
                 style: const TextStyle(color: Colors.white54, fontSize: 13)),
             ],
@@ -2703,18 +2708,26 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
                 builder: (context) {
                   final focused = Focus.of(context).hasFocus;
                   final isMultiSelected = _multiSelectMode && _multiSelectedChannelIds.contains(channel.id);
-                  return Listener(
-                    onPointerDown: (event) {
-                      // Capture shift/meta state from the raw pointer event
-                      _lastClickShift = event.buttons > 0 &&
-                          (HardwareKeyboard.instance.logicalKeysPressed.contains(LogicalKeyboardKey.shiftLeft) ||
-                           HardwareKeyboard.instance.logicalKeysPressed.contains(LogicalKeyboardKey.shiftRight) ||
-                           HardwareKeyboard.instance.logicalKeysPressed.contains(LogicalKeyboardKey.metaLeft) ||
-                           HardwareKeyboard.instance.logicalKeysPressed.contains(LogicalKeyboardKey.metaRight));
-                    },
-                    child: InkWell(
+                  return InkWell(
                     onTap: () {
-                      if (_lastClickShift) {
+                      // Check modifier keys using both APIs for macOS compatibility
+                      final hwPressed = HardwareKeyboard.instance.logicalKeysPressed;
+                      // ignore: deprecated_member_use
+                      final rawPressed = RawKeyboard.instance.keysPressed;
+                      final shiftOrCmd = hwPressed.contains(LogicalKeyboardKey.shiftLeft) ||
+                           hwPressed.contains(LogicalKeyboardKey.shiftRight) ||
+                           hwPressed.contains(LogicalKeyboardKey.metaLeft) ||
+                           hwPressed.contains(LogicalKeyboardKey.metaRight) ||
+                           rawPressed.contains(LogicalKeyboardKey.shiftLeft) ||
+                           rawPressed.contains(LogicalKeyboardKey.shiftRight) ||
+                           rawPressed.contains(LogicalKeyboardKey.metaLeft) ||
+                           rawPressed.contains(LogicalKeyboardKey.metaRight);
+                      try {
+                        File('/tmp/click_debug.log').writeAsStringSync(
+                          '${DateTime.now()} TAP ch=${channel.name} shift=$shiftOrCmd multiMode=$_multiSelectMode hw=${hwPressed.map((k) => k.debugName).join(",")} raw=${rawPressed.map((k) => k.debugName).join(",")}\n',
+                          mode: FileMode.append);
+                      } catch (_) {}
+                      if (shiftOrCmd) {
                         // Shift/Cmd+click: toggle multi-select
                         setState(() {
                           if (!_multiSelectMode) {
@@ -2873,8 +2886,7 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
                 ],
               ),
             ),
-          ),  // InkWell
-          );  // Listener + return
+          );  // InkWell + return
           },  // Builder builder
           ),  // Builder
           ),  // Focus
