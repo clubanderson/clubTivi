@@ -114,13 +114,12 @@ class _ChannelDebugDialogState extends State<ChannelDebugDialog> {
     final ch = widget.channel;
 
     return DraggableScrollableSheet(
-      initialChildSize: 0.7,
-      minChildSize: 0.4,
-      maxChildSize: 0.92,
+      initialChildSize: 0.5,
+      minChildSize: 0.3,
+      maxChildSize: 0.7,
       expand: false,
       builder: (context, scrollController) {
-        return SingleChildScrollView(
-          controller: scrollController,
+        return Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -128,355 +127,163 @@ class _ChannelDebugDialogState extends State<ChannelDebugDialog> {
               // Drag handle
               Center(
                 child: Container(
-                  width: 40,
-                  height: 4,
-                  margin: const EdgeInsets.only(bottom: 12),
+                  width: 40, height: 4,
+                  margin: const EdgeInsets.only(bottom: 8),
                   decoration: BoxDecoration(
                     color: Colors.white24,
                     borderRadius: BorderRadius.circular(2),
                   ),
                 ),
               ),
-
-              // Title
-              const Text(
-                'Channel Debug Info',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              const SizedBox(height: 12),
-
-              // -- Stream Info ------------------------------------------------
-              _sectionCard('Stream Info', [
-                _labelValue('Name', ch.name),
-                _labelValue('Provider ID', ch.providerId),
-                _labelValue('Group', ch.groupTitle ?? '—'),
-                _labelValue(
-                    'TVG ID / EPG',
-                    widget.mappedEpgId != null && widget.mappedEpgId!.isNotEmpty
-                        ? '${widget.mappedEpgId!} (mapped)'
-                        : (ch.tvgId != null && ch.tvgId!.isNotEmpty)
-                            ? ch.tvgId!
-                            : 'Unmapped'),
-                _labelValue('Stream Type', ch.streamType),
-                const SizedBox(height: 4),
-                Row(
-                  children: [
-                    const Text(
-                      'Stream URL',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.bold,
-                        fontSize: 12,
-                      ),
+              // Title + health badge
+              Row(
+                children: [
+                  const Text('Channel Info',
+                    style: TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.bold)),
+                  const Spacer(),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: _healthColor(),
+                      borderRadius: BorderRadius.circular(8),
                     ),
-                    const SizedBox(width: 6),
-                    InkWell(
-                      onTap: () {
-                        Clipboard.setData(ClipboardData(text: ch.streamUrl));
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text('URL copied'),
-                            duration: Duration(seconds: 1),
-                          ),
-                        );
-                      },
-                      borderRadius: BorderRadius.circular(4),
-                      child: const Padding(
-                        padding: EdgeInsets.all(2),
-                        child: Icon(Icons.copy_rounded, size: 14, color: Colors.white38),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 2),
-                SelectableText(
-                  ch.streamUrl,
-                  style: const TextStyle(
-                    color: Colors.white70,
-                    fontSize: 11,
-                    fontFamily: 'monospace',
+                    child: Text(_healthLabel(),
+                      style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w600)),
                   ),
-                ),
-              ]),
-
-              const SizedBox(height: 10),
-
-              // -- Playback Stats ---------------------------------------------
-              _sectionCard('Playback Stats', [
-                // Resolution
-                StreamBuilder<int?>(
-                  stream: player.stream.width,
-                  builder: (_, wSnap) {
-                    return StreamBuilder<int?>(
-                      stream: player.stream.height,
-                      builder: (_, hSnap) {
-                        final w = wSnap.data ?? player.state.width;
-                        final h = hSnap.data ?? player.state.height;
-                        final label = (w != null && h != null && w > 0 && h > 0)
-                            ? '$w×$h'
-                            : 'Unknown';
-                        return _labelValue('Resolution', label);
-                      },
-                    );
-                  },
-                ),
-
-                // Playback rate
-                StreamBuilder<double>(
-                  stream: player.stream.rate,
-                  builder: (_, snap) {
-                    final rate = snap.data ?? player.state.rate;
-                    return _labelValue('Playback Rate', '${rate}x');
-                  },
-                ),
-
-                // Volume
-                StreamBuilder<double>(
-                  stream: player.stream.volume,
-                  builder: (_, snap) {
-                    final vol = snap.data ?? player.state.volume;
-                    return _labelValue('Volume', '${vol.toStringAsFixed(0)}%');
-                  },
-                ),
-
-                // Audio tracks — list each with details
-                StreamBuilder<Tracks>(
-                  stream: player.stream.tracks,
-                  initialData: player.state.tracks,
-                  builder: (_, tracksSnap) {
-                    final audioTracks = tracksSnap.data?.audio ?? [];
-                    final currentAudio = player.state.track.audio;
-                    if (audioTracks.isEmpty) {
-                      return _labelValue('Audio Tracks', 'None detected');
-                    }
-                    return Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        _labelValue('Audio Tracks', '${audioTracks.length} total'),
-                        ...audioTracks.map((t) {
-                          final isCurrent = t.id == currentAudio.id;
-                          final label = [
-                            if (t.title != null && t.title!.isNotEmpty) t.title!,
-                            if (t.language != null && t.language!.isNotEmpty) '(${t.language})',
-                            'id: ${t.id}',
-                          ].join(' ');
-                          return Padding(
-                            padding: const EdgeInsets.only(left: 12, top: 2),
-                            child: Row(
-                              children: [
-                                Icon(
-                                  isCurrent ? Icons.volume_up_rounded : Icons.volume_mute_rounded,
-                                  size: 12,
-                                  color: isCurrent ? Colors.greenAccent : Colors.white24,
-                                ),
-                                const SizedBox(width: 6),
-                                Expanded(
-                                  child: Text(
-                                    label,
-                                    style: TextStyle(
-                                      fontSize: 11,
-                                      color: isCurrent ? Colors.greenAccent : Colors.white54,
-                                      fontWeight: isCurrent ? FontWeight.bold : FontWeight.normal,
-                                    ),
-                                  ),
-                                ),
-                                SizedBox(
-                                  width: 50,
-                                  child: isCurrent
-                                    ? const Text('Active', style: TextStyle(fontSize: 10, color: Colors.greenAccent))
-                                    : GestureDetector(
-                                        onTap: () async {
-                                          await player.setAudioTrack(t);
-                                          await Future.delayed(const Duration(milliseconds: 300));
-                                          if (mounted) setState(() {});
-                                        },
-                                        child: Container(
-                                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                          decoration: BoxDecoration(
-                                            color: Colors.blueAccent.withValues(alpha: 0.2),
-                                            borderRadius: BorderRadius.circular(4),
-                                          ),
-                                          child: const Text('Select', style: TextStyle(fontSize: 10, color: Colors.blueAccent)),
-                                        ),
-                                      ),
-                                ),
-                              ],
-                            ),
-                          );
-                        }),
+                ],
+              ),
+              const SizedBox(height: 8),
+              // Two-column layout
+              Expanded(
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Left column: Stream info
+                    Expanded(
+                      child: _compactCard([
+                        _row('Name', ch.name),
+                        _row('Group', ch.groupTitle ?? '—'),
+                        _row('EPG',
+                          widget.mappedEpgId != null && widget.mappedEpgId!.isNotEmpty
+                              ? '${widget.mappedEpgId!} ✓'
+                              : (ch.tvgId != null && ch.tvgId!.isNotEmpty)
+                                  ? ch.tvgId!
+                                  : 'Unmapped'),
+                        _row('Type', ch.streamType),
                         const SizedBox(height: 4),
-                      ],
-                    );
-                  },
-                ),
-
-                // Video tracks — list each with details
-                StreamBuilder<Tracks>(
-                  stream: player.stream.tracks,
-                  initialData: player.state.tracks,
-                  builder: (_, tracksSnap) {
-                    final videoTracks = tracksSnap.data?.video ?? [];
-                    final currentVideo = player.state.track.video;
-                    if (videoTracks.isEmpty) {
-                      return _labelValue('Video Tracks', 'None detected');
-                    }
-                    return Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        _labelValue('Video Tracks', '${videoTracks.length} total'),
-                        ...videoTracks.map((t) {
-                          final isCurrent = t.id == currentVideo.id;
-                          final label = [
-                            if (t.title != null && t.title!.isNotEmpty) t.title!,
-                            if (t.language != null && t.language!.isNotEmpty) '(${t.language})',
-                            'id: ${t.id}',
-                          ].join(' ');
-                          return Padding(
-                            padding: const EdgeInsets.only(left: 12, top: 2),
-                            child: Row(
-                              children: [
-                                Icon(
-                                  isCurrent ? Icons.videocam_rounded : Icons.videocam_off_rounded,
-                                  size: 12,
-                                  color: isCurrent ? Colors.greenAccent : Colors.white24,
-                                ),
-                                const SizedBox(width: 6),
-                                Expanded(
-                                  child: Text(
-                                    label,
-                                    style: TextStyle(
-                                      fontSize: 11,
-                                      color: isCurrent ? Colors.greenAccent : Colors.white54,
-                                      fontWeight: isCurrent ? FontWeight.bold : FontWeight.normal,
-                                    ),
-                                  ),
-                                ),
-                                SizedBox(
-                                  width: 50,
-                                  child: isCurrent
-                                    ? const Text('Active', style: TextStyle(fontSize: 10, color: Colors.greenAccent))
-                                    : GestureDetector(
-                                        onTap: () async {
-                                          await player.setVideoTrack(t);
-                                          await Future.delayed(const Duration(milliseconds: 300));
-                                          if (mounted) setState(() {});
-                                        },
-                                        child: Container(
-                                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                          decoration: BoxDecoration(
-                                            color: Colors.blueAccent.withValues(alpha: 0.2),
-                                            borderRadius: BorderRadius.circular(4),
-                                          ),
-                                          child: const Text('Select', style: TextStyle(fontSize: 10, color: Colors.blueAccent)),
-                                        ),
-                                      ),
-                                ),
-                              ],
-                            ),
-                          );
-                        }),
-                        const SizedBox(height: 4),
-                      ],
-                    );
-                  },
-                ),
-
-                // Playing / buffering state
-                StreamBuilder<bool>(
-                  stream: player.stream.playing,
-                  builder: (_, playSnap) {
-                    return StreamBuilder<bool>(
-                      stream: player.stream.buffering,
-                      builder: (_, bufSnap) {
-                        final playing = playSnap.data ?? player.state.playing;
-                        final buffering =
-                            bufSnap.data ?? player.state.buffering;
-                        String state;
-                        Color color;
-                        if (buffering) {
-                          state = 'Buffering';
-                          color = Colors.orangeAccent;
-                        } else if (playing) {
-                          state = 'Playing';
-                          color = const Color(0xFF00B894);
-                        } else {
-                          state = 'Stopped';
-                          color = Colors.white38;
-                        }
-                        return Row(
+                        Row(
                           children: [
-                            const Text(
-                              'State: ',
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontWeight: FontWeight.bold,
-                                fontSize: 12,
-                              ),
-                            ),
-                            Text(
-                              state,
-                              style: TextStyle(color: color, fontSize: 12),
+                            const Text('URL ', style: TextStyle(color: Colors.white54, fontSize: 10, fontWeight: FontWeight.bold)),
+                            InkWell(
+                              onTap: () {
+                                Clipboard.setData(ClipboardData(text: ch.streamUrl));
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(content: Text('URL copied'), duration: Duration(seconds: 1)));
+                              },
+                              child: const Icon(Icons.copy_rounded, size: 12, color: Colors.white38),
                             ),
                           ],
-                        );
-                      },
-                    );
-                  },
-                ),
-              ]),
-
-              const SizedBox(height: 10),
-
-              // -- Buffering --------------------------------------------------
-              _sectionCard('Buffering', [
-                // Sparkline (larger)
-                SizedBox(
-                  width: 280,
-                  height: 60,
-                  child: CustomPaint(
-                    painter: _BufferingSparkline(_bufferHistory),
-                  ),
-                ),
-                const SizedBox(height: 8),
-                _labelValue(
-                    'Buffer Events', '$_bufferEventCount in this session'),
-                _labelValue(
-                    'Total Buffering Time', '${_bufferingSeconds}s'),
-                Row(
-                  children: [
-                    const Text(
-                      'Buffer Health: ',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.bold,
-                        fontSize: 12,
-                      ),
-                    ),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 8, vertical: 2),
-                      decoration: BoxDecoration(
-                        color: _healthColor(),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Text(
-                        _healthLabel(),
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 11,
-                          fontWeight: FontWeight.w600,
                         ),
-                      ),
+                        Text(ch.streamUrl,
+                          style: const TextStyle(color: Colors.white38, fontSize: 9, fontFamily: 'monospace'),
+                          maxLines: 2, overflow: TextOverflow.ellipsis),
+                      ]),
+                    ),
+                    const SizedBox(width: 8),
+                    // Right column: Playback stats
+                    Expanded(
+                      child: _compactCard([
+                        // Resolution
+                        StreamBuilder<int?>(
+                          stream: player.stream.width,
+                          builder: (_, wSnap) => StreamBuilder<int?>(
+                            stream: player.stream.height,
+                            builder: (_, hSnap) {
+                              final w = wSnap.data ?? player.state.width;
+                              final h = hSnap.data ?? player.state.height;
+                              return _row('Resolution', (w != null && h != null && w > 0) ? '$w×$h' : '—');
+                            },
+                          ),
+                        ),
+                        // State
+                        StreamBuilder<bool>(
+                          stream: player.stream.playing,
+                          builder: (_, playSnap) => StreamBuilder<bool>(
+                            stream: player.stream.buffering,
+                            builder: (_, bufSnap) {
+                              final playing = playSnap.data ?? player.state.playing;
+                              final buffering = bufSnap.data ?? player.state.buffering;
+                              return _row('State', buffering ? 'Buffering' : playing ? 'Playing' : 'Stopped');
+                            },
+                          ),
+                        ),
+                        // Volume
+                        StreamBuilder<double>(
+                          stream: player.stream.volume,
+                          builder: (_, snap) => _row('Volume', '${(snap.data ?? player.state.volume).toStringAsFixed(0)}%'),
+                        ),
+                        // Audio tracks summary
+                        StreamBuilder<Tracks>(
+                          stream: player.stream.tracks,
+                          initialData: player.state.tracks,
+                          builder: (_, tracksSnap) {
+                            final audio = tracksSnap.data?.audio ?? [];
+                            final current = player.state.track.audio;
+                            final label = audio.isEmpty ? 'None'
+                                : '${current.title ?? current.language ?? current.id} (${audio.length})';
+                            return _row('Audio', label);
+                          },
+                        ),
+                        // Video tracks summary
+                        StreamBuilder<Tracks>(
+                          stream: player.stream.tracks,
+                          initialData: player.state.tracks,
+                          builder: (_, tracksSnap) {
+                            final video = tracksSnap.data?.video ?? [];
+                            return _row('Video Tracks', '${video.length}');
+                          },
+                        ),
+                        // Rate
+                        StreamBuilder<double>(
+                          stream: player.stream.rate,
+                          builder: (_, snap) => _row('Rate', '${snap.data ?? player.state.rate}x'),
+                        ),
+                      ]),
                     ),
                   ],
                 ),
-              ]),
-
-              const SizedBox(height: 24),
+              ),
+              const SizedBox(height: 8),
+              // Buffering sparkline (compact, full width)
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF16213E),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: SizedBox(
+                        height: 30,
+                        child: CustomPaint(painter: _BufferingSparkline(_bufferHistory)),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text('$_bufferEventCount events',
+                          style: const TextStyle(color: Colors.white54, fontSize: 10)),
+                        Text('${_bufferingSeconds}s buffering',
+                          style: const TextStyle(color: Colors.white54, fontSize: 10)),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 8),
             ],
           ),
         );
@@ -484,55 +291,33 @@ class _ChannelDebugDialogState extends State<ChannelDebugDialog> {
     );
   }
 
-  // ---------------------------------------------------------------------------
-  // Reusable widgets
-  // ---------------------------------------------------------------------------
-
-  Widget _sectionCard(String title, List<Widget> children) {
+  Widget _compactCard(List<Widget> children) {
     return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
         color: const Color(0xFF16213E),
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: BorderRadius.circular(8),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            title,
-            style: const TextStyle(
-              color: Colors.white,
-              fontWeight: FontWeight.bold,
-              fontSize: 14,
-            ),
-          ),
-          const Divider(color: Colors.white12, height: 16),
-          ...children,
-        ],
+        mainAxisSize: MainAxisSize.min,
+        children: children,
       ),
     );
   }
 
-  Widget _labelValue(String label, String value) {
+  Widget _row(String label, String value) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 4),
+      padding: const EdgeInsets.only(bottom: 3),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            '$label: ',
-            style: const TextStyle(
-              color: Colors.white,
-              fontWeight: FontWeight.bold,
-              fontSize: 12,
-            ),
-          ),
+          Text('$label: ',
+            style: const TextStyle(color: Colors.white54, fontWeight: FontWeight.bold, fontSize: 11)),
           Expanded(
-            child: Text(
-              value,
-              style: const TextStyle(color: Colors.white70, fontSize: 12),
-            ),
+            child: Text(value,
+              style: const TextStyle(color: Colors.white, fontSize: 11),
+              overflow: TextOverflow.ellipsis, maxLines: 1),
           ),
         ],
       ),
