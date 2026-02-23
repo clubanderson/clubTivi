@@ -58,6 +58,14 @@ class StreamAlternativesService {
   String providerName(String providerId) =>
       _providerNames[providerId] ?? providerId;
 
+  /// Find the channel ID that owns the given stream URL, or null.
+  String? channelIdForUrl(String url) {
+    for (final ch in _allChannels) {
+      if (ch.streamUrl == url) return ch.id;
+    }
+    return null;
+  }
+
   /// Rebuild the index. Call on init, after EPG refresh, or provider changes.
   Future<void> rebuild() async {
     _vanityIndex.clear();

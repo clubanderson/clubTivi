@@ -149,6 +149,23 @@ class EpgReminders extends Table {
   Set<Column> get primaryKey => {id};
 }
 
+/// User-defined failover groups — manually curated sets of interchangeable channels.
+class FailoverGroups extends Table {
+  IntColumn get id => integer().autoIncrement()();
+  TextColumn get name => text()();
+  DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
+}
+
+/// Channels belonging to a failover group, ordered by priority.
+class FailoverGroupChannels extends Table {
+  IntColumn get groupId => integer().references(FailoverGroups, #id)();
+  TextColumn get channelId => text().references(Channels, #id)();
+  IntColumn get priority => integer().withDefault(const Constant(0))();
+
+  @override
+  Set<Column> get primaryKey => {groupId, channelId};
+}
+
 /// Scheduled recordings — record a programme when it airs.
 class ScheduledRecordings extends Table {
   TextColumn get id => text()();

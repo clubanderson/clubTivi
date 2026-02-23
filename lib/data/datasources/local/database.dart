@@ -23,6 +23,8 @@ const _uuid = Uuid();
   FavoriteListChannels,
   EpgReminders,
   ScheduledRecordings,
+  FailoverGroups,
+  FailoverGroupChannels,
 ])
 class AppDatabase extends _$AppDatabase {
   AppDatabase() : super(_openConnection());
@@ -30,7 +32,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.e);
 
   @override
-  int get schemaVersion => 4;
+  int get schemaVersion => 5;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -47,6 +49,10 @@ class AppDatabase extends _$AppDatabase {
           if (from < 4) {
             await m.addColumn(epgProgrammes, epgProgrammes.subtitle);
             await m.addColumn(epgProgrammes, epgProgrammes.episodeNum);
+          }
+          if (from < 5) {
+            await m.createTable(failoverGroups);
+            await m.createTable(failoverGroupChannels);
           }
         },
       );
@@ -346,6 +352,65 @@ class AppDatabase extends _$AppDatabase {
   Future<void> updateRecordingStatus(String id, String status) =>
       (update(scheduledRecordings)..where((t) => t.id.equals(id)))
           .write(ScheduledRecordingsCompanion(status: Value(status)));
+
+  // --- Failover Group queries ---
+
+  Future<List<FailoverGroup>> getAllFailoverGroups() =>
+      (select(failoverGroups)..orderBy([(t) => OrderingTerm.asc(t.name)])).get();
+
+  Future<FailoverGroup> createFailoverGroup(String name) async {
+    final id = await into(failoverGroups).insert(
+      FailoverGroupsCompanion.insert(name: name),
+    );
+    return (select(failoverGroups)..where((t) => t.id.equals(id))).getSingle();
+  }
+
+  Future<void> addChannelsToFailoverGroup(int groupId, List<String> channelIds) async {
+    await batch((b) {
+      for (var i = 0; i < channelIds.length; i++) {
+        b.insert(
+          failoverGroupChannels,
+          FailoverGroupChannelsCompanion.insert(
+            groupId: groupId,
+            channelId: channelIds[i],
+            priority: Value(i),
+          ),
+          mode: InsertMode.insertOrReplace,
+        );
+      }
+    });
+  }
+
+  Future<List<FailoverGroupChannel>> getFailoverGroupMembers(int groupId) =>
+      (select(failoverGroupChannels)
+            ..where((t) => t.groupId.equals(groupId))
+            ..orderBy([(t) => OrderingTerm.asc(t.priority)]))
+          .get();
+
+  /// Get all failover group memberships keyed by channel ID for fast lookup.
+  Future<Map<String, List<FailoverGroupMembership>>> getFailoverGroupIndex() async {
+    final groups = await getAllFailoverGroups();
+    final members = await select(failoverGroupChannels).get();
+    final groupMap = {for (final g in groups) g.id: g};
+    final index = <String, List<FailoverGroupMembership>>{};
+    for (final m in members) {
+      final group = groupMap[m.groupId];
+      if (group == null) continue;
+      index.putIfAbsent(m.channelId, () => []).add(
+        FailoverGroupMembership(group: group, priority: m.priority),
+      );
+    }
+    return index;
+  }
+
+  Future<void> deleteFailoverGroup(int groupId) async {
+    await (delete(failoverGroupChannels)..where((t) => t.groupId.equals(groupId))).go();
+    await (delete(failoverGroups)..where((t) => t.id.equals(groupId))).go();
+  }
+
+  Future<void> renameFailoverGroup(int groupId, String name) =>
+      (update(failoverGroups)..where((t) => t.id.equals(groupId)))
+          .write(FailoverGroupsCompanion(name: Value(name)));
 }
 
 LazyDatabase _openConnection() {
@@ -355,4 +420,11 @@ LazyDatabase _openConnection() {
     await file.parent.create(recursive: true);
     return NativeDatabase.createInBackground(file);
   });
+}
+
+/// Lightweight struct for failover group membership lookups.
+class FailoverGroupMembership {
+  final FailoverGroup group;
+  final int priority;
+  const FailoverGroupMembership({required this.group, required this.priority});
 }
