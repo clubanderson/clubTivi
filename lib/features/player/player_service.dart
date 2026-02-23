@@ -304,6 +304,7 @@ class PlayerService {
     _currentUrl = newUrl;
     await player.open(Media(newUrl));
     await _bufferManager.applyForStream(newUrl, this);
+    await player.setVolume(100.0);
     _startFailoverMonitor();
 
     onFailover?.call('⚡ Switched stream');

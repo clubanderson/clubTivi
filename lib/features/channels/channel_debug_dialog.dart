@@ -75,20 +75,137 @@ class ChannelDebugDialog extends StatefulWidget {
 
 class _ChannelDebugDialogState extends State<ChannelDebugDialog> {
   Timer? _refreshTimer;
+  /// Track which alternatives are accepted (true), rejected (false), or pending (absent).
+  final Map<String, bool> _decisions = {};
+  bool _hasChanges = false;
 
   @override
   void initState() {
     super.initState();
-    // Refresh UI every second to pick up latest values from PlayerService.
     _refreshTimer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (mounted) setState(() {});
     });
+    _loadSavedDecisions();
+  }
+
+  Future<void> _loadSavedDecisions() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final rejectedJson = prefs.getString('channel_failover_rejected');
+      if (rejectedJson != null) {
+        final rejected = (jsonDecode(rejectedJson) as Map<String, dynamic>);
+        final myRejected = rejected[widget.channel.id];
+        if (myRejected is List) {
+          for (final id in myRejected) {
+            _decisions[id as String] = false;
+          }
+        }
+      }
+      // Channels sharing vanity name are already accepted
+      final vanityJson = prefs.getString('channel_vanity_names');
+      if (vanityJson != null && widget.vanityName != null) {
+        final vanityMap = (jsonDecode(vanityJson) as Map<String, dynamic>);
+        for (final alt in widget.alternatives) {
+          if (vanityMap[alt.channel.id] == widget.vanityName) {
+            _decisions[alt.channel.id] = true;
+          }
+        }
+      }
+      if (mounted) setState(() {});
+    } catch (_) {}
   }
 
   @override
   void dispose() {
     _refreshTimer?.cancel();
     super.dispose();
+  }
+
+  // ---------------------------------------------------------------------------
+  // Failover accept/reject logic
+  // ---------------------------------------------------------------------------
+
+  int get _acceptedCount => widget.alternatives
+      .where((a) => _decisions[a.channel.id] != false)
+      .length;
+
+  Future<void> _saveDecisions() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+
+      // Save rejections
+      final rejectedJson = prefs.getString('channel_failover_rejected');
+      final rejected = rejectedJson != null
+          ? (jsonDecode(rejectedJson) as Map<String, dynamic>)
+          : <String, dynamic>{};
+      final myRejected = <String>[];
+      for (final entry in _decisions.entries) {
+        if (entry.value == false) myRejected.add(entry.key);
+      }
+      if (myRejected.isNotEmpty) {
+        rejected[widget.channel.id] = myRejected;
+      } else {
+        rejected.remove(widget.channel.id);
+      }
+      await prefs.setString('channel_failover_rejected', jsonEncode(rejected));
+
+      // Apply vanity name to accepted alternatives
+      final vanityName = widget.vanityName ?? widget.channel.name;
+      final vanityJson = prefs.getString('channel_vanity_names');
+      final vanityMap = vanityJson != null
+          ? (jsonDecode(vanityJson) as Map<String, dynamic>)
+          : <String, dynamic>{};
+      for (final entry in _decisions.entries) {
+        if (entry.value == true) {
+          vanityMap[entry.key] = vanityName;
+        }
+      }
+      // Ensure current channel also has the vanity name
+      if (widget.vanityName != null) {
+        vanityMap[widget.channel.id] = widget.vanityName!;
+      }
+      await prefs.setString('channel_vanity_names', jsonEncode(vanityMap));
+
+      // Notify parent
+      final acceptedIds = _decisions.entries
+          .where((e) => e.value == true)
+          .map((e) => e.key)
+          .toList();
+      widget.onVanityApplied?.call(acceptedIds, vanityName);
+
+      if (mounted) {
+        setState(() => _hasChanges = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Failover group saved'), duration: Duration(seconds: 1)),
+        );
+      }
+    } catch (e) {
+      debugPrint('Error saving failover decisions: $e');
+    }
+  }
+
+  Future<void> _resetDecisions() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      // Clear rejections for this channel
+      final rejectedJson = prefs.getString('channel_failover_rejected');
+      if (rejectedJson != null) {
+        final rejected = (jsonDecode(rejectedJson) as Map<String, dynamic>);
+        rejected.remove(widget.channel.id);
+        await prefs.setString('channel_failover_rejected', jsonEncode(rejected));
+      }
+      if (mounted) {
+        setState(() {
+          _decisions.clear();
+          _hasChanges = false;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Failover group reset'), duration: Duration(seconds: 1)),
+        );
+      }
+    } catch (e) {
+      debugPrint('Error resetting failover decisions: $e');
+    }
   }
 
   // ---------------------------------------------------------------------------
@@ -119,15 +236,15 @@ class _ChannelDebugDialogState extends State<ChannelDebugDialog> {
     final ch = widget.channel;
 
     return DraggableScrollableSheet(
-      initialChildSize: 0.5,
+      initialChildSize: 0.55,
       minChildSize: 0.3,
-      maxChildSize: 0.7,
+      maxChildSize: 0.85,
       expand: false,
       builder: (context, scrollController) {
         return Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+          child: ListView(
+            controller: scrollController,
             children: [
               // Drag handle
               Center(
@@ -159,7 +276,7 @@ class _ChannelDebugDialogState extends State<ChannelDebugDialog> {
               ),
               const SizedBox(height: 8),
               // Two-column layout
-              Expanded(
+              IntrinsicHeight(
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -267,7 +384,7 @@ class _ChannelDebugDialogState extends State<ChannelDebugDialog> {
                 ),
               ),
               const SizedBox(height: 8),
-              // Failover alternatives (shows current + alternatives)
+              // Failover alternatives with accept/reject
               Container(
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
@@ -283,12 +400,17 @@ class _ChannelDebugDialogState extends State<ChannelDebugDialog> {
                         const Icon(Icons.swap_horiz, size: 14, color: Colors.white54),
                         const SizedBox(width: 4),
                         Text(
-                          'Failover Group (${widget.alternatives.length + 1})',
+                          'Failover Group (${_acceptedCount + 1})',
                           style: const TextStyle(
                               color: Colors.white70,
                               fontSize: 11,
                               fontWeight: FontWeight.bold),
                         ),
+                        const Spacer(),
+                        if (_hasChanges)
+                          _actionButton('Save', Icons.check, const Color(0xFF00B894), _saveDecisions),
+                        const SizedBox(width: 4),
+                        _actionButton('Reset', Icons.refresh, Colors.white38, _resetDecisions),
                       ],
                     ),
                     const SizedBox(height: 4),
@@ -302,19 +424,44 @@ class _ChannelDebugDialogState extends State<ChannelDebugDialog> {
                     ),
                     if (widget.alternatives.isNotEmpty) ...[
                       const Divider(color: Colors.white12, height: 8),
-                      ...widget.alternatives.take(8).map((alt) => _failoverRow(
-                        name: alt.channel.name,
-                        providerName: alt.providerName.isNotEmpty ? alt.providerName : null,
-                        badge: alt.matchReason,
-                        badgeColor: null,
-                        healthScore: alt.healthScore,
-                      )),
-                      if (widget.alternatives.length > 8)
-                        Text(
-                          '  +${widget.alternatives.length - 8} more',
-                          style: const TextStyle(
-                              color: Colors.white38, fontSize: 9),
-                        ),
+                      ...widget.alternatives.map((alt) {
+                        final decision = _decisions[alt.channel.id];
+                        final isRejected = decision == false;
+                        return Opacity(
+                          opacity: isRejected ? 0.35 : 1.0,
+                          child: Row(
+                            children: [
+                              Expanded(
+                                child: _failoverRow(
+                                  name: alt.channel.name,
+                                  providerName: alt.providerName.isNotEmpty ? alt.providerName : null,
+                                  badge: decision == true ? 'accepted' : alt.matchReason,
+                                  badgeColor: decision == true ? const Color(0xFF00B894) : null,
+                                  healthScore: alt.healthScore,
+                                ),
+                              ),
+                              // Accept button
+                              _iconBtn(
+                                icon: Icons.check_circle_outline,
+                                color: decision == true ? const Color(0xFF00B894) : Colors.white24,
+                                onTap: () => setState(() {
+                                  _decisions[alt.channel.id] = true;
+                                  _hasChanges = true;
+                                }),
+                              ),
+                              // Reject button
+                              _iconBtn(
+                                icon: Icons.cancel_outlined,
+                                color: isRejected ? const Color(0xFFFF6B6B) : Colors.white24,
+                                onTap: () => setState(() {
+                                  _decisions[alt.channel.id] = false;
+                                  _hasChanges = true;
+                                }),
+                              ),
+                            ],
+                          ),
+                        );
+                      }),
                     ] else ...[
                       const Divider(color: Colors.white12, height: 8),
                       const Text(
@@ -360,6 +507,42 @@ class _ChannelDebugDialogState extends State<ChannelDebugDialog> {
           ),
         );
       },
+    );
+  }
+
+  Widget _iconBtn({
+    required IconData icon,
+    required Color color,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 3),
+        child: Icon(icon, size: 16, color: color),
+      ),
+    );
+  }
+
+  Widget _actionButton(String label, IconData icon, Color color, VoidCallback onTap) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+        decoration: BoxDecoration(
+          color: color.withAlpha(30),
+          borderRadius: BorderRadius.circular(4),
+          border: Border.all(color: color.withAlpha(80), width: 0.5),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 10, color: color),
+            const SizedBox(width: 3),
+            Text(label, style: TextStyle(color: color, fontSize: 9, fontWeight: FontWeight.bold)),
+          ],
+        ),
+      ),
     );
   }
 
