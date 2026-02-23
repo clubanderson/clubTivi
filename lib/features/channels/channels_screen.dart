@@ -2931,6 +2931,33 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
     );
   }
 
+  int get _guideFailoverGroupCount {
+    if (_failoverGroups.isEmpty || _multiSelectMode || _searchQuery.isNotEmpty || _sidebarSearchQuery.isNotEmpty) return 0;
+    return _failoverGroups.where((g) {
+      final memberIds = _failoverGroupMembers[g.id] ?? [];
+      return memberIds.isNotEmpty;
+    }).length;
+  }
+
+  List<Widget> _buildGuideFailoverGroups() {
+    final channelById = <String, db.Channel>{};
+    for (final c in _allChannels) channelById[c.id] = c;
+    final widgets = <Widget>[];
+    for (final group in _failoverGroups) {
+      final memberIds = _failoverGroupMembers[group.id] ?? [];
+      final members = memberIds.map((id) => channelById[id]).whereType<db.Channel>().toList();
+      if (members.isNotEmpty) {
+        widgets.add(
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+            child: _buildFailoverGroupRow(group, members),
+          ),
+        );
+      }
+    }
+    return widgets;
+  }
+
   Widget _buildMultiSelectBar() {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
@@ -3036,13 +3063,23 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
         .toList();
     await database.addChannelsToFailoverGroup(group.id, orderedIds);
 
+    // Reload failover groups directly into state (no full reload needed)
+    final foGroups = await database.getAllFailoverGroups();
+    final foGroupMembers = <int, List<String>>{};
+    for (final g in foGroups) {
+      final members = await database.getFailoverGroupMembers(g.id);
+      foGroupMembers[g.id] = members.map((m) => m.channelId).toList();
+    }
+    final foGroupIndex = await database.getFailoverGroupIndex();
+
+    if (!mounted) return;
     setState(() {
       _multiSelectMode = false;
       _multiSelectedChannelIds.clear();
+      _failoverGroups = foGroups;
+      _failoverGroupMembers = foGroupMembers;
+      _failoverGroupIndex = foGroupIndex;
     });
-
-    // Reload to pick up new group
-    _loadChannels();
 
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -3978,8 +4015,13 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
                 return Stack(
                   children: [
                     ListView.builder(
-                      itemCount: _filteredChannels.length,
+                      itemCount: _filteredChannels.length + _guideFailoverGroupCount,
                       itemBuilder: (context, index) {
+                        // Inject failover group rows at the top
+                        if (index < _guideFailoverGroupCount) {
+                          return _buildGuideFailoverGroups()[index];
+                        }
+                        index = index - _guideFailoverGroupCount;
                         final channel = _filteredChannels[index];
                         final isFav = _favoritedChannelIds.contains(channel.id);
                         final isSelected = index == _selectedIndex;
