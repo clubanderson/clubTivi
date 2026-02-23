@@ -5,6 +5,8 @@ import 'package:flutter/services.dart';
 import 'package:media_kit/media_kit.dart';
 
 import '../../data/datasources/local/database.dart' as db;
+import '../../data/models/channel.dart' hide Provider;
+import '../../data/services/stream_alternatives_service.dart';
 import '../player/player_service.dart';
 
 /// Modal bottom sheet showing technical details about the currently playing
@@ -13,12 +15,16 @@ class ChannelDebugDialog extends StatefulWidget {
   final db.Channel channel;
   final PlayerService playerService;
   final String? mappedEpgId;
+  final String? originalName;
+  final List<AlternativeDetail> alternatives;
 
   const ChannelDebugDialog({
     super.key,
     required this.channel,
     required this.playerService,
     this.mappedEpgId,
+    this.originalName,
+    this.alternatives = const [],
   });
 
   /// Convenience launcher.
@@ -27,6 +33,8 @@ class ChannelDebugDialog extends StatefulWidget {
     db.Channel channel,
     PlayerService playerService, {
     String? mappedEpgId,
+    String? originalName,
+    List<AlternativeDetail> alternatives = const [],
   }) {
     showModalBottomSheet(
       context: context,
@@ -39,6 +47,8 @@ class ChannelDebugDialog extends StatefulWidget {
         channel: channel,
         playerService: playerService,
         mappedEpgId: mappedEpgId,
+        originalName: originalName,
+        alternatives: alternatives,
       ),
     );
   }
@@ -141,6 +151,9 @@ class _ChannelDebugDialogState extends State<ChannelDebugDialog> {
                     Expanded(
                       child: _compactCard([
                         _row('Name', ch.name),
+                        if (widget.originalName != null &&
+                            widget.originalName != ch.name)
+                          _row('Original', widget.originalName!),
                         _row('Group', ch.groupTitle ?? '—'),
                         _row('EPG',
                           widget.mappedEpgId != null && widget.mappedEpgId!.isNotEmpty
@@ -232,6 +245,114 @@ class _ChannelDebugDialogState extends State<ChannelDebugDialog> {
                   ],
                 ),
               ),
+              const SizedBox(height: 8),
+              // Failover alternatives
+              if (widget.alternatives.isNotEmpty)
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF16213E),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Row(
+                        children: [
+                          const Icon(Icons.swap_horiz, size: 14, color: Colors.white54),
+                          const SizedBox(width: 4),
+                          Text(
+                            'Failover Alternatives (${widget.alternatives.length})',
+                            style: const TextStyle(
+                                color: Colors.white70,
+                                fontSize: 11,
+                                fontWeight: FontWeight.bold),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 4),
+                      ...widget.alternatives.take(8).map((alt) {
+                        final healthPct = (alt.healthScore * 100).toStringAsFixed(0);
+                        final healthColor = alt.healthScore > 0.7
+                            ? const Color(0xFF00B894)
+                            : alt.healthScore > 0.4
+                                ? const Color(0xFFFDCB6E)
+                                : const Color(0xFFFF6B6B);
+                        return Padding(
+                          padding: const EdgeInsets.only(bottom: 2),
+                          child: Row(
+                            children: [
+                              Container(
+                                width: 6,
+                                height: 6,
+                                decoration: BoxDecoration(
+                                  color: healthColor,
+                                  shape: BoxShape.circle,
+                                ),
+                              ),
+                              const SizedBox(width: 6),
+                              Expanded(
+                                child: Text(
+                                  alt.channel.name,
+                                  style: const TextStyle(
+                                      color: Colors.white, fontSize: 10),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                              const SizedBox(width: 4),
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 4, vertical: 1),
+                                decoration: BoxDecoration(
+                                  color: Colors.white10,
+                                  borderRadius: BorderRadius.circular(4),
+                                ),
+                                child: Text(
+                                  alt.matchReason,
+                                  style: const TextStyle(
+                                      color: Colors.white38, fontSize: 8),
+                                ),
+                              ),
+                              const SizedBox(width: 4),
+                              Text(
+                                '$healthPct%',
+                                style: TextStyle(
+                                    color: healthColor,
+                                    fontSize: 9,
+                                    fontWeight: FontWeight.bold),
+                              ),
+                            ],
+                          ),
+                        );
+                      }),
+                      if (widget.alternatives.length > 8)
+                        Text(
+                          '  +${widget.alternatives.length - 8} more',
+                          style: const TextStyle(
+                              color: Colors.white38, fontSize: 9),
+                        ),
+                    ],
+                  ),
+                ),
+              if (widget.alternatives.isEmpty)
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF16213E),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Row(
+                    children: [
+                      Icon(Icons.swap_horiz, size: 14, color: Colors.white24),
+                      SizedBox(width: 4),
+                      Text(
+                        'No failover alternatives found',
+                        style: TextStyle(color: Colors.white38, fontSize: 11),
+                      ),
+                    ],
+                  ),
+                ),
               const SizedBox(height: 8),
               // Buffering sparkline (compact, full width)
               Container(

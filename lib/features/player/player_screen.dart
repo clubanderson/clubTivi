@@ -12,6 +12,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../data/datasources/local/database.dart' as db;
+import '../../data/services/stream_alternatives_service.dart';
 import '../../features/providers/provider_manager.dart' show databaseProvider;
 import '../casting/cast_service.dart';
 import '../casting/cast_dialog.dart';
@@ -963,6 +964,17 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
     );
     final ps = ref.read(playerServiceProvider);
     final epgId = ch['epgId'] as String?;
-    ChannelDebugDialog.show(context, channel, ps, mappedEpgId: epgId);
+    final alts = ref.read(streamAlternativesProvider).getAlternativeDetails(
+      channelId: ch['id'] as String? ?? '',
+      epgChannelId: epgId,
+      tvgId: ch['tvgId'] as String?,
+      channelName: ch['name'] as String?,
+      vanityName: ch['vanityName'] as String?,
+      excludeUrl: ch['streamUrl'] as String? ?? '',
+    );
+    ChannelDebugDialog.show(context, channel, ps,
+        mappedEpgId: epgId,
+        originalName: ch['originalName'] as String? ?? ch['name'] as String?,
+        alternatives: alts);
   }
 }

@@ -21,6 +21,7 @@ import '../../data/datasources/local/database.dart' as db;
 import '../../data/datasources/remote/tmdb_client.dart';
 import '../../data/services/app_update_service.dart';
 import '../../data/services/epg_refresh_service.dart';
+import '../../data/services/stream_alternatives_service.dart';
 import '../player/player_service.dart';
 import '../providers/provider_manager.dart';
 import '../shows/shows_providers.dart';
@@ -760,6 +761,7 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
               'id': c.id,
               'providerId': c.providerId,
               'name': _channelDisplayName(c),
+              'originalName': c.name,
               'streamUrl': c.streamUrl,
               'tvgLogo': c.tvgLogo,
               'tvgId': c.tvgId,
@@ -815,6 +817,22 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
   /// Display name for a channel — vanity name if set, otherwise original name.
   String _channelDisplayName(db.Channel channel) =>
       _vanityNames[channel.id] ?? channel.name;
+
+  /// Get failover alternative details for a channel (for debug dialog).
+  List<AlternativeDetail> _getFailoverAlts(db.Channel channel) {
+    try {
+      return ref.read(streamAlternativesProvider).getAlternativeDetails(
+        channelId: channel.id,
+        epgChannelId: _getEpgId(channel),
+        tvgId: channel.tvgId,
+        channelName: channel.name,
+        vanityName: _vanityNames[channel.id],
+        excludeUrl: channel.streamUrl,
+      );
+    } catch (_) {
+      return [];
+    }
+  }
 
   /// All current/upcoming programme titles for a channel (for search).
   List<String> _getChannelProgrammeTitles(db.Channel channel) {
@@ -952,8 +970,11 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
     if (!isAndroid && event.logicalKey == LogicalKeyboardKey.keyD) {
       if (_previewChannel != null) {
         final ps = ref.read(playerServiceProvider);
+        final alts = _getFailoverAlts(_previewChannel!);
         ChannelDebugDialog.show(context, _previewChannel!, ps,
-            mappedEpgId: _getEpgId(_previewChannel!));
+            mappedEpgId: _getEpgId(_previewChannel!),
+            originalName: _previewChannel!.name,
+            alternatives: alts);
       }
       return;
     }
@@ -1511,7 +1532,8 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
                                       if (_previewChannel == null) return;
                                       final ps = ref.read(playerServiceProvider);
                                       ChannelDebugDialog.show(context, _previewChannel!, ps,
-                                          mappedEpgId: _getEpgId(_previewChannel!));
+                                          mappedEpgId: _getEpgId(_previewChannel!),
+                                          originalName: _previewChannel!.name);
                                     },
                                     icon: const Icon(Icons.info_outline, size: 16),
                                     padding: EdgeInsets.zero,
@@ -3365,7 +3387,8 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
           _showTimeshiftDialog(channel);
         case 'debug':
           final ps = ref.read(playerServiceProvider);
-          ChannelDebugDialog.show(context, channel, ps, mappedEpgId: _getEpgId(channel));
+          ChannelDebugDialog.show(context, channel, ps,
+              mappedEpgId: _getEpgId(channel), originalName: channel.name);
       }
     });
   }
