@@ -56,6 +56,7 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
 
   // Overlay state
   bool _showOverlay = false;
+  bool _showDebugOverlay = false;
   Timer? _overlayTimer;
   Timer? _nowPlayingTimer;
   final _focusNode = FocusNode();
@@ -224,7 +225,10 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
     if (!mounted) return;
     final database = ref.read(databaseProvider);
     final epgChannelIds = <String>{};
-    for (final c in _allChannels) {
+    // Collect EPG IDs from ALL channels AND currently displayed channels
+    // (favorites loaded via getChannelsInList may not be in _allChannels)
+    final channelsToScan = <db.Channel>{..._allChannels, ..._filteredChannels};
+    for (final c in channelsToScan) {
       final mapped = _epgMappings[c.id];
       if (mapped != null && mapped.isNotEmpty) {
         epgChannelIds.add(mapped);
@@ -499,6 +503,9 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
         _selectChannel(idx);
       }
     }
+
+    // Refresh EPG now-playing after restoring timeshifts and group
+    _refreshNowPlaying();
   }
 
   Future<void> _saveSession() async {
@@ -552,12 +559,27 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
       }
     }
 
-    // Top-bar search stacks on top
+    // Top-bar search stacks on top — OR matching across tokens
     if (_searchQuery.isNotEmpty) {
-      channels = channels
-          .where((c) => fuzzyMatchPasses(
-              _searchQuery, [c.name, c.groupTitle, _getChannelNowPlaying(c)]))
-          .toList();
+      final tokens = _searchQuery.toLowerCase().split(RegExp(r'\s+')).where((t) => t.isNotEmpty).toList();
+      if (tokens.isNotEmpty) {
+        channels = channels.where((c) {
+          final name = c.name.toLowerCase();
+          final group = (c.groupTitle ?? '').toLowerCase();
+          final programmeTitles = _getChannelProgrammeTitles(c)
+              .map((t) => t.toLowerCase())
+              .toList();
+          // OR: channel matches if ANY token hits name, group, or a programme title
+          return tokens.any((token) {
+            if (name.contains(token)) return true;
+            if (group.contains(token)) return true;
+            for (final title in programmeTitles) {
+              if (title.contains(token)) return true;
+            }
+            return false;
+          });
+        }).toList();
+      }
     }
 
     _filteredChannels = channels;
@@ -570,10 +592,24 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
     final database = ref.read(databaseProvider);
     var channels = await database.getChannelsInList(listId);
     if (_searchQuery.isNotEmpty) {
-      channels = channels
-          .where((c) => fuzzyMatchPasses(
-              _searchQuery, [c.name, c.groupTitle, _getChannelNowPlaying(c)]))
-          .toList();
+      final tokens = _searchQuery.toLowerCase().split(RegExp(r'\s+')).where((t) => t.isNotEmpty).toList();
+      if (tokens.isNotEmpty) {
+        channels = channels.where((c) {
+          final name = c.name.toLowerCase();
+          final group = (c.groupTitle ?? '').toLowerCase();
+          final programmeTitles = _getChannelProgrammeTitles(c)
+              .map((t) => t.toLowerCase())
+              .toList();
+          return tokens.any((token) {
+            if (name.contains(token)) return true;
+            if (group.contains(token)) return true;
+            for (final title in programmeTitles) {
+              if (title.contains(token)) return true;
+            }
+            return false;
+          });
+        }).toList();
+      }
     }
     if (_sidebarSearchQuery.isNotEmpty) {
       channels = channels
@@ -587,6 +623,8 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
         _selectedIndex = _filteredChannels.isEmpty ? -1 : 0;
       }
     });
+    // Ensure EPG data is loaded for the favorite list channels
+    _refreshNowPlaying();
   }
 
   void _selectChannel(int index) {
@@ -682,6 +720,16 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
     final match =
         _nowPlaying.where((p) => p.epgChannelId == epgId).toList();
     return match.isNotEmpty ? match.first.title : null;
+  }
+
+  /// All current/upcoming programme titles for a channel (for search).
+  List<String> _getChannelProgrammeTitles(db.Channel channel) {
+    final epgId = _getEpgId(channel);
+    if (epgId == null) return const [];
+    return _nowPlaying
+        .where((p) => p.epgChannelId == epgId)
+        .map((p) => p.title)
+        .toList();
   }
 
   db.EpgProgramme? _getEpgProgramme(db.Channel channel) {
@@ -805,6 +853,12 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
     // On Android/TV, arrow keys are used for D-pad focus navigation.
     // Channel switching uses dedicated channelUp/channelDown keys.
     final isAndroid = Platform.isAndroid;
+
+    // Toggle debug overlay with 'D' key
+    if (!isAndroid && event.logicalKey == LogicalKeyboardKey.keyD) {
+      setState(() => _showDebugOverlay = !_showDebugOverlay);
+      return;
+    }
 
     if (event.logicalKey == LogicalKeyboardKey.channelUp ||
         (!isAndroid && event.logicalKey == LogicalKeyboardKey.arrowUp)) {
@@ -1161,6 +1215,14 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
                               controls: NoVideoControls,
                             ),
                             // Channel info overlay removed — info shown in panel to the right
+                            // Debug info overlay (VLC-style)
+                            if (_showDebugOverlay && _previewChannel != null)
+                              ChannelDebugOverlay(
+                                channel: _previewChannel!,
+                                playerService: playerService,
+                                providerName: _getProviderName(_previewChannel!.providerId),
+                                mappedEpgId: _getEpgId(_previewChannel!),
+                              ),
                             if (_showVolumeOverlay)
                               Positioned(
                                 top: 8,
@@ -1370,8 +1432,8 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
                                 child: ExcludeFocus(
                                   excluding: Platform.isAndroid,
                                   child: IconButton(
-                                    onPressed: () => ChannelDebugDialog.show(context, _previewChannel!, playerService, mappedEpgId: _getEpgId(_previewChannel!)),
-                                    icon: const Icon(Icons.info_outline, size: 16),
+                                    onPressed: () => setState(() => _showDebugOverlay = !_showDebugOverlay),
+                                    icon: Icon(Icons.info_outline, size: 16, color: _showDebugOverlay ? const Color(0xFF00B894) : null),
                                     padding: EdgeInsets.zero,
                                     color: Colors.white70,
                                     tooltip: 'Channel debug info',
@@ -1460,47 +1522,49 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
             ),
           ),
           if (_sidebarExpanded) ...[
-            // Search field
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-              child: SizedBox(
-                height: 30,
-                child: TextFormField(
-                  controller: _sidebarSearchController,
-                  style: const TextStyle(color: Colors.white, fontSize: 12),
-                  decoration: InputDecoration(
-                    hintText: 'Search channels…',
-                    hintStyle: const TextStyle(color: Colors.white24, fontSize: 12),
-                    prefixIcon: const Icon(Icons.search_rounded, size: 14, color: Colors.white24),
-                    prefixIconConstraints: const BoxConstraints(minWidth: 30),
-                    suffixIcon: _sidebarSearchQuery.isNotEmpty
-                        ? GestureDetector(
-                            onTap: () {
-                              _sidebarSearchController.clear();
-                              setState(() => _sidebarSearchQuery = '');
-                            },
-                            child: const Icon(Icons.close_rounded, size: 14, color: Colors.white24),
-                          )
-                        : null,
-                    suffixIconConstraints: const BoxConstraints(minWidth: 30),
-                    filled: true,
-                    fillColor: Colors.white.withValues(alpha: 0.06),
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 8),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(6),
-                      borderSide: BorderSide.none,
+            // Search field — only on mobile (desktop uses the top search bar)
+            if (Platform.isAndroid || Platform.isIOS) ...[
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                child: SizedBox(
+                  height: 30,
+                  child: TextFormField(
+                    controller: _sidebarSearchController,
+                    style: const TextStyle(color: Colors.white, fontSize: 12),
+                    decoration: InputDecoration(
+                      hintText: 'Search channels…',
+                      hintStyle: const TextStyle(color: Colors.white24, fontSize: 12),
+                      prefixIcon: const Icon(Icons.search_rounded, size: 14, color: Colors.white24),
+                      prefixIconConstraints: const BoxConstraints(minWidth: 30),
+                      suffixIcon: _sidebarSearchQuery.isNotEmpty
+                          ? GestureDetector(
+                              onTap: () {
+                                _sidebarSearchController.clear();
+                                setState(() => _sidebarSearchQuery = '');
+                              },
+                              child: const Icon(Icons.close_rounded, size: 14, color: Colors.white24),
+                            )
+                          : null,
+                      suffixIconConstraints: const BoxConstraints(minWidth: 30),
+                      filled: true,
+                      fillColor: Colors.white.withValues(alpha: 0.06),
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 8),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(6),
+                        borderSide: BorderSide.none,
+                      ),
                     ),
+                    onChanged: (v) {
+                      setState(() {
+                        _sidebarSearchQuery = v.toLowerCase();
+                        _applyFilters();
+                      });
+                    },
                   ),
-                  onChanged: (v) {
-                    setState(() {
-                      _sidebarSearchQuery = v.toLowerCase();
-                      _applyFilters();
-                    });
-                  },
                 ),
               ),
-            ),
-            const Divider(height: 1, color: Colors.white10),
+              const Divider(height: 1, color: Colors.white10),
+            ],
           ],
           // Tree content
           Expanded(
@@ -1866,6 +1930,7 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: const Text('No recording folder set. Go to Settings → Recordings to choose one.'),
+          duration: const Duration(seconds: 5),
           action: SnackBarAction(
             label: 'Settings',
             onPressed: () => context.push('/settings'),
@@ -1879,7 +1944,7 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
     if (!await dir.exists()) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Recording folder no longer exists. Update in Settings.')),
+          const SnackBar(content: Text('Recording folder no longer exists. Update in Settings.'), duration: Duration(seconds: 5)),
         );
       }
       return;
@@ -1889,7 +1954,7 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
     if (!mounted) return;
     if (files.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('No recordings found.')),
+        const SnackBar(content: Text('No recordings found.'), duration: Duration(seconds: 5)),
       );
       return;
     }
@@ -1938,14 +2003,17 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Play Network Stream'),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          decoration: const InputDecoration(
-            hintText: 'http:// or rtsp:// stream URL',
-            isDense: true,
+        content: SizedBox(
+          width: 500,
+          child: TextField(
+            controller: controller,
+            autofocus: true,
+            decoration: const InputDecoration(
+              hintText: 'http:// or rtsp:// stream URL',
+              isDense: true,
+            ),
+            onSubmitted: (v) => Navigator.pop(ctx, v.trim()),
           ),
-          onSubmitted: (v) => Navigator.pop(ctx, v.trim()),
         ),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
@@ -2292,6 +2360,7 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
     if (result != null && result.isNotEmpty && result != channel.name) {
       final database = ref.read(databaseProvider);
       await database.renameChannel(channel.id, channel.providerId, result);
+      if (!mounted) return;
       // Update local lists immediately so the UI reflects the rename
       setState(() {
         final updateList = (List<db.Channel> list) {
@@ -2728,38 +2797,42 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
     }
   }
 
-  Future<String?> _showRenameDialog(String currentName) {
+  Future<String?> _showRenameDialog(String currentName) async {
     final controller = TextEditingController(text: currentName);
-    return showDialog<String>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFF16213E),
-        title: const Text('Rename List', style: TextStyle(color: Colors.white)),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          style: const TextStyle(color: Colors.white),
-          decoration: InputDecoration(
-            filled: true,
-            fillColor: Colors.white12,
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(8),
-              borderSide: BorderSide.none,
+    try {
+      return await showDialog<String>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          backgroundColor: const Color(0xFF16213E),
+          title: const Text('Rename List', style: TextStyle(color: Colors.white)),
+          content: TextField(
+            controller: controller,
+            autofocus: true,
+            style: const TextStyle(color: Colors.white),
+            decoration: InputDecoration(
+              filled: true,
+              fillColor: Colors.white12,
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(8),
+                borderSide: BorderSide.none,
+              ),
             ),
           ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Cancel', style: TextStyle(color: Colors.white54)),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, controller.text.trim()),
+              child: const Text('Rename', style: TextStyle(color: Colors.cyanAccent)),
+            ),
+          ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Cancel', style: TextStyle(color: Colors.white54)),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, controller.text.trim()),
-            child: const Text('Rename', style: TextStyle(color: Colors.cyanAccent)),
-          ),
-        ],
-      ),
-    );
+      );
+    } finally {
+      controller.dispose();
+    }
   }
 
   Future<bool?> _showDeleteConfirmation(String listName) {
@@ -3328,8 +3401,10 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
     );
     controller.dispose();
     if (newName != null && newName.isNotEmpty && newName != list.name) {
+      if (!mounted) return;
       final database = ref.read(databaseProvider);
       await database.renameFavoriteList(list.id, newName);
+      if (!mounted) return;
       _loadChannels();
     }
   }

@@ -580,3 +580,221 @@ class _BufferingSparkline extends CustomPainter {
   @override
   bool shouldRepaint(covariant _BufferingSparkline oldDelegate) => true;
 }
+
+// =============================================================================
+// VLC-style debug info overlay — semi-transparent, monospace, top-left
+// =============================================================================
+
+/// A positioned overlay that shows real-time stream technical details.
+/// Toggle with the `D` key or the info button in the control bar.
+class ChannelDebugOverlay extends StatefulWidget {
+  final db.Channel channel;
+  final PlayerService playerService;
+  final String? providerName;
+  final String? mappedEpgId;
+
+  const ChannelDebugOverlay({
+    super.key,
+    required this.channel,
+    required this.playerService,
+    this.providerName,
+    this.mappedEpgId,
+  });
+
+  @override
+  State<ChannelDebugOverlay> createState() => _ChannelDebugOverlayState();
+}
+
+class _ChannelDebugOverlayState extends State<ChannelDebugOverlay> {
+  Timer? _refreshTimer;
+
+  // Cached mpv properties (refreshed every second)
+  String _videoCodec = '—';
+  String _audioCodec = '—';
+  String _resolution = '—';
+  String _fps = '—';
+  String _videoBitrate = '—';
+  String _audioBitrate = '—';
+  String _bufferDuration = '—';
+  String _containerFormat = '—';
+  String _hwdec = '—';
+  bool _buffering = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _refresh();
+    _refreshTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (mounted) _refresh();
+    });
+  }
+
+  Future<void> _refresh() async {
+    final ps = widget.playerService;
+    final results = await Future.wait([
+      ps.getMpvProperty('video-codec'),       // 0
+      ps.getMpvProperty('audio-codec-name'),   // 1
+      ps.getMpvProperty('video-params/w'),     // 2
+      ps.getMpvProperty('video-params/h'),     // 3
+      ps.getMpvProperty('container-fps'),      // 4
+      ps.getMpvProperty('video-bitrate'),      // 5
+      ps.getMpvProperty('audio-bitrate'),      // 6
+      ps.getMpvProperty('demuxer-cache-duration'), // 7
+      ps.getMpvProperty('file-format'),        // 8
+      ps.getMpvProperty('hwdec-current'),      // 9
+    ]);
+    if (!mounted) return;
+
+    final w = results[2];
+    final h = results[3];
+    final vBitrate = _formatBitrate(results[5]);
+    final aBitrate = _formatBitrate(results[6]);
+    final bufDur = results[7];
+
+    setState(() {
+      _videoCodec = results[0] ?? '—';
+      _audioCodec = results[1] ?? '—';
+      _resolution = (w != null && h != null) ? '${w}×$h' : '—';
+      _fps = _formatFps(results[4]);
+      _videoBitrate = vBitrate;
+      _audioBitrate = aBitrate;
+      _bufferDuration = bufDur != null ? '${double.tryParse(bufDur)?.toStringAsFixed(1) ?? bufDur}s' : '—';
+      _containerFormat = results[8] ?? '—';
+      _hwdec = results[9] ?? 'sw';
+      _buffering = ps.player.state.buffering;
+    });
+  }
+
+  String _formatBitrate(String? raw) {
+    if (raw == null) return '—';
+    final bits = double.tryParse(raw);
+    if (bits == null) return raw;
+    if (bits >= 1000000) return '${(bits / 1000000).toStringAsFixed(1)} Mbps';
+    if (bits >= 1000) return '${(bits / 1000).toStringAsFixed(0)} kbps';
+    return '${bits.toStringAsFixed(0)} bps';
+  }
+
+  String _formatFps(String? raw) {
+    if (raw == null) return '—';
+    final v = double.tryParse(raw);
+    if (v == null) return raw;
+    return v.toStringAsFixed(2);
+  }
+
+  String _maskUrl(String url) {
+    // Show scheme + host + first 20 chars of path, then ...
+    final uri = Uri.tryParse(url);
+    if (uri == null) return url.length > 60 ? '${url.substring(0, 60)}…' : url;
+    final hostPart = '${uri.scheme}://${uri.host}';
+    final path = uri.path;
+    if (path.length <= 25) return '$hostPart$path';
+    return '$hostPart${path.substring(0, 25)}…';
+  }
+
+  @override
+  void dispose() {
+    _refreshTimer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final ch = widget.channel;
+    final epgLabel = widget.mappedEpgId != null && widget.mappedEpgId!.isNotEmpty
+        ? widget.mappedEpgId!
+        : (ch.tvgId ?? '—');
+
+    final lines = <_DebugLine>[
+      _DebugLine('Channel', ch.name),
+      if (widget.providerName != null && widget.providerName!.isNotEmpty)
+        _DebugLine('Provider', widget.providerName!),
+      _DebugLine('EPG ID', epgLabel),
+      _DebugLine('URL', _maskUrl(ch.streamUrl)),
+      const _DebugLine('', ''),
+      _DebugLine('Container', _containerFormat),
+      _DebugLine('Video Codec', _videoCodec),
+      _DebugLine('Audio Codec', _audioCodec),
+      _DebugLine('Resolution', _resolution),
+      _DebugLine('Frame Rate', '$_fps fps'),
+      _DebugLine('HW Decode', _hwdec),
+      const _DebugLine('', ''),
+      _DebugLine('Video Bitrate', _videoBitrate),
+      _DebugLine('Audio Bitrate', _audioBitrate),
+      _DebugLine('Buffer', _bufferDuration),
+      _DebugLine('State', _buffering ? 'Buffering' : 'Playing'),
+    ];
+
+    return Positioned(
+      top: 8,
+      left: 8,
+      child: IgnorePointer(
+        child: Container(
+          padding: const EdgeInsets.all(10),
+          decoration: BoxDecoration(
+            color: Colors.black.withValues(alpha: 0.72),
+            borderRadius: BorderRadius.circular(6),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text(
+                '⚙ Debug Info',
+                style: TextStyle(
+                  fontFamily: 'monospace',
+                  fontSize: 11,
+                  fontWeight: FontWeight.bold,
+                  color: Color(0xFF00B894),
+                ),
+              ),
+              const SizedBox(height: 4),
+              ...lines.map((l) {
+                if (l.label.isEmpty && l.value.isEmpty) {
+                  return const SizedBox(height: 4);
+                }
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 1),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      SizedBox(
+                        width: 90,
+                        child: Text(
+                          l.label,
+                          style: const TextStyle(
+                            fontFamily: 'monospace',
+                            fontSize: 10,
+                            color: Colors.white54,
+                          ),
+                        ),
+                      ),
+                      Flexible(
+                        child: Text(
+                          l.value,
+                          style: TextStyle(
+                            fontFamily: 'monospace',
+                            fontSize: 10,
+                            color: l.label == 'State' && _buffering
+                                ? Colors.orangeAccent
+                                : Colors.white,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              }),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _DebugLine {
+  final String label;
+  final String value;
+  const _DebugLine(this.label, this.value);
+}
