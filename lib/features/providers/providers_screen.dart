@@ -19,13 +19,27 @@ class ProvidersScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final providersAsync = ref.watch(_providersStreamProvider);
 
-    return Scaffold(
+    return CallbackShortcuts(
+      bindings: {
+        const SingleActivator(LogicalKeyboardKey.escape): () {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (context.canPop()) {
+              context.pop();
+            } else {
+              context.go('/');
+            }
+          });
+        },
+      },
+      child: Focus(
+        autofocus: true,
+        child: Scaffold(
       appBar: AppBar(
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
           onPressed: () {
-            if (Navigator.of(context).canPop()) {
-              Navigator.of(context).pop();
+            if (context.canPop()) {
+              context.pop();
             } else {
               context.go('/');
             }
@@ -63,6 +77,8 @@ class ProvidersScreen extends ConsumerWidget {
           ),
         ),
       ),
+    ),
+    ),
     );
   }
 }

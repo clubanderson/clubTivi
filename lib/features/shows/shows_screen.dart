@@ -17,6 +17,7 @@ class ShowsScreen extends ConsumerStatefulWidget {
 class _ShowsScreenState extends ConsumerState<ShowsScreen> {
   final _searchController = TextEditingController();
   final _searchFocusNode = FocusNode();
+  final _keyboardFocusNode = FocusNode();
   bool _isSearching = false;
   int _selectedCategory = 0; // 0 = Favorites (default)
 
@@ -32,6 +33,7 @@ class _ShowsScreenState extends ConsumerState<ShowsScreen> {
   void dispose() {
     _searchController.dispose();
     _searchFocusNode.dispose();
+    _keyboardFocusNode.dispose();
     super.dispose();
   }
 
@@ -46,7 +48,7 @@ class _ShowsScreenState extends ConsumerState<ShowsScreen> {
     return Scaffold(
       backgroundColor: const Color(0xFF0A0A1A),
       body: KeyboardListener(
-        focusNode: FocusNode(),
+        focusNode: _keyboardFocusNode,
         onKeyEvent: _handleKeyEvent,
         child: Column(
           children: [
@@ -61,7 +63,19 @@ class _ShowsScreenState extends ConsumerState<ShowsScreen> {
   }
 
   Widget _buildSetupPrompt(BuildContext context) {
-    return Scaffold(
+    return CallbackShortcuts(
+      bindings: {
+        const SingleActivator(LogicalKeyboardKey.escape): () {
+          if (context.canPop()) {
+            context.pop();
+          } else {
+            context.go('/');
+          }
+        },
+      },
+      child: Focus(
+        autofocus: true,
+        child: Scaffold(
       backgroundColor: const Color(0xFF0A0A1A),
       body: Center(
         child: Padding(
@@ -100,6 +114,8 @@ class _ShowsScreenState extends ConsumerState<ShowsScreen> {
           ),
         ),
       ),
+    ),
+    ),
     );
   }
 
@@ -309,6 +325,14 @@ class _ShowsScreenState extends ConsumerState<ShowsScreen> {
 
   void _handleKeyEvent(KeyEvent event) {
     if (event is KeyDownEvent) {
+      // Don't intercept keys when a text field is focused
+      final primaryFocus = FocusManager.instance.primaryFocus;
+      if (primaryFocus?.context?.findAncestorWidgetOfExactType<EditableText>() != null) {
+        if (event.logicalKey == LogicalKeyboardKey.escape) {
+          primaryFocus!.unfocus();
+        }
+        return;
+      }
       if (event.logicalKey == LogicalKeyboardKey.escape) {
         if (_isSearching) {
           setState(() {
@@ -317,7 +341,14 @@ class _ShowsScreenState extends ConsumerState<ShowsScreen> {
             ref.read(showSearchQueryProvider.notifier).state = '';
           });
         } else {
-          context.go('/');
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (!mounted) return;
+            if (context.canPop()) {
+              context.pop();
+            } else {
+              context.go('/');
+            }
+          });
         }
       }
     }

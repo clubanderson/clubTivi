@@ -155,7 +155,22 @@ class _AddProviderPageState extends ConsumerState<_AddProviderPage> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    return CallbackShortcuts(
+      bindings: {
+        const SingleActivator(LogicalKeyboardKey.escape): () {
+          final pf = FocusManager.instance.primaryFocus;
+          if (pf?.context?.findAncestorWidgetOfExactType<EditableText>() != null) {
+            pf!.unfocus();
+            return;
+          }
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            Navigator.of(context).pop();
+          });
+        },
+      },
+      child: Focus(
+        autofocus: true,
+        child: Scaffold(
       backgroundColor: const Color(0xFF0A0A0F),
       appBar: AppBar(
         leading: IconButton(
@@ -201,6 +216,8 @@ class _AddProviderPageState extends ConsumerState<_AddProviderPage> {
           ],
         ),
       ),
+    ),
+    ),
     );
   }
 

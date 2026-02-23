@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:go_router/go_router.dart';
@@ -111,7 +112,21 @@ class _ShowDetailScreenState extends ConsumerState<ShowDetailScreen> {
       showDetailProvider(ShowDetailParams(widget.traktId, type: type)),
     );
 
-    return Scaffold(
+    return CallbackShortcuts(
+      bindings: {
+        const SingleActivator(LogicalKeyboardKey.escape): () {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (context.canPop()) {
+              context.pop();
+            } else {
+              context.go('/shows');
+            }
+          });
+        },
+      },
+      child: Focus(
+        autofocus: true,
+        child: Scaffold(
       backgroundColor: _dominantColor != null
           ? Color.lerp(const Color(0xFF0A0A1A), _dominantColor!, 0.15)!
           : const Color(0xFF0A0A1A),
@@ -129,6 +144,8 @@ class _ShowDetailScreenState extends ConsumerState<ShowDetailScreen> {
           return _buildDetail(detail);
         },
       ),
+    ),
+    ),
     );
   }
 

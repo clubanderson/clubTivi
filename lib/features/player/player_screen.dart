@@ -11,6 +11,7 @@ import '../../data/datasources/local/database.dart' as db;
 import '../../features/providers/provider_manager.dart' show databaseProvider;
 import '../casting/cast_service.dart';
 import '../casting/cast_dialog.dart';
+import 'player_control_bar.dart';
 import 'player_service.dart';
 
 /// Full-screen video player with overlay controls and keyboard navigation.
@@ -199,12 +200,17 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
     final isAndroid = Platform.isAndroid;
 
     // Escape / Backspace / Back → exit fullscreen
+    // Defer navigation to next frame so the key-up event can be processed
+    // before the focus tree is torn down (avoids Flutter key-state assertion).
     if (key == LogicalKeyboardKey.escape ||
         key == LogicalKeyboardKey.backspace ||
         key == LogicalKeyboardKey.goBack) {
-      GoRouter.of(context).canPop()
-          ? GoRouter.of(context).pop()
-          : GoRouter.of(context).go('/');
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        GoRouter.of(context).canPop()
+            ? GoRouter.of(context).pop()
+            : GoRouter.of(context).go('/');
+      });
       return KeyEventResult.handled;
     }
 
@@ -298,15 +304,25 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
               // Video — fill entire screen
               Video(controller: playerService.videoController, controls: NoVideoControls),
 
-              // Overlay
+              // TiviMate-style control bar overlay
+              PlayerControlBar(
+                isCasting: ref.read(castServiceProvider).isCasting,
+                onCastTap: () => _showCastPicker(),
+                onBackTap: () {
+                  GoRouter.of(context).canPop()
+                      ? GoRouter.of(context).pop()
+                      : GoRouter.of(context).go('/');
+                },
+              ),
+
+              // Channel info overlay (top, shown alongside control bar)
               if (_showOverlay) ...[
-                // Top bar: channel info + ESC hint
                 Positioned(
                   top: 0,
                   left: 0,
                   right: 0,
                   child: Container(
-                    padding: const EdgeInsets.fromLTRB(8, 4, 8, 8),
+                    padding: const EdgeInsets.fromLTRB(48, 4, 8, 8),
                     decoration: const BoxDecoration(
                       gradient: LinearGradient(
                         begin: Alignment.topCenter,
@@ -316,18 +332,6 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
                     ),
                     child: Row(
                       children: [
-                        IconButton(
-                          icon: const Icon(Icons.arrow_back,
-                              color: Colors.white, size: 20),
-                          padding: EdgeInsets.zero,
-                          constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
-                          onPressed: () {
-                            GoRouter.of(context).canPop()
-                                ? GoRouter.of(context).pop()
-                                : GoRouter.of(context).go('/');
-                          },
-                        ),
-                        const SizedBox(width: 4),
                         if (_currentChannelLogo != null)
                           Padding(
                             padding: const EdgeInsets.only(right: 8),
@@ -377,7 +381,6 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
                             ],
                           ),
                         ),
-                        // ESC exit hint
                         Container(
                           padding: const EdgeInsets.symmetric(
                               horizontal: 8, vertical: 4),
@@ -393,71 +396,6 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
                               fontWeight: FontWeight.bold,
                             ),
                           ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-
-                // Bottom bar: controls
-                Positioned(
-                  bottom: 0,
-                  left: 0,
-                  right: 0,
-                  child: Container(
-                    padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
-                    decoration: const BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.bottomCenter,
-                        end: Alignment.topCenter,
-                        colors: [Colors.black87, Colors.transparent],
-                      ),
-                    ),
-                    child: Row(
-                      children: [
-                        StreamBuilder<bool>(
-                          stream: playerService.playingStream,
-                          builder: (context, snapshot) {
-                            final playing = snapshot.data ?? false;
-                            return IconButton(
-                              iconSize: 48,
-                              icon: Icon(
-                                playing
-                                    ? Icons.pause_circle
-                                    : Icons.play_circle,
-                                color: Colors.white,
-                              ),
-                              onPressed: () {
-                                if (playing) {
-                                  playerService.pause();
-                                } else {
-                                  playerService.resume();
-                                }
-                              },
-                            );
-                          },
-                        ),
-                        if (_hasAlternativeStreams)
-                          IconButton(
-                            icon: const Icon(
-                              Icons.swap_horiz_rounded,
-                              color: Colors.white70,
-                            ),
-                            tooltip: 'Switch stream',
-                            onPressed: _switchToNextStream,
-                          ),
-                        const Spacer(),
-                        IconButton(
-                          icon: Icon(
-                            ref.read(castServiceProvider).isCasting
-                                ? Icons.cast_connected_rounded
-                                : Icons.cast_rounded,
-                            color: ref.read(castServiceProvider).isCasting
-                                ? Colors.amber
-                                : Colors.white70,
-                          ),
-                          tooltip: 'Cast to device',
-                          onPressed: () => _showCastPicker(),
                         ),
                       ],
                     ),

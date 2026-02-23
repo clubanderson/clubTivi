@@ -144,6 +144,20 @@ class PlayerService {
     }
   }
 
+  /// Read an mpv property from the underlying native player.
+  /// Returns null if unavailable (e.g. on web or before player init).
+  Future<String?> getMpvProperty(String name) async {
+    final np = player.platform;
+    if (np is native_player.NativePlayer) {
+      try {
+        return await np.getProperty(name);
+      } catch (_) {
+        return null;
+      }
+    }
+    return null;
+  }
+
   void dispose() {
     _tracksSub?.cancel();
     _player?.dispose();

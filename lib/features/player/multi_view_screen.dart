@@ -86,7 +86,17 @@ class _MultiViewScreenState extends ConsumerState<MultiViewScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    return CallbackShortcuts(
+      bindings: {
+        const SingleActivator(LogicalKeyboardKey.escape): () {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            Navigator.of(context).pop();
+          });
+        },
+      },
+      child: Focus(
+        autofocus: true,
+        child: Scaffold(
       backgroundColor: Colors.black,
       body: Stack(
         children: [
@@ -165,6 +175,8 @@ class _MultiViewScreenState extends ConsumerState<MultiViewScreen> {
           ),
         ],
       ),
+    ),
+    ),
     );
   }
 }

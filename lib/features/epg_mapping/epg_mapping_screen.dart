@@ -29,7 +29,14 @@ class _EpgMappingScreenState extends ConsumerState<EpgMappingScreen> {
     return CallbackShortcuts(
       bindings: {
         const SingleActivator(LogicalKeyboardKey.escape): () {
-          context.go('/settings');
+          final pf = FocusManager.instance.primaryFocus;
+          if (pf?.context?.findAncestorWidgetOfExactType<EditableText>() != null) {
+            pf!.unfocus();
+            return;
+          }
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            context.go('/settings');
+          });
         },
       },
       child: Focus(

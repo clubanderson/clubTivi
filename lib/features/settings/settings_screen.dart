@@ -291,11 +291,18 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     return CallbackShortcuts(
       bindings: {
         const SingleActivator(LogicalKeyboardKey.escape): () {
-          if (Navigator.of(context).canPop()) {
-            Navigator.of(context).pop();
-          } else {
-            context.go('/');
+          final pf = FocusManager.instance.primaryFocus;
+          if (pf?.context?.findAncestorWidgetOfExactType<EditableText>() != null) {
+            pf!.unfocus();
+            return;
           }
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (Navigator.of(context).canPop()) {
+              Navigator.of(context).pop();
+            } else {
+              context.go('/');
+            }
+          });
         },
       },
       child: Focus(
@@ -522,6 +529,8 @@ class _EpgSourcesScreen extends ConsumerStatefulWidget {
 class _EpgSourcesScreenState extends ConsumerState<_EpgSourcesScreen> {
   List<db.EpgSource> _sources = [];
   final Set<String> _refreshing = {};
+  bool _loading = true;
+  String? _error;
 
   @override
   void initState() {
@@ -530,8 +539,21 @@ class _EpgSourcesScreenState extends ConsumerState<_EpgSourcesScreen> {
   }
 
   Future<void> _loadSources() async {
-    final sources = await ref.read(databaseProvider).getAllEpgSources();
-    if (mounted) setState(() => _sources = sources);
+    try {
+      final sources = await ref.read(databaseProvider).getAllEpgSources();
+      if (!mounted) return;
+      setState(() {
+        _sources = sources;
+        _loading = false;
+        _error = null;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _error = e.toString();
+      });
+    }
   }
 
   Future<void> _refreshSource(String id) async {
@@ -556,8 +578,16 @@ class _EpgSourcesScreenState extends ConsumerState<_EpgSourcesScreen> {
   }
 
   Future<void> _deleteSource(String id) async {
-    await ref.read(databaseProvider).deleteEpgSource(id);
-    await _loadSources();
+    try {
+      await ref.read(databaseProvider).deleteEpgSource(id);
+      if (!mounted) return;
+      await _loadSources();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Delete failed: $e')),
+      );
+    }
   }
 
   Future<void> _editSource(db.EpgSource source) async {
@@ -613,23 +643,45 @@ class _EpgSourcesScreenState extends ConsumerState<_EpgSourcesScreen> {
       context: context,
       builder: (_) => const AddEpgSourceDialog(),
     );
-    if (result == true) await _loadSources();
+    if (result == true && mounted) await _loadSources();
   }
 
   Future<void> _resetToDefaults() async {
-    final service = ref.read(epgRefreshServiceProvider);
-    await service.resetToDefaultSources();
-    await _loadSources();
-    if (mounted) {
+    try {
+      final service = ref.read(epgRefreshServiceProvider);
+      await service.resetToDefaultSources();
+      if (!mounted) return;
+      await _loadSources();
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('EPG sources reset to defaults')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Reset failed: $e')),
       );
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    return CallbackShortcuts(
+      bindings: {
+        const SingleActivator(LogicalKeyboardKey.escape): () {
+          final pf = FocusManager.instance.primaryFocus;
+          if (pf?.context?.findAncestorWidgetOfExactType<EditableText>() != null) {
+            pf!.unfocus();
+            return;
+          }
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            Navigator.of(context).pop();
+          });
+        },
+      },
+      child: FocusScope(
+        autofocus: true,
+        child: Scaffold(
       appBar: AppBar(
         title: const Text('EPG Sources'),
         actions: [
@@ -644,7 +696,27 @@ class _EpgSourcesScreenState extends ConsumerState<_EpgSourcesScreen> {
         onPressed: _showAddDialog,
         child: const Icon(Icons.add),
       ),
-      body: _sources.isEmpty
+      body: _loading
+          ? const Center(child: CircularProgressIndicator())
+          : _error != null
+              ? Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text('Error loading sources: $_error'),
+                      const SizedBox(height: 16),
+                      FilledButton.icon(
+                        onPressed: () {
+                          setState(() { _loading = true; _error = null; });
+                          _loadSources();
+                        },
+                        icon: const Icon(Icons.refresh),
+                        label: const Text('Retry'),
+                      ),
+                    ],
+                  ),
+                )
+              : _sources.isEmpty
           ? Center(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
@@ -718,6 +790,8 @@ class _EpgSourcesScreenState extends ConsumerState<_EpgSourcesScreen> {
                 );
               },
             ),
+    ),
+    ),
     );
   }
 
