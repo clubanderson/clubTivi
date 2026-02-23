@@ -2037,6 +2037,7 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
       onSecondaryTap: onSecondaryTap,
       child: Focus(
         focusNode: focusNode,
+        autofocus: isSelected && Platform.isAndroid,
         onKeyEvent: (node, event) {
           if (event is! KeyDownEvent) return KeyEventResult.ignored;
           if (event.logicalKey == LogicalKeyboardKey.arrowRight) {
@@ -2989,7 +2990,31 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
                         final channel = _filteredChannels[index];
                         final isFav = _favoritedChannelIds.contains(channel.id);
                         final isSelected = index == _selectedIndex;
-                        return GestureDetector(
+                        return Focus(
+                          focusNode: index == 0 ? _firstChannelFocusNode : null,
+                          autofocus: index == 0 && Platform.isAndroid,
+                          onFocusChange: (hasFocus) {
+                            if (hasFocus && Platform.isAndroid) _selectChannel(index);
+                          },
+                          onKeyEvent: (node, event) {
+                            if (event is! KeyDownEvent) return KeyEventResult.ignored;
+                            final key = event.logicalKey;
+                            if (key == LogicalKeyboardKey.select ||
+                                key == LogicalKeyboardKey.enter ||
+                                key == LogicalKeyboardKey.gameButtonA) {
+                              _goFullscreen(channel);
+                              return KeyEventResult.handled;
+                            }
+                            if (key == LogicalKeyboardKey.arrowLeft) {
+                              _sidebarAllItemFocusNode.requestFocus();
+                              return KeyEventResult.handled;
+                            }
+                            return KeyEventResult.ignored;
+                          },
+                          child: Builder(
+                          builder: (context) {
+                          final hasFocus = Focus.of(context).hasFocus;
+                          return GestureDetector(
                           behavior: HitTestBehavior.opaque,
                           onTap: () => _selectChannel(index),
                           onSecondaryTapUp: (details) => _showGuideChannelMenu(
@@ -3000,12 +3025,16 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
                             decoration: BoxDecoration(
                               color: isSelected
                                   ? const Color(0xFF6C5CE7).withValues(alpha: 0.25)
-                                  : Colors.transparent,
+                                  : hasFocus
+                                      ? const Color(0xFF6C5CE7).withValues(alpha: 0.15)
+                                      : Colors.transparent,
                               border: Border(
                                 bottom: const BorderSide(color: Colors.white10, width: 0.5),
                                 left: isSelected
                                     ? const BorderSide(color: Color(0xFF6C5CE7), width: 3)
-                                    : BorderSide.none,
+                                    : hasFocus
+                                        ? const BorderSide(color: Color(0xFF6C5CE7), width: 2)
+                                        : BorderSide.none,
                               ),
                             ),
                             child: Row(
@@ -3088,6 +3117,9 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
                             ),
                           ),
                         );
+                        },  // Builder builder
+                        ),  // Builder
+                        );  // Focus
                       },
                     ),
                     // "Now" vertical line overlay

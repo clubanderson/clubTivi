@@ -112,8 +112,28 @@ class _ProviderCard extends ConsumerWidget {
     const accent = Color(0xFF6C5CE7);
     final isXtream = provider.type == 'xtream';
 
-    return Card(
+    return Focus(
+      onKeyEvent: (node, event) {
+        if (event is! KeyDownEvent) return KeyEventResult.ignored;
+        if (event.logicalKey == LogicalKeyboardKey.select ||
+            event.logicalKey == LogicalKeyboardKey.enter) {
+          // SELECT on provider card → refresh
+          _refreshProvider(context, ref);
+          return KeyEventResult.handled;
+        }
+        return KeyEventResult.ignored;
+      },
+      child: Builder(
+        builder: (context) {
+          final hasFocus = Focus.of(context).hasFocus;
+          return Card(
       margin: const EdgeInsets.only(bottom: 12),
+      shape: hasFocus
+          ? RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+              side: const BorderSide(color: accent, width: 2),
+            )
+          : null,
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Row(
@@ -217,6 +237,25 @@ class _ProviderCard extends ConsumerWidget {
         ),
       ),
     );
+        },  // Builder builder
+      ),  // Builder
+    );  // Focus
+  }
+
+  void _refreshProvider(BuildContext context, WidgetRef ref) async {
+    final manager = ref.read(providerManagerProvider);
+    try {
+      final count = await manager.refreshProvider(provider.id);
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Loaded $count channels')),
+      );
+    } catch (e) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Refresh failed: $e')),
+      );
+    }
   }
 }
 
