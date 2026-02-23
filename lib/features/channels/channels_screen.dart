@@ -56,6 +56,9 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
   bool _showGuideView = true;
   final _searchController = TextEditingController();
   final _searchFocusNode = FocusNode();
+  List<String> _searchHistory = [];
+  static const _kSearchHistory = 'search_history';
+  static const _kMaxSearchHistory = 20;
   final _channelListController = ScrollController();
   late final ScrollController _guideScrollController;
   Timer? _guideIdleTimer;
@@ -132,6 +135,7 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
     _ensureEpgSources();
     _startTopBarFade();
     _initFailoverListener();
+    _loadSearchHistory();
     // Resolve missing logos on startup (in background)
     ref.read(providerManagerProvider).resolveAllMissingLogos().catchError((_) {});
     // Auto-failover toast
@@ -247,11 +251,21 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
   Future<void> _refreshNowPlaying() async {
     if (!mounted) return;
     final database = ref.read(databaseProvider);
+    // Scope EPG refresh to favorites + failover alts only
+    final epgScopeIds = <String>{..._favoritedChannelIds};
+    final favChannels = _allChannels.where((c) => _favoritedChannelIds.contains(c.id));
+    for (final fav in favChannels) {
+      final normName = _normalizeName(fav.name);
+      for (final c in _allChannels) {
+        if (c.id != fav.id && _normalizeName(c.name) == normName) {
+          epgScopeIds.add(c.id);
+        }
+      }
+    }
     final epgChannelIds = <String>{};
-    // Collect EPG IDs from ALL channels AND currently displayed channels
-    // (favorites loaded via getChannelsInList may not be in _allChannels)
     final channelsToScan = <db.Channel>{..._allChannels, ..._filteredChannels};
     for (final c in channelsToScan) {
+      if (!epgScopeIds.contains(c.id)) continue;
       final mapped = _epgMappings[c.id];
       if (mapped != null && mapped.isNotEmpty) {
         epgChannelIds.add(mapped);
@@ -344,6 +358,35 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
         .replaceAll(RegExp(r'(us-?[a-z]*\|?|uk-?[a-z]*\|?|ca-?[a-z]*\|?|mx-?[a-z]*\|?)'), '')
         .replaceAll(RegExp(r'[\s|()[\]]+'), ' ')
         .trim();
+  }
+
+  /// Clear the search bar and re-apply filters.
+  void _clearSearch() {
+    if (_searchQuery.isEmpty) return;
+    // Save non-empty query to history before clearing
+    _addSearchHistory(_searchQuery);
+    _searchQuery = '';
+    _searchController.clear();
+    _applyFilters();
+  }
+
+  /// Add a query to search history (persisted via SharedPreferences).
+  void _addSearchHistory(String query) {
+    final trimmed = query.trim();
+    if (trimmed.isEmpty) return;
+    _searchHistory.remove(trimmed);
+    _searchHistory.insert(0, trimmed);
+    if (_searchHistory.length > _kMaxSearchHistory) {
+      _searchHistory = _searchHistory.sublist(0, _kMaxSearchHistory);
+    }
+    SharedPreferences.getInstance().then((prefs) {
+      prefs.setStringList(_kSearchHistory, _searchHistory);
+    });
+  }
+
+  Future<void> _loadSearchHistory() async {
+    final prefs = await SharedPreferences.getInstance();
+    _searchHistory = prefs.getStringList(_kSearchHistory) ?? [];
   }
 
   void _acceptFailover() {
@@ -470,9 +513,27 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
       }
     }
 
-    // Load now-playing EPG data using mapped IDs (fall back to tvgId only if valid)
+    // Load favorite lists FIRST — EPG is scoped to favorites + failover alts
+    final favLists = await database.getAllFavoriteLists();
+    final favChannelIds = await database.getAllFavoritedChannelIds();
+
+    // Build the set of channels that need EPG: favorites + their failover alts
+    final epgScopeIds = <String>{...favChannelIds};
+    final favChannels = allChannels.where((c) => favChannelIds.contains(c.id));
+    for (final fav in favChannels) {
+      final normName = _normalizeName(fav.name);
+      for (final c in allChannels) {
+        if (c.id != fav.id && _normalizeName(c.name) == normName) {
+          epgScopeIds.add(c.id);
+        }
+      }
+    }
+    debugPrint('[EPG] Scoped to ${favChannelIds.length} favorites + ${epgScopeIds.length - favChannelIds.length} failover alts (${allChannels.length} total channels)');
+
+    // Load now-playing EPG data only for scoped channels
     final epgChannelIds = <String>{};
     for (final c in allChannels) {
+      if (!epgScopeIds.contains(c.id)) continue;
       final mapped = epgMap[c.id];
       if (mapped != null && mapped.isNotEmpty) {
         epgChannelIds.add(mapped);
@@ -484,10 +545,6 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
     if (epgChannelIds.isNotEmpty) {
       nowPlaying = await database.getNowPlaying(epgChannelIds.toList());
     }
-
-    // Load favorite lists
-    final favLists = await database.getAllFavoriteLists();
-    final favChannelIds = await database.getAllFavoritedChannelIds();
 
     if (!mounted) return;
     setState(() {
@@ -1203,42 +1260,104 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
           Expanded(
             child: SizedBox(
               height: 36,
-              child: TextField(
-                controller: _searchController,
+              child: RawAutocomplete<String>(
+                textEditingController: _searchController,
                 focusNode: _searchFocusNode,
-                style: const TextStyle(color: Colors.white, fontSize: 14),
-                decoration: InputDecoration(
-                  hintText: 'Search channels...',
-                  hintStyle: const TextStyle(color: Colors.white38),
-                  filled: true,
-                  fillColor: Colors.white12,
-                  contentPadding:
-                      const EdgeInsets.symmetric(horizontal: 12),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(8),
-                    borderSide: BorderSide.none,
-                  ),
-                  prefixIcon: const Icon(Icons.search_rounded, size: 18, color: Colors.white38),
-                  suffixIcon: _searchQuery.isNotEmpty
-                      ? IconButton(
-                          icon: const Icon(Icons.close,
-                              size: 18, color: Colors.white54),
-                          onPressed: () {
-                            setState(() {
-                              _searchQuery = '';
-                              _searchController.clear();
-                              _applyFilters();
-                            });
-                            _focusNode.requestFocus();
+                optionsBuilder: (textEditingValue) {
+                  if (textEditingValue.text.isEmpty && _searchHistory.isNotEmpty) {
+                    return _searchHistory;
+                  }
+                  if (_searchHistory.isEmpty) return const Iterable<String>.empty();
+                  final q = textEditingValue.text.toLowerCase();
+                  return _searchHistory.where((h) => h.toLowerCase().contains(q));
+                },
+                fieldViewBuilder: (context, controller, focusNode, onFieldSubmitted) {
+                  return TextField(
+                    controller: controller,
+                    focusNode: focusNode,
+                    style: const TextStyle(color: Colors.white, fontSize: 14),
+                    decoration: InputDecoration(
+                      hintText: 'Search channels...',
+                      hintStyle: const TextStyle(color: Colors.white38),
+                      filled: true,
+                      fillColor: Colors.white12,
+                      contentPadding:
+                          const EdgeInsets.symmetric(horizontal: 12),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8),
+                        borderSide: BorderSide.none,
+                      ),
+                      prefixIcon: const Icon(Icons.search_rounded, size: 18, color: Colors.white38),
+                      suffixIcon: _searchQuery.isNotEmpty
+                          ? IconButton(
+                              icon: const Icon(Icons.close,
+                                  size: 18, color: Colors.white54),
+                              onPressed: () {
+                                setState(() {
+                                  _clearSearch();
+                                });
+                                _focusNode.requestFocus();
+                              },
+                            )
+                          : null,
+                    ),
+                    onChanged: (value) {
+                      setState(() {
+                        _searchQuery = value;
+                        _applyFilters();
+                      });
+                    },
+                    onSubmitted: (value) {
+                      if (value.trim().isNotEmpty) _addSearchHistory(value.trim());
+                      _focusNode.requestFocus();
+                    },
+                  );
+                },
+                optionsViewBuilder: (context, onSelected, options) {
+                  return Align(
+                    alignment: Alignment.topLeft,
+                    child: Material(
+                      elevation: 8,
+                      color: const Color(0xFF1A1A2E),
+                      borderRadius: BorderRadius.circular(8),
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(maxHeight: 240, maxWidth: 400),
+                        child: ListView.builder(
+                          padding: const EdgeInsets.symmetric(vertical: 4),
+                          shrinkWrap: true,
+                          itemCount: options.length,
+                          itemBuilder: (context, index) {
+                            final option = options.elementAt(index);
+                            return ListTile(
+                              dense: true,
+                              leading: const Icon(Icons.history, size: 16, color: Colors.white38),
+                              title: Text(option, style: const TextStyle(color: Colors.white70, fontSize: 13)),
+                              trailing: IconButton(
+                                icon: const Icon(Icons.close, size: 14, color: Colors.white24),
+                                onPressed: () {
+                                  setState(() {
+                                    _searchHistory.remove(option);
+                                    SharedPreferences.getInstance().then((prefs) {
+                                      prefs.setStringList(_kSearchHistory, _searchHistory);
+                                    });
+                                  });
+                                },
+                              ),
+                              onTap: () => onSelected(option),
+                            );
                           },
-                        )
-                      : null,
-                ),
-                onChanged: (value) {
+                        ),
+                      ),
+                    ),
+                  );
+                },
+                onSelected: (selection) {
+                  _searchController.text = selection;
                   setState(() {
-                    _searchQuery = value;
+                    _searchQuery = selection;
                     _applyFilters();
                   });
+                  _focusNode.requestFocus();
                 },
               ),
             ),
@@ -1612,7 +1731,8 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
     return AnimatedContainer(
       duration: const Duration(milliseconds: 200),
       width: width,
-      color: const Color(0xFF111127),
+      clipBehavior: Clip.hardEdge,
+      decoration: const BoxDecoration(color: Color(0xFF111127)),
       child: FocusScope(
         node: _sidebarFocusNode,
         child: Column(
@@ -1721,10 +1841,10 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
       padding: const EdgeInsets.symmetric(vertical: 4),
       children: [
         _sidebarIcon(Icons.grid_view_rounded, 'All', isAll, () {
-          setState(() { _selectedGroup = 'All'; _applyFilters(); _saveSession(); });
+          setState(() { _clearSearch(); _selectedGroup = 'All'; _applyFilters(); _saveSession(); });
         }),
         _sidebarIcon(Icons.star_rounded, 'Favorites', isFav, () {
-          setState(() { _selectedGroup = 'Favorites'; _applyFilters(); _saveSession(); });
+          setState(() { _clearSearch(); _selectedGroup = 'Favorites'; _applyFilters(); _saveSession(); });
         }),
         const Divider(height: 1, color: Colors.white10),
         _sidebarIcon(Icons.folder_rounded, 'Groups', !isAll && !isFav, () {
@@ -1940,6 +2060,7 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
             if (event.logicalKey == LogicalKeyboardKey.select ||
                 event.logicalKey == LogicalKeyboardKey.enter) {
               setState(() {
+                _clearSearch();
                 // Only change channel list if provider has no subcategories
                 if (filterKey != null && children.isEmpty) {
                   _selectedGroup = filterKey;
@@ -1962,6 +2083,7 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
               return InkWell(
                 onTap: () {
                   setState(() {
+                    _clearSearch();
                     // Only change channel list if provider has no subcategories
                     if (filterKey != null && children.isEmpty) {
                       _selectedGroup = filterKey;
@@ -2175,6 +2297,7 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
               return KeyEventResult.handled;
             }
             setState(() {
+              _clearSearch();
               _selectedGroup = filterKey;
               _applyFilters();
             });
@@ -2194,6 +2317,7 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
                   return;
                 }
                 setState(() {
+                  _clearSearch();
                   _selectedGroup = filterKey;
                   _applyFilters();
                 });

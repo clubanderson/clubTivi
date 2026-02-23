@@ -128,7 +128,15 @@ class EpgMappingNotifier extends StateNotifier<EpgMappingState> {
 
   EpgMappingNotifier(this._db) : super(const EpgMappingState());
 
-  /// Load all channels and their mapping status.
+  static String _normalizeName(String name) {
+    return name.toLowerCase()
+        .replaceAll(RegExp(r'\b(hd|fhd|shd|sd|4k|uhd)\b', caseSensitive: false), '')
+        .replaceAll(RegExp(r'(us-?[a-z]*\|?|uk-?[a-z]*\|?|ca-?[a-z]*\|?|mx-?[a-z]*\|?)'), '')
+        .replaceAll(RegExp(r'[\s|()[\]]+'), ' ')
+        .trim();
+  }
+
+  /// Load all channels and their mapping status (scoped to favorites + failover alts).
   Future<void> load() async {
     state = state.copyWith(isLoading: true);
 
@@ -149,6 +157,20 @@ class EpgMappingNotifier extends StateNotifier<EpgMappingState> {
       )));
     }
 
+    // Scope to favorites + failover alternatives
+    final favIds = await _db.getAllFavoritedChannelIds();
+    final scopeIds = <String>{...favIds};
+    final favChannels = allChannels.where((c) => favIds.contains(c.id));
+    for (final fav in favChannels) {
+      final normName = _normalizeName(fav.name);
+      for (final c in allChannels) {
+        if (c.id != fav.id && _normalizeName(c.name) == normName) {
+          scopeIds.add(c.id);
+        }
+      }
+    }
+    final scopedChannels = allChannels.where((c) => scopeIds.contains(c.id)).toList();
+
     final mappings = await _db.getAllMappings();
     final mappingMap = <String, db.EpgMapping>{};
     for (final m in mappings) {
@@ -165,7 +187,7 @@ class EpgMappingNotifier extends StateNotifier<EpgMappingState> {
       }
     }
 
-    final entries = allChannels.map((channel) {
+    final entries = scopedChannels.map((channel) {
       final key = '${channel.id}:${channel.providerId}';
       final dbMapping = mappingMap[key];
 
