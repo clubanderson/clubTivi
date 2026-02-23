@@ -34,7 +34,7 @@ class BackupService {
     final archive = Archive();
 
     // 1. SQLite database
-    final dir = await getApplicationDocumentsDirectory();
+    final dir = await getApplicationSupportDirectory();
     final dbFile = File(p.join(dir.path, 'clubtivi', 'clubtivi.db'));
     if (await dbFile.exists()) {
       final bytes = await dbFile.readAsBytes();
@@ -102,7 +102,7 @@ class BackupService {
     // 2. Restore database
     final dbArchiveFile = archive.findFile('clubtivi.db');
     if (dbArchiveFile != null) {
-      final dir = await getApplicationDocumentsDirectory();
+      final dir = await getApplicationSupportDirectory();
       final dbPath = p.join(dir.path, 'clubtivi', 'clubtivi.db');
       await File(dbPath).parent.create(recursive: true);
       await File(dbPath).writeAsBytes(dbArchiveFile.content as List<int>);

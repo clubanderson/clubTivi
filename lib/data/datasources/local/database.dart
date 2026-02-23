@@ -415,9 +415,19 @@ class AppDatabase extends _$AppDatabase {
 
 LazyDatabase _openConnection() {
   return LazyDatabase(() async {
-    final dir = await getApplicationDocumentsDirectory();
+    final dir = await getApplicationSupportDirectory();
     final file = File(p.join(dir.path, 'clubtivi', 'clubtivi.db'));
     await file.parent.create(recursive: true);
+
+    // Migrate from old ~/Documents location if the new DB doesn't exist yet.
+    if (!await file.exists()) {
+      final oldDir = await getApplicationDocumentsDirectory();
+      final oldFile = File(p.join(oldDir.path, 'clubtivi', 'clubtivi.db'));
+      if (await oldFile.exists()) {
+        await oldFile.copy(file.path);
+      }
+    }
+
     return NativeDatabase.createInBackground(file);
   });
 }
