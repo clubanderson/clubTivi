@@ -297,17 +297,34 @@ class StreamAlternativesService {
     final seen = <String>{excludeUrl};
     final results = <AlternativeDetail>[];
 
+    // Match confidence by reason (how sure we are it's the same channel)
+    const _matchConfidence = <String, double>{
+      'vanity name': 1.0,
+      'tvgId': 0.95,
+      'EPG+call sign': 0.90,
+      'EPG': 0.65,
+      'call sign': 0.60,
+      'name': 0.50,
+      'original name': 0.40,
+    };
+
     void addTagged(List<Channel>? channels, String reason) {
       if (channels == null) return;
+      final confidence = _matchConfidence[reason] ?? 0.3;
+      final epgMatch = reason == 'EPG+call sign' || reason == 'EPG';
       for (final ch in channels) {
         if (ch.id != channelId &&
             ch.streamUrl.isNotEmpty &&
             seen.add(ch.streamUrl)) {
+          final streamHealth = _health.getScore(ch.streamUrl);
+          // Composite: 60% match confidence + 40% stream health
+          final composite = confidence * 0.6 + streamHealth * 0.4;
           results.add(AlternativeDetail(
             channel: ch,
             matchReason: reason,
-            healthScore: _health.getScore(ch.streamUrl),
+            healthScore: composite,
             providerName: _providerNames[ch.providerId] ?? ch.providerId,
+            hasEpgMatch: epgMatch || (epgChannelId != null && epgChannelId!.isNotEmpty && ch.tvgId != null && ch.tvgId == epgChannelId),
           ));
         }
       }
@@ -316,7 +333,7 @@ class StreamAlternativesService {
     // Priority 1: Same vanity name (user-confirmed)
     if (vanityName != null && vanityName.isNotEmpty) {
       final key = vanityName.toLowerCase().trim();
-      addTagged(_vanityIndex[key], 'vanity name');
+      addTagged(_vanityIndex[key], 'confirmed');
     }
 
     // Priority 2: Same tvgId
@@ -437,11 +454,13 @@ class AlternativeDetail {
   final String matchReason;
   final double healthScore;
   final String providerName;
+  final bool hasEpgMatch;
 
   const AlternativeDetail({
     required this.channel,
     required this.matchReason,
     required this.healthScore,
     this.providerName = '',
+    this.hasEpgMatch = false,
   });
 }

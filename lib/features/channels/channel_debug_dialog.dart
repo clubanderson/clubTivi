@@ -149,6 +149,7 @@ class _ChannelDebugDialogState extends State<ChannelDebugDialog> {
 
   /// Switch playback to an alternative stream for preview.
   void _previewAlternative(AlternativeDetail alt) {
+    if (_playingChannelId == alt.channel.id) return; // already playing
     final url = alt.channel.streamUrl;
     if (url == null || url.isEmpty) return;
     widget.playerService.play(url);
@@ -157,6 +158,7 @@ class _ChannelDebugDialogState extends State<ChannelDebugDialog> {
 
   /// Switch back to the current (original) channel.
   void _playOriginal() {
+    if (_playingChannelId == null) return; // already playing original
     final url = widget.channel.streamUrl;
     if (url == null || url.isEmpty) return;
     widget.playerService.play(url);
@@ -466,23 +468,17 @@ class _ChannelDebugDialogState extends State<ChannelDebugDialog> {
                       ],
                     ),
                     const SizedBox(height: 4),
-                    // Current channel in the list (with playing badge)
+                    // Current channel in the list
                     InkWell(
                       onTap: _playingChannelId != null ? _playOriginal : null,
-                      child: Row(
-                        children: [
-                          Expanded(
-                            child: _failoverRow(
-                              name: ch.name,
-                              providerName: widget.currentProviderName,
-                              badge: _playingChannelId == null ? 'playing' : 'current',
-                              badgeColor: const Color(0xFF00B894),
-                              healthScore: null,
-                            ),
-                          ),
-                          // Spacer to align with accept/reject buttons below
-                          const SizedBox(width: 64),
-                        ],
+                      child: _failoverRow(
+                        name: ch.name,
+                        providerName: widget.currentProviderName,
+                        badge: 'source',
+                        badgeColor: null,
+                        healthScore: 1.0,
+                        isPlaying: _playingChannelId == null,
+                        streamUrl: ch.streamUrl,
                       ),
                     ),
                     if (widget.alternatives.isNotEmpty) ...[
@@ -500,9 +496,12 @@ class _ChannelDebugDialogState extends State<ChannelDebugDialog> {
                                   child: _failoverRow(
                                     name: alt.channel.name,
                                     providerName: alt.providerName.isNotEmpty ? alt.providerName : null,
-                                    badge: isPlaying ? 'playing' : (decision == true ? 'accepted' : alt.matchReason),
-                                    badgeColor: isPlaying ? Colors.cyanAccent : (decision == true ? const Color(0xFF00B894) : null),
+                                    badge: alt.matchReason,
+                                    badgeColor: decision == true ? const Color(0xFF00B894) : null,
                                     healthScore: alt.healthScore,
+                                    isPlaying: isPlaying,
+                                    hasEpgMatch: alt.hasEpgMatch,
+                                    streamUrl: alt.channel.streamUrl,
                                   ),
                                 ),
                               ),
@@ -614,8 +613,10 @@ class _ChannelDebugDialogState extends State<ChannelDebugDialog> {
     required String badge,
     Color? badgeColor,
     double? healthScore,
+    bool isPlaying = false,
+    bool hasEpgMatch = false,
+    String? streamUrl,
   }) {
-    final isCurrentRow = badge == 'current';
     final healthColor = healthScore == null
         ? const Color(0xFF00B894)
         : healthScore > 0.7
@@ -627,38 +628,35 @@ class _ChannelDebugDialogState extends State<ChannelDebugDialog> {
       padding: const EdgeInsets.only(bottom: 2),
       child: Row(
         children: [
-          // Health dot
-          Container(
-            width: 6,
-            height: 6,
-            decoration: BoxDecoration(
-              color: isCurrentRow ? const Color(0xFF00B894) : healthColor,
-              shape: BoxShape.circle,
+          // Health dot (cyan if playing)
+          if (isPlaying)
+            const Icon(Icons.play_arrow, size: 12, color: Colors.cyanAccent)
+          else
+            Container(
+              width: 6,
+              height: 6,
+              decoration: BoxDecoration(
+                color: healthColor,
+                shape: BoxShape.circle,
+              ),
             ),
-          ),
           const SizedBox(width: 6),
           // Provider badge
           if (providerName != null && providerName.isNotEmpty) ...[
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
               decoration: BoxDecoration(
-                color: isCurrentRow
-                    ? const Color(0xFF00B894).withAlpha(40)
-                    : const Color(0xFF6C5CE7).withAlpha(40),
+                color: const Color(0xFF6C5CE7).withAlpha(40),
                 borderRadius: BorderRadius.circular(4),
                 border: Border.all(
-                  color: isCurrentRow
-                      ? const Color(0xFF00B894).withAlpha(80)
-                      : const Color(0xFF6C5CE7).withAlpha(80),
+                  color: const Color(0xFF6C5CE7).withAlpha(80),
                   width: 0.5,
                 ),
               ),
               child: Text(
                 providerName,
-                style: TextStyle(
-                  color: isCurrentRow
-                      ? const Color(0xFF00B894)
-                      : const Color(0xFF6C5CE7),
+                style: const TextStyle(
+                  color: Color(0xFF6C5CE7),
                   fontSize: 8,
                   fontWeight: FontWeight.bold,
                 ),
@@ -671,9 +669,9 @@ class _ChannelDebugDialogState extends State<ChannelDebugDialog> {
             child: Text(
               name,
               style: TextStyle(
-                color: isCurrentRow ? Colors.white : Colors.white70,
+                color: isPlaying ? Colors.white : Colors.white70,
                 fontSize: 10,
-                fontWeight: isCurrentRow ? FontWeight.bold : FontWeight.normal,
+                fontWeight: isPlaying ? FontWeight.bold : FontWeight.normal,
               ),
               overflow: TextOverflow.ellipsis,
             ),
@@ -691,10 +689,24 @@ class _ChannelDebugDialogState extends State<ChannelDebugDialog> {
               style: TextStyle(
                 color: badgeColor ?? Colors.white38,
                 fontSize: 8,
-                fontWeight: isCurrentRow ? FontWeight.bold : FontWeight.normal,
               ),
             ),
           ),
+          // EPG badge
+          if (hasEpgMatch) ...[
+            const SizedBox(width: 4),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+              decoration: BoxDecoration(
+                color: const Color(0xFF00CEC9).withAlpha(40),
+                borderRadius: BorderRadius.circular(4),
+              ),
+              child: const Text(
+                'EPG',
+                style: TextStyle(color: Color(0xFF00CEC9), fontSize: 8, fontWeight: FontWeight.bold),
+              ),
+            ),
+          ],
           // Health %
           if (healthScore != null) ...[
             const SizedBox(width: 4),
@@ -705,6 +717,19 @@ class _ChannelDebugDialogState extends State<ChannelDebugDialog> {
                 fontSize: 9,
                 fontWeight: FontWeight.bold,
               ),
+            ),
+          ],
+          // Copy URL
+          if (streamUrl != null && streamUrl.isNotEmpty) ...[
+            const SizedBox(width: 4),
+            GestureDetector(
+              onTap: () {
+                Clipboard.setData(ClipboardData(text: streamUrl));
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('URL copied'), duration: Duration(seconds: 1)),
+                );
+              },
+              child: const Icon(Icons.copy, size: 12, color: Colors.white38),
             ),
           ],
         ],
