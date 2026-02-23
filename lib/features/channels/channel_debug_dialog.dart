@@ -466,19 +466,26 @@ class _ChannelDebugDialogState extends State<ChannelDebugDialog> {
                       ],
                     ),
                     const SizedBox(height: 4),
-                    // Current channel (always first)
+                    // Current channel in the list (with playing badge)
                     InkWell(
                       onTap: _playingChannelId != null ? _playOriginal : null,
-                      child: _failoverRow(
-                        name: ch.name,
-                        providerName: widget.currentProviderName,
-                        badge: _playingChannelId == null ? 'playing' : 'current',
-                        badgeColor: const Color(0xFF00B894),
-                        healthScore: null,
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: _failoverRow(
+                              name: ch.name,
+                              providerName: widget.currentProviderName,
+                              badge: _playingChannelId == null ? 'playing' : 'current',
+                              badgeColor: const Color(0xFF00B894),
+                              healthScore: null,
+                            ),
+                          ),
+                          // Spacer to align with accept/reject buttons below
+                          const SizedBox(width: 64),
+                        ],
                       ),
                     ),
                     if (widget.alternatives.isNotEmpty) ...[
-                      const Divider(color: Colors.white12, height: 8),
                       ...widget.alternatives.map((alt) {
                         final decision = _decisions[alt.channel.id];
                         final isRejected = decision == false;
