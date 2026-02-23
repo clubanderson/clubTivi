@@ -47,6 +47,13 @@ class PlayerService {
   final StreamProxy _streamProxy = StreamProxy();
   bool _proxyActive = false;
 
+  // ── Warm failover: background pre-buffer player ──
+  Player? _warmPlayer;
+  String? _warmUrl;
+  bool _warmReady = false;
+  StreamSubscription<bool>? _warmBufferSub;
+  Timer? _warmTimeoutTimer;
+
   /// Broadcast current stream URL changes (for UI like failover dialog).
   final _currentUrlController = StreamController<String?>.broadcast();
   Stream<String?> get currentUrlStream => _currentUrlController.stream;
@@ -78,6 +85,8 @@ class PlayerService {
       await np.setProperty('audio-channels', 'stereo');
       // Normalize volume when downmixing surround to stereo
       await np.setProperty('audio-normalize-downmix', 'yes');
+      // EBU R128 loudness normalization — keeps volume consistent across streams
+      await np.setProperty('af', 'loudnorm=I=-14:TP=-1:LRA=13');
       // Disable SPDIF passthrough which can cause silent output
       await np.setProperty('audio-spdif', '');
       // Volume
@@ -136,6 +145,7 @@ class PlayerService {
     _currentOriginalName = originalName;
     _tracksSub?.cancel();
     _failoverCheckTimer?.cancel();
+    _disposeWarmPlayer();
     _proxyActive = false;
     await _streamProxy.stop();
     await _ensureReady();
@@ -322,6 +332,10 @@ class PlayerService {
 
       if (cacheSecs < 1.0) {
         _consecutiveLowBuffer++;
+        if (_consecutiveLowBuffer >= 2 && !_warmReady && _warmPlayer == null) {
+          // 4+ seconds of low buffer → start pre-buffering alternative (warm)
+          _startWarmPreload();
+        }
         if (_consecutiveLowBuffer >= 3) {
           // 6+ seconds of critically low buffer → failover
           _healthTracker?.recordStall(_currentUrl!);
@@ -329,13 +343,112 @@ class PlayerService {
         }
       } else {
         _consecutiveLowBuffer = 0;
+        // Buffer recovered — dispose warm player if not yet used
+        if (_warmPlayer != null && !_warmReady) {
+          _disposeWarmPlayer();
+        }
       }
     });
+  }
+
+  /// Start pre-buffering the best alternative stream in a hidden player.
+  void _startWarmPreload() {
+    if (_alternatives == null || _currentUrl == null) return;
+
+    final alts = _alternatives!.getAlternatives(
+      channelId: _currentChannelId ?? '',
+      epgChannelId: _currentEpgChannelId,
+      tvgId: _currentTvgId,
+      channelName: _currentChannelName,
+      vanityName: _currentVanityName,
+      originalName: _currentOriginalName,
+      excludeUrl: _currentUrl!,
+    );
+    if (alts.isEmpty) return;
+
+    final warmUrl = alts.first;
+    debugPrint('[Failover] Warm pre-buffering: $warmUrl');
+    _warmUrl = warmUrl;
+    _warmReady = false;
+
+    _warmPlayer = Player(
+      configuration: const PlayerConfiguration(logLevel: MPVLogLevel.warn),
+    );
+
+    // Configure warm player: muted, with loudnorm, no video output
+    final np = _warmPlayer!.platform;
+    if (np is native_player.NativePlayer) {
+      np.setProperty('vid', 'no'); // disable video decoding
+      np.setProperty('audio-channels', 'stereo');
+      np.setProperty('audio-normalize-downmix', 'yes');
+      np.setProperty('af', 'loudnorm=I=-14:TP=-1:LRA=13');
+      np.setProperty('volume', '0'); // silent
+    }
+
+    // Listen for buffering state — when it stops buffering, stream is ready
+    _warmBufferSub?.cancel();
+    bool initialBuffering = true;
+    _warmBufferSub = _warmPlayer!.stream.buffering.listen((buffering) {
+      if (initialBuffering && buffering) return; // still loading
+      if (initialBuffering && !buffering) {
+        initialBuffering = false;
+        _warmReady = true;
+        _warmTimeoutTimer?.cancel();
+        debugPrint('[Failover] Warm player ready: $_warmUrl');
+      }
+    });
+
+    _warmPlayer!.open(Media(warmUrl));
+
+    // Timeout: if warm player doesn't become ready in 10s, dispose it
+    _warmTimeoutTimer?.cancel();
+    _warmTimeoutTimer = Timer(const Duration(seconds: 10), () {
+      if (!_warmReady) {
+        debugPrint('[Failover] Warm pre-buffer timed out');
+        _disposeWarmPlayer();
+      }
+    });
+  }
+
+  /// Dispose the warm pre-buffer player and clean up.
+  void _disposeWarmPlayer() {
+    _warmBufferSub?.cancel();
+    _warmBufferSub = null;
+    _warmTimeoutTimer?.cancel();
+    _warmTimeoutTimer = null;
+    _warmPlayer?.dispose();
+    _warmPlayer = null;
+    _warmUrl = null;
+    _warmReady = false;
   }
 
   Future<void> _autoFailover() async {
     if (_alternatives == null || _currentUrl == null) return;
 
+    // If warm player is ready, do an instant switch
+    if (_warmReady && _warmPlayer != null && _warmUrl != null) {
+      debugPrint('[Failover] Instant switch to warm-buffered: $_warmUrl');
+      final newUrl = _warmUrl!;
+      _consecutiveLowBuffer = 0;
+      _failoverCheckTimer?.cancel();
+
+      // Dispose warm player (we'll re-open on main player)
+      _disposeWarmPlayer();
+
+      // Switch main player to the pre-buffered URL
+      _currentUrl = newUrl;
+      _proxyActive = false;
+      await _streamProxy.stop();
+      await player.open(Media(newUrl));
+      await _bufferManager.applyForStream(newUrl, this);
+      _startFailoverMonitor();
+
+      _currentUrlController.add(newUrl);
+      onFailover?.call('⚡ Switched stream (warm)');
+      return;
+    }
+
+    // Cold failover: find best alternative and switch directly
     final alts = _alternatives!.getAlternatives(
       channelId: _currentChannelId ?? '',
       epgChannelId: _currentEpgChannelId,
@@ -353,14 +466,15 @@ class PlayerService {
 
     // Switch stream (keep channel metadata — it's the same content)
     _failoverCheckTimer?.cancel();
+    _disposeWarmPlayer();
     _currentUrl = newUrl;
     _proxyActive = false;
     await _streamProxy.stop();
     await player.open(Media(newUrl));
     await _bufferManager.applyForStream(newUrl, this);
-    await player.setVolume(100.0);
     _startFailoverMonitor();
 
+    _currentUrlController.add(newUrl);
     onFailover?.call('⚡ Switched stream');
   }
 
@@ -370,6 +484,7 @@ class PlayerService {
     _bufferTrackSub?.cancel();
     _bufferTrackTimer?.cancel();
     _failoverCheckTimer?.cancel();
+    _disposeWarmPlayer();
     _healthTracker?.save();
     _streamProxy.stop();
     _player?.dispose();
