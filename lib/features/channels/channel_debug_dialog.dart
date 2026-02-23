@@ -151,9 +151,14 @@ class _ChannelDebugDialogState extends State<ChannelDebugDialog> {
                     Expanded(
                       child: _compactCard([
                         _row('Name', ch.name),
+                        if (ch.tvgName != null &&
+                            ch.tvgName!.isNotEmpty &&
+                            ch.tvgName != ch.name)
+                          _row('Original', ch.tvgName!),
                         if (widget.originalName != null &&
-                            widget.originalName != ch.name)
-                          _row('Original', widget.originalName!),
+                            widget.originalName != ch.name &&
+                            widget.originalName != ch.tvgName)
+                          _row('DB Name', widget.originalName!),
                         _row('Group', ch.groupTitle ?? '—'),
                         _row('EPG',
                           widget.mappedEpgId != null && widget.mappedEpgId!.isNotEmpty
