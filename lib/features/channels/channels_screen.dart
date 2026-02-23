@@ -272,8 +272,7 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
       if (mapped != null && mapped.isNotEmpty) {
         epgChannelIds.add(mapped);
       } else if (c.tvgId != null && c.tvgId!.isNotEmpty) {
-        final prefixed = _rawToPrefixedEpg[c.tvgId!];
-        if (prefixed != null) epgChannelIds.add(prefixed);
+        final prefixed = _rawToPrefixedEpg[c.tvgId!.toLowerCase()];        if (prefixed != null) epgChannelIds.add(prefixed);
       }
     }
     if (epgChannelIds.isEmpty) return;
@@ -495,7 +494,7 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
       final chs = await database.getEpgChannelsForSource(src.id);
       for (final ch in chs) {
         validIds.add(ch.id); // prefixed: sourceId_channelId
-        rawToPrefixed[ch.channelId] = ch.id;
+        rawToPrefixed[ch.channelId.toLowerCase()] = ch.id;
       }
     }
 
@@ -546,7 +545,7 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
       if (mapped != null && mapped.isNotEmpty) {
         epgChannelIds.add(mapped);
       } else if (c.tvgId != null && c.tvgId!.isNotEmpty) {
-        final prefixed = rawToPrefixed[c.tvgId!];
+        final prefixed = rawToPrefixed[c.tvgId!.toLowerCase()];
         if (prefixed != null) epgChannelIds.add(prefixed);
       }
     }
@@ -836,7 +835,7 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
     final mapped = _epgMappings[channel.id];
     if (mapped != null && mapped.isNotEmpty) return mapped;
     if (channel.tvgId != null && channel.tvgId!.isNotEmpty) {
-      final prefixed = _rawToPrefixedEpg[channel.tvgId!];
+      final prefixed = _rawToPrefixedEpg[channel.tvgId!.toLowerCase()];
       if (prefixed != null) return prefixed;
     }
     return null;
@@ -1286,7 +1285,7 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
                     onChanged: (value) {
                       _searchDebounce?.cancel();
                       _searchQuery = value;
-                      _searchDebounce = Timer(const Duration(milliseconds: 300), () {
+                      _searchDebounce = Timer(const Duration(seconds: 2), () {
                         if (mounted) setState(() => _applyFilters());
                       });
                     },
@@ -1783,18 +1782,16 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
           Expanded(
             child: _sidebarExpanded ? _buildSidebarTree() : _buildCollapsedSidebar(),
           ),
-          // TV navigation items (Settings) — only on Android TV
-          if (Platform.isAndroid) ...[
-            const Divider(height: 1, color: Colors.white10),
-            if (_sidebarExpanded) ...[
-              _buildSidebarNavItem(Icons.settings_rounded, 'Settings', () {
-                context.push('/settings');
-              }),
-            ] else ...[
-              _sidebarIcon(Icons.settings_rounded, 'Settings', false, () {
-                context.push('/settings');
-              }),
-            ],
+          // Settings — anchored at bottom of sidebar
+          const Divider(height: 1, color: Colors.white10),
+          if (_sidebarExpanded) ...[
+            _buildSidebarNavItem(Icons.settings_rounded, 'Settings', () {
+              context.push('/settings');
+            }),
+          ] else ...[
+            _sidebarIcon(Icons.settings_rounded, 'Settings', false, () {
+              context.push('/settings');
+            }),
           ],
           // Version watermark
           Padding(
@@ -1977,8 +1974,6 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
         _buildTreeItem('Recordings', 'action:recordings', Icons.videocam_rounded, indent: 0),
         _buildTreeItem('Play File', 'action:play_file', Icons.play_circle_outline_rounded, indent: 0),
         _buildTreeItem('Play URL', 'action:play_url', Icons.link_rounded, indent: 0),
-        const Divider(height: 1, color: Colors.white10),
-        _buildTreeItem('Settings', 'action:settings', Icons.settings_rounded, indent: 0),
       ],
     );
   }
