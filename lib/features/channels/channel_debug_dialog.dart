@@ -48,43 +48,20 @@ class ChannelDebugDialog extends StatefulWidget {
 }
 
 class _ChannelDebugDialogState extends State<ChannelDebugDialog> {
-  // Buffering sparkline data (last 60 points).
-  final List<bool> _bufferHistory = List.filled(60, false, growable: true);
-  StreamSubscription<bool>? _bufferingSub;
-
-  int _bufferEventCount = 0;
-  int _bufferingSeconds = 0;
-  Timer? _bufferingTimer;
-  bool _currentlyBuffering = false;
+  Timer? _refreshTimer;
 
   @override
   void initState() {
     super.initState();
-
-    _bufferingSub =
-        widget.playerService.bufferingStream.listen((isBuffering) {
-      if (!mounted) return;
-      setState(() {
-        _bufferHistory.removeAt(0);
-        _bufferHistory.add(isBuffering);
-        if (isBuffering && !_currentlyBuffering) _bufferEventCount++;
-        _currentlyBuffering = isBuffering;
-      });
-    });
-
-    // Tick every second to accumulate buffering time.
-    _bufferingTimer = Timer.periodic(const Duration(seconds: 1), (_) {
-      if (!mounted) return;
-      if (_currentlyBuffering) {
-        setState(() => _bufferingSeconds++);
-      }
+    // Refresh UI every second to pick up latest values from PlayerService.
+    _refreshTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (mounted) setState(() {});
     });
   }
 
   @override
   void dispose() {
-    _bufferingSub?.cancel();
-    _bufferingTimer?.cancel();
+    _refreshTimer?.cancel();
     super.dispose();
   }
 
@@ -93,14 +70,16 @@ class _ChannelDebugDialogState extends State<ChannelDebugDialog> {
   // ---------------------------------------------------------------------------
 
   Color _healthColor() {
-    if (_bufferEventCount > 5) return const Color(0xFFFF6B6B);
-    if (_bufferEventCount >= 2) return const Color(0xFFFDCB6E);
+    final count = widget.playerService.bufferEventCount;
+    if (count > 5) return const Color(0xFFFF6B6B);
+    if (count >= 2) return const Color(0xFFFDCB6E);
     return const Color(0xFF00B894);
   }
 
   String _healthLabel() {
-    if (_bufferEventCount > 5) return 'Poor';
-    if (_bufferEventCount >= 2) return 'Fair';
+    final count = widget.playerService.bufferEventCount;
+    if (count > 5) return 'Poor';
+    if (count >= 2) return 'Fair';
     return 'Good';
   }
 
@@ -266,7 +245,7 @@ class _ChannelDebugDialogState extends State<ChannelDebugDialog> {
                     Expanded(
                       child: SizedBox(
                         height: 30,
-                        child: CustomPaint(painter: _BufferingSparkline(_bufferHistory)),
+                        child: CustomPaint(painter: _BufferingSparkline(widget.playerService.bufferHistory)),
                       ),
                     ),
                     const SizedBox(width: 12),
@@ -274,9 +253,9 @@ class _ChannelDebugDialogState extends State<ChannelDebugDialog> {
                       crossAxisAlignment: CrossAxisAlignment.end,
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Text('$_bufferEventCount events',
+                        Text('${widget.playerService.bufferEventCount} events',
                           style: const TextStyle(color: Colors.white54, fontSize: 10)),
-                        Text('${_bufferingSeconds}s buffering',
+                        Text('${widget.playerService.bufferingSeconds}s buffering',
                           style: const TextStyle(color: Colors.white54, fontSize: 10)),
                       ],
                     ),

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io' show Platform;
 
 import 'package:flutter/material.dart';
@@ -8,6 +9,7 @@ import 'package:go_router/go_router.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../data/datasources/local/database.dart' as db;
 import '../../features/providers/provider_manager.dart' show databaseProvider;
@@ -164,7 +166,13 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
     if (isShowStream ||
         !(playerService.player.state.playing ||
             playerService.player.state.buffering)) {
-      playerService.play(urls[_currentUrlIndex]);
+      playerService.play(urls[_currentUrlIndex],
+        channelId: widget.channels.isNotEmpty ? widget.channels[_channelIndex]['id'] as String? : null,
+        epgChannelId: widget.channels.isNotEmpty ? widget.channels[_channelIndex]['epgChannelId'] as String? : null,
+        tvgId: widget.channels.isNotEmpty ? widget.channels[_channelIndex]['tvgId'] as String? : null,
+        channelName: _currentChannelName,
+        vanityName: widget.channels.isNotEmpty ? widget.channels[_channelIndex]['vanityName'] as String? : null,
+      );
     }
 
     // Load track info once tracks become available
@@ -188,7 +196,9 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
   void _switchToNextStream() {
     setState(() => _currentUrlIndex++);
     final urls = [widget.streamUrl, ...widget.alternativeUrls];
-    ref.read(playerServiceProvider).play(urls[_currentUrlIndex]);
+    ref.read(playerServiceProvider).play(urls[_currentUrlIndex],
+      channelName: _currentChannelName,
+    );
   }
 
   Future<void> _showCastPicker() async {
@@ -372,12 +382,14 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
     final key = event.logicalKey;
     final isAndroid = Platform.isAndroid;
 
-    // Escape / Backspace / Back → exit fullscreen
-    // Defer navigation to next frame so the key-up event can be processed
-    // before the focus tree is torn down (avoids Flutter key-state assertion).
+    // Escape / Backspace / Back → close channel list first, then exit
     if (key == LogicalKeyboardKey.escape ||
         key == LogicalKeyboardKey.backspace ||
         key == LogicalKeyboardKey.goBack) {
+      if (_showChannelList) {
+        setState(() => _showChannelList = false);
+        return KeyEventResult.handled;
+      }
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
         GoRouter.of(context).canPop()
@@ -435,7 +447,12 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
       _showOverlay = true;
     });
     final ch = widget.channels[_channelIndex];
-    ref.read(playerServiceProvider).play(ch['streamUrl'] as String? ?? '');
+    ref.read(playerServiceProvider).play(ch['streamUrl'] as String? ?? '',
+      channelId: ch['id'] as String?,
+      epgChannelId: ch['epgChannelId'] as String?,
+      tvgId: ch['tvgId'] as String?,
+      channelName: ch['name'] as String?,
+    );
     _autoHideOverlay();
     _loadEpgInfo();
     _loadFavoriteState();
@@ -470,11 +487,16 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
       onKeyEvent: _handleKeyEvent,
       child: Scaffold(
         backgroundColor: Colors.black,
-        body: GestureDetector(
-          onTap: _toggleOverlay,
-          child: Stack(
-            fit: StackFit.expand,
-            children: [
+        body: MouseRegion(
+          onHover: (_) {
+            if (!_showOverlay) setState(() => _showOverlay = true);
+            _autoHideOverlay();
+          },
+          child: GestureDetector(
+            onTap: _toggleOverlay,
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
               // Video — fill entire screen
               Video(controller: playerService.videoController, controls: NoVideoControls),
 
@@ -498,6 +520,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
                 onFavorite: _toggleFavorite,
                 onPip: _enterPip,
                 onInfo: _showInfoDialog,
+                onRename: _renameCurrentChannel,
                 onSettings: () => GoRouter.of(context).push('/settings'),
                 onChannelList: () => setState(() => _showChannelList = !_showChannelList),
               ),
@@ -669,7 +692,8 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
                     ),
                   ),
                 ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
@@ -681,12 +705,14 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
   Future<void> _takeScreenshot() async {
     final ps = ref.read(playerServiceProvider);
     try {
-      final dir = await getTemporaryDirectory();
+      final dir = Platform.isMacOS || Platform.isLinux || Platform.isWindows
+          ? (await getDownloadsDirectory()) ?? await getTemporaryDirectory()
+          : await getTemporaryDirectory();
       final path = '${dir.path}/clubtivi_screenshot_${DateTime.now().millisecondsSinceEpoch}.png';
       final result = await ps.takeScreenshot(path);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(result != null ? 'Screenshot saved' : 'Screenshot not available')),
+          SnackBar(content: Text(result != null ? 'Screenshot saved: $path' : 'Screenshot not available')),
         );
       }
     } catch (e) {
@@ -834,6 +860,87 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
         duration: Duration(seconds: 2),
       ),
     );
+  }
+
+  Future<void> _renameCurrentChannel() async {
+    if (widget.channels.isEmpty) return;
+    final ch = widget.channels[_channelIndex];
+    final channelId = ch['id'] as String?;
+    if (channelId == null) return;
+
+    // Load current vanity names
+    final prefs = await SharedPreferences.getInstance();
+    final vanityJson = prefs.getString('channel_vanity_names');
+    Map<String, String> vanityNames = {};
+    if (vanityJson != null) {
+      try {
+        final decoded = jsonDecode(vanityJson) as Map<String, dynamic>;
+        vanityNames = decoded.map((k, v) => MapEntry(k, v as String));
+      } catch (_) {}
+    }
+
+    final originalName = ch['name'] as String? ?? '';
+    final currentVanity = vanityNames[channelId];
+    final controller = TextEditingController(text: currentVanity ?? originalName);
+
+    if (!mounted) return;
+    final result = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Set Display Name'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Original: $originalName',
+                style: const TextStyle(fontSize: 12, color: Colors.white54)),
+            const SizedBox(height: 12),
+            TextFormField(
+              controller: controller,
+              autofocus: true,
+              decoration: const InputDecoration(labelText: 'Display Name'),
+            ),
+          ],
+        ),
+        actions: [
+          if (currentVanity != null)
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, '\x00RESET'),
+              child: const Text('Reset to Original'),
+            ),
+          TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Cancel')),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, controller.text.trim()),
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    if (result == null) return;
+
+    if (result == '\x00RESET') {
+      vanityNames.remove(channelId);
+    } else if (result.isNotEmpty && result != originalName) {
+      vanityNames[channelId] = result;
+    } else {
+      return;
+    }
+
+    await prefs.setString('channel_vanity_names', jsonEncode(vanityNames));
+
+    // Update in-memory channel map and displayed name
+    if (!mounted) return;
+    setState(() {
+      widget.channels[_channelIndex]['vanityName'] =
+          vanityNames[channelId];
+      widget.channels[_channelIndex]['name'] =
+          vanityNames[channelId] ?? originalName;
+      _currentChannelName =
+          vanityNames[channelId] ?? originalName;
+    });
   }
 
   void _showInfoDialog() {

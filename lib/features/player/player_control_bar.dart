@@ -19,6 +19,7 @@ class PlayerControlBar extends ConsumerStatefulWidget {
   final VoidCallback? onInfo;
   final VoidCallback? onSettings;
   final VoidCallback? onChannelList;
+  final VoidCallback? onRename;
   final VoidCallback? onSubtitleToggle;
   final VoidCallback? onSubtitleSelect;
   final VoidCallback? onAudioSelect;
@@ -38,6 +39,7 @@ class PlayerControlBar extends ConsumerStatefulWidget {
     this.onInfo,
     this.onSettings,
     this.onChannelList,
+    this.onRename,
     this.onSubtitleToggle,
     this.onSubtitleSelect,
     this.onAudioSelect,
@@ -54,6 +56,7 @@ class PlayerControlBar extends ConsumerStatefulWidget {
 
 class _PlayerControlBarState extends ConsumerState<PlayerControlBar> {
   bool _visible = true;
+  bool _isHoveringBar = false;
   Timer? _hideTimer;
 
   // Player state cached from streams
@@ -75,6 +78,8 @@ class _PlayerControlBarState extends ConsumerState<PlayerControlBar> {
   bool _isInterlaced = false;
   String _bufferDuration = '—';
   final List<double> _fpsHistory = [];
+  final List<double> _bufferHistory = [];
+  String _bufferTier = 'normal';
 
   @override
   void initState() {
@@ -101,6 +106,11 @@ class _PlayerControlBarState extends ConsumerState<PlayerControlBar> {
       final bufDur = double.tryParse(results[3] ?? '');
       setState(() {
         _bufferDuration = bufDur != null ? bufDur.toStringAsFixed(1) : '—';
+        if (bufDur != null) {
+          _bufferHistory.add(bufDur);
+          if (_bufferHistory.length > 60) _bufferHistory.removeAt(0);
+        }
+        _bufferTier = ps.bufferManager.currentTier;
         _fpsLabel = fps != null ? fps.toStringAsFixed(1) : '—';
         if (fps != null) {
           _fpsHistory.add(fps);
@@ -148,8 +158,9 @@ class _PlayerControlBarState extends ConsumerState<PlayerControlBar> {
 
   void _scheduleHide() {
     _hideTimer?.cancel();
+    if (_isHoveringBar) return; // don't hide while mouse is over the bar
     _hideTimer = Timer(const Duration(seconds: 5), () {
-      if (mounted) setState(() => _visible = false);
+      if (mounted && !_isHoveringBar) setState(() => _visible = false);
     });
   }
 
@@ -203,6 +214,15 @@ class _PlayerControlBarState extends ConsumerState<PlayerControlBar> {
   @override
   Widget build(BuildContext context) {
     return MouseRegion(
+      onEnter: (_) {
+        _isHoveringBar = true;
+        _hideTimer?.cancel();
+        if (!_visible) setState(() => _visible = true);
+      },
+      onExit: (_) {
+        _isHoveringBar = false;
+        _scheduleHide();
+      },
       onHover: (_) => _onInteraction(),
       child: GestureDetector(
         behavior: HitTestBehavior.translucent,
@@ -399,6 +419,8 @@ class _PlayerControlBarState extends ConsumerState<PlayerControlBar> {
                       ),
                       _iconBtn(Icons.info_outline,
                           onTap: widget.onInfo),
+                      _iconBtn(Icons.edit_outlined,
+                          onTap: widget.onRename),
                       _iconBtn(Icons.settings,
                           onTap: widget.onSettings),
                       _iconBtn(Icons.list,
@@ -420,7 +442,20 @@ class _PlayerControlBarState extends ConsumerState<PlayerControlBar> {
                         child: _badge('$_fpsLabel fps', fontSize: 10),
                       ),
                       const SizedBox(width: 4),
-                      _badge('buf: ${_bufferDuration}s', fontSize: 10),
+                      Tooltip(
+                        richMessage: WidgetSpan(
+                          child: _BufferSparkline(history: _bufferHistory, tier: _bufferTier),
+                        ),
+                        waitDuration: const Duration(milliseconds: 300),
+                        preferBelow: false,
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF1A1A2E),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: Colors.white24),
+                        ),
+                        padding: const EdgeInsets.all(10),
+                        child: _badge('buf: ${_bufferDuration}s', fontSize: 10),
+                      ),
                     ],
                   ),
                 ),
@@ -546,9 +581,12 @@ class _FpsSparkline extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (history.length < 2) {
-      return const SizedBox(
+      final label = history.isNotEmpty
+          ? 'FPS: ${history.last.toStringAsFixed(1)}\nCollecting more data…'
+          : 'Waiting for FPS data…';
+      return SizedBox(
         width: 180, height: 60,
-        child: Center(child: Text('Collecting data…', style: TextStyle(color: Colors.white54, fontSize: 11))),
+        child: Center(child: Text(label, style: const TextStyle(color: Colors.white54, fontSize: 11), textAlign: TextAlign.center)),
       );
     }
 
@@ -633,4 +671,103 @@ class _SparklinePainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _SparklinePainter old) => true;
+}
+
+/// Sparkline chart for buffer history, shown in tooltip.
+class _BufferSparkline extends StatelessWidget {
+  final List<double> history;
+  final String tier;
+  const _BufferSparkline({required this.history, this.tier = 'normal'});
+
+  @override
+  Widget build(BuildContext context) {
+    if (history.length < 2) {
+      final label = history.isNotEmpty
+          ? 'Buffer: ${history.last.toStringAsFixed(1)}s  tier: $tier\nCollecting more data…'
+          : 'Waiting for buffer data…';
+      return SizedBox(
+        width: 180, height: 60,
+        child: Center(child: Text(label, style: const TextStyle(color: Colors.white54, fontSize: 11), textAlign: TextAlign.center)),
+      );
+    }
+
+    final min = history.reduce((a, b) => a < b ? a : b);
+    final max = history.reduce((a, b) => a > b ? a : b);
+    final avg = history.reduce((a, b) => a + b) / history.length;
+    final actualRange = max - min;
+    final displayMin = actualRange < 1.0 ? avg - 5.0 : min;
+    final displayRange = actualRange < 1.0 ? 10.0 : actualRange;
+
+    return SizedBox(
+      width: 200,
+      height: 80,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Buffer  min: ${min.toStringAsFixed(1)}  avg: ${avg.toStringAsFixed(1)}  max: ${max.toStringAsFixed(1)}  tier: $tier',
+            style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w600),
+          ),
+          const SizedBox(height: 4),
+          Expanded(
+            child: CustomPaint(
+              size: const Size(200, 50),
+              painter: _BufferSparklinePainter(history, displayMin, displayRange),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _BufferSparklinePainter extends CustomPainter {
+  final List<double> data;
+  final double min;
+  final double range;
+
+  _BufferSparklinePainter(this.data, this.min, this.range);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (data.length < 2) return;
+
+    final linePaint = Paint()
+      ..color = const Color(0xFF00B894)
+      ..strokeWidth = 1.5
+      ..style = PaintingStyle.stroke
+      ..strokeJoin = StrokeJoin.round;
+
+    final fillPaint = Paint()
+      ..shader = const LinearGradient(
+        begin: Alignment.topCenter,
+        end: Alignment.bottomCenter,
+        colors: [Color(0x8000B894), Color(0x0000B894)],
+      ).createShader(Rect.fromLTWH(0, 0, size.width, size.height));
+
+    final path = Path();
+    final fillPath = Path();
+
+    for (var i = 0; i < data.length; i++) {
+      final x = (i / (data.length - 1)) * size.width;
+      final y = size.height - ((data[i] - min) / range) * size.height;
+      if (i == 0) {
+        path.moveTo(x, y);
+        fillPath.moveTo(x, size.height);
+        fillPath.lineTo(x, y);
+      } else {
+        path.lineTo(x, y);
+        fillPath.lineTo(x, y);
+      }
+    }
+
+    fillPath.lineTo(size.width, size.height);
+    fillPath.close();
+
+    canvas.drawPath(fillPath, fillPaint);
+    canvas.drawPath(path, linePaint);
+  }
+
+  @override
+  bool shouldRepaint(covariant _BufferSparklinePainter old) => true;
 }

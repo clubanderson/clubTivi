@@ -11,6 +11,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/countdown_snackbar.dart';
+import '../../core/weather_service.dart';
 import '../../data/datasources/local/database.dart' as db;
 import '../../data/services/app_update_service.dart';
 import '../../data/services/backup_service.dart';
@@ -372,6 +373,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           _SettingsSection(
             title: 'Display',
             children: [
+              _LocationTile(),
               _TimeFormatTile(),
             ],
           ),
@@ -1265,6 +1267,146 @@ class _UserAgentTileState extends State<_UserAgentTile> {
         }
       },
     );
+  }
+}
+
+class _LocationTile extends ConsumerStatefulWidget {
+  @override
+  ConsumerState<_LocationTile> createState() => _LocationTileState();
+}
+
+class _LocationTileState extends ConsumerState<_LocationTile> {
+  String _zipcode = '';
+  String _cityName = '';
+
+  @override
+  void initState() {
+    super.initState();
+    SharedPreferences.getInstance().then((prefs) {
+      if (mounted) {
+        setState(() {
+          _zipcode = prefs.getString(weatherZipKey) ?? '';
+          _cityName = prefs.getString(weatherCityKey) ?? '';
+        });
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final subtitle = _zipcode.isNotEmpty
+        ? '$_zipcode${_cityName.isNotEmpty ? ' — $_cityName' : ''}'
+        : 'Auto-detected from IP';
+    return ListTile(
+      leading: const Icon(Icons.location_on_rounded),
+      title: const Text('Weather Location'),
+      subtitle: Text(subtitle),
+      trailing: const Icon(Icons.chevron_right),
+      onTap: () => _showLocationDialog(),
+    );
+  }
+
+  Future<void> _showLocationDialog() async {
+    final controller = TextEditingController(text: _zipcode);
+    final result = await showDialog<String>(
+      context: context,
+      builder: (ctx) {
+        String? error;
+        bool loading = false;
+        return StatefulBuilder(
+          builder: (ctx, setDialogState) => AlertDialog(
+            title: const Text('Weather Location'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Enter a zip code or city name. Leave empty to auto-detect from your IP address.',
+                  style: TextStyle(fontSize: 13, color: Colors.white70),
+                ),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: controller,
+                  autofocus: true,
+                  decoration: InputDecoration(
+                    labelText: 'Zip code or city',
+                    hintText: 'e.g. 48103 or Ann Arbor',
+                    prefixIcon: const Icon(Icons.search_rounded),
+                    errorText: error,
+                    border: const OutlineInputBorder(),
+                  ),
+                  textInputAction: TextInputAction.done,
+                  onSubmitted: (_) async {
+                    final val = controller.text.trim();
+                    if (val.isEmpty) {
+                      Navigator.pop(ctx, '');
+                      return;
+                    }
+                    setDialogState(() { loading = true; error = null; });
+                    final geo = await geocodeZipcode(val);
+                    if (geo != null) {
+                      Navigator.pop(ctx, val);
+                    } else {
+                      setDialogState(() { loading = false; error = 'Could not find location'; });
+                    }
+                  },
+                ),
+                if (loading) ...[
+                  const SizedBox(height: 12),
+                  const Center(child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))),
+                ],
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, ''),
+                child: const Text('Auto-detect'),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('Cancel'),
+              ),
+              FilledButton(
+                onPressed: loading ? null : () async {
+                  final val = controller.text.trim();
+                  if (val.isEmpty) {
+                    Navigator.pop(ctx, '');
+                    return;
+                  }
+                  setDialogState(() { loading = true; error = null; });
+                  final geo = await geocodeZipcode(val);
+                  if (geo != null) {
+                    // Save the resolved city name
+                    final prefs = await SharedPreferences.getInstance();
+                    await prefs.setString(weatherCityKey, geo['city'] as String);
+                    if (ctx.mounted) Navigator.pop(ctx, val);
+                  } else {
+                    setDialogState(() { loading = false; error = 'Could not find location'; });
+                  }
+                },
+                child: const Text('Save'),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+
+    if (result == null) return; // cancelled
+
+    final prefs = await SharedPreferences.getInstance();
+    if (result.isEmpty) {
+      // Clear saved location → auto-detect
+      await prefs.remove(weatherZipKey);
+      await prefs.remove(weatherCityKey);
+      setState(() { _zipcode = ''; _cityName = ''; });
+    } else {
+      await prefs.setString(weatherZipKey, result);
+      final city = prefs.getString(weatherCityKey) ?? '';
+      setState(() { _zipcode = result; _cityName = city; });
+    }
+    // Trigger weather refresh
+    ref.read(weatherProvider.notifier).refresh();
   }
 }
 
