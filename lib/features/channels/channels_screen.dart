@@ -2000,27 +2000,37 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
     final controller = TextEditingController();
     final url = await showDialog<String>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Play Network Stream'),
-        content: SizedBox(
-          width: 500,
-          child: TextField(
-            controller: controller,
-            autofocus: true,
-            decoration: const InputDecoration(
-              hintText: 'http:// or rtsp:// stream URL',
-              isDense: true,
+      builder: (ctx) => CallbackShortcuts(
+        bindings: {
+          const SingleActivator(LogicalKeyboardKey.escape): () => Navigator.pop(ctx),
+          const SingleActivator(LogicalKeyboardKey.goBack): () => Navigator.pop(ctx),
+        },
+        child: Focus(
+          autofocus: !Platform.isAndroid,
+          child: AlertDialog(
+            title: const Text('Play Network Stream'),
+            content: SizedBox(
+              width: 500,
+              child: TextField(
+                controller: controller,
+                autofocus: true,
+                keyboardType: Platform.isAndroid ? TextInputType.none : TextInputType.url,
+                decoration: const InputDecoration(
+                  hintText: 'http:// or rtsp:// stream URL',
+                  isDense: true,
+                ),
+                onSubmitted: (v) => Navigator.pop(ctx, v.trim()),
+              ),
             ),
-            onSubmitted: (v) => Navigator.pop(ctx, v.trim()),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+              FilledButton(
+                onPressed: () => Navigator.pop(ctx, controller.text.trim()),
+                child: const Text('Play'),
+              ),
+            ],
           ),
         ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, controller.text.trim()),
-            child: const Text('Play'),
-          ),
-        ],
       ),
     );
     if (url != null && url.isNotEmpty && mounted) {
