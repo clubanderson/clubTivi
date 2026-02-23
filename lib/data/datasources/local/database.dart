@@ -72,6 +72,30 @@ class AppDatabase extends _$AppDatabase {
   Future<List<Channel>> getChannelsForProvider(String providerId) =>
       (select(channels)..where((t) => t.providerId.equals(providerId))).get();
 
+  Future<List<Channel>> getChannelsByIds(Set<String> ids) =>
+      (select(channels)..where((t) => t.id.isIn(ids))).get();
+
+  /// Get distinct group names per provider without loading channel objects.
+  Future<Map<String, List<String>>> getProviderGroups() async {
+    final rows = await customSelect(
+      'SELECT DISTINCT provider_id, group_title FROM channels '
+      'WHERE group_title IS NOT NULL AND group_title != \'\' '
+      'ORDER BY provider_id, group_title',
+    ).get();
+    final result = <String, List<String>>{};
+    for (final row in rows) {
+      final pid = row.read<String>('provider_id');
+      final g = row.read<String>('group_title');
+      (result[pid] ??= []).add(g);
+    }
+    return result;
+  }
+
+  /// Get channels for a specific provider and group.
+  Future<List<Channel>> getChannelsForProviderGroup(String providerId, String groupTitle) =>
+      (select(channels)..where((t) =>
+          t.providerId.equals(providerId) & t.groupTitle.equals(groupTitle))).get();
+
   Future<List<Channel>> getFavoriteChannels() =>
       (select(channels)..where((t) => t.favorite.equals(true))).get();
 

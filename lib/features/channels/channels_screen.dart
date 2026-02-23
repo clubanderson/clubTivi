@@ -111,7 +111,10 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
   List<db.Provider> _providers = [];
   // Pre-computed: provider ID → sorted group names
   Map<String, List<String>> _providerGroups = {};
-
+  // Track which providers' channels have been loaded into _allChannels
+  final Set<String> _loadedProviders = {};
+  // True while background is still loading all channels
+  bool _backgroundLoading = false;
   // Favorite lists state
   List<db.FavoriteList> _favoriteLists = [];
   Set<String> _favoritedChannelIds = {};
@@ -555,47 +558,12 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
     final database = ref.read(databaseProvider);
     final isFirstLoad = _allChannels.isEmpty;
 
-    // ── Phase 1: channels + favorites → show UI instantly ──
+    // ── Phase 0: providers + favorites + group names → instant UI ──
     final providers = await database.getAllProviders();
-    final List<db.Channel> allChannels = [];
-    for (final provider in providers) {
-      final channels = await database.getChannelsForProvider(provider.id);
-      allChannels.addAll(channels);
-    }
-
-    final groupSet = <String>{};
-    for (final ch in allChannels) {
-      if (ch.groupTitle != null && ch.groupTitle!.isNotEmpty) {
-        groupSet.add(ch.groupTitle!);
-      }
-    }
-    final groups = groupSet.toList()..sort();
-
     final favLists = await database.getAllFavoriteLists();
     final favChannelIds = await database.getAllFavoritedChannelIds();
 
-    // Load failover groups
-    final foGroups = await database.getAllFailoverGroups();
-    final foGroupMembers = <int, List<String>>{};
-    for (final g in foGroups) {
-      final members = await database.getFailoverGroupMembers(g.id);
-      foGroupMembers[g.id] = members.map((m) => m.channelId).toList();
-    }
-    final foGroupIndex = await database.getFailoverGroupIndex();
-
-    // Pre-compute provider groups for sidebar
-    final pGroups = <String, List<String>>{};
-    for (final prov in providers) {
-      final gSet = <String>{};
-      for (final ch in allChannels) {
-        if (ch.providerId == prov.id && ch.groupTitle != null && ch.groupTitle!.isNotEmpty) {
-          gSet.add(ch.groupTitle!);
-        }
-      }
-      pGroups[prov.id] = gSet.toList()..sort();
-    }
-
-    // Load vanity names (fast, from SharedPreferences)
+    // Vanity names (SharedPreferences — instant)
     final prefs = await SharedPreferences.getInstance();
     final vanityJson = prefs.getString('channel_vanity_names');
     if (vanityJson != null) {
@@ -605,26 +573,87 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
       } catch (_) {}
     }
 
+    // Group names per provider (fast SQL GROUP BY, no channel objects loaded)
+    final pGroups = await database.getProviderGroups();
+    // All group names for legacy "group:" filter
+    final allGroupNames = <String>{};
+    for (final gl in pGroups.values) allGroupNames.addAll(gl);
+    final groups = allGroupNames.toList()..sort();
+
+    // Favorite channels (~18 rows, direct query)
+    List<db.Channel> favChannels = [];
+    if (favChannelIds.isNotEmpty) {
+      favChannels = await database.getChannelsByIds(favChannelIds);
+    }
+
+    // Failover groups (small table)
+    final foGroups = await database.getAllFailoverGroups();
+    final foGroupMembers = <int, List<String>>{};
+    for (final g in foGroups) {
+      final members = await database.getFailoverGroupMembers(g.id);
+      foGroupMembers[g.id] = members.map((m) => m.channelId).toList();
+    }
+    final foGroupIndex = await database.getFailoverGroupIndex();
+
     if (!mounted) return;
     setState(() {
-      _allChannels = allChannels;
+      _allChannels = favChannels;
       _providers = providers;
-      _groups = groups;
       _providerGroups = pGroups;
+      _groups = groups;
       _favoriteLists = favLists;
       _favoritedChannelIds = favChannelIds;
       _failoverGroups = foGroups;
       _failoverGroupMembers = foGroupMembers;
       _failoverGroupIndex = foGroupIndex;
       _isLoading = false;
+      _selectedGroup = 'Favorites';
       _applyFilters();
     });
 
-    // Restore session (last group/channel) immediately after UI renders
     if (isFirstLoad) _restoreSession();
 
-    // ── Phase 2: EPG + indexes → load in background ──
-    _loadEpgData(database, allChannels, favChannelIds);
+    // ── Phase 1: EPG for favorites in background ──
+    _loadEpgData(database, favChannels, favChannelIds);
+
+    // ── Phase 2: load remaining channels lazily in background ──
+    _backgroundLoading = true;
+    for (final provider in providers) {
+      if (!mounted) return;
+      final channels = await database.getChannelsForProvider(provider.id);
+      if (!mounted) return;
+      // Merge into _allChannels (avoid duplicates with favorites)
+      final existingIds = _allChannels.map((c) => c.id).toSet();
+      final newChannels = channels.where((c) => !existingIds.contains(c.id)).toList();
+      _loadedProviders.add(provider.id);
+      setState(() {
+        _allChannels = [..._allChannels, ...newChannels];
+        // Re-apply filters only if user is viewing this provider or "All"
+        if (_selectedGroup == 'All' || _selectedGroup == 'provider:${provider.id}' ||
+            _selectedGroup.startsWith('provgroup:${provider.id}:')) {
+          _applyFilters();
+        }
+      });
+    }
+    _backgroundLoading = false;
+
+    // Re-index EPG with full channel set
+    if (mounted) _loadEpgData(database, _allChannels, favChannelIds);
+  }
+
+  /// On-demand: load a single provider's channels into _allChannels.
+  Future<void> _loadProviderChannels(String providerId) async {
+    if (_loadedProviders.contains(providerId)) return;
+    final database = ref.read(databaseProvider);
+    final channels = await database.getChannelsForProvider(providerId);
+    if (!mounted) return;
+    _loadedProviders.add(providerId);
+    final existingIds = _allChannels.map((c) => c.id).toSet();
+    final newChannels = channels.where((c) => !existingIds.contains(c.id)).toList();
+    setState(() {
+      _allChannels = [..._allChannels, ...newChannels];
+      _applyFilters();
+    });
   }
 
   /// Loads EPG sources, mappings, and now-playing data in the background.
@@ -804,6 +833,11 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
         return;
       } else if (_selectedGroup.startsWith('provider:')) {
         final providerId = _selectedGroup.substring(9);
+        if (!_loadedProviders.contains(providerId)) {
+          _loadProviderChannels(providerId);
+          _filteredChannels = [];
+          return;
+        }
         channels =
             channels.where((c) => c.providerId == providerId).toList();
       } else if (_selectedGroup.startsWith('provgroup:')) {
@@ -813,6 +847,11 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
         if (sepIdx > 0) {
           final providerId = parts.substring(0, sepIdx);
           final groupTitle = parts.substring(sepIdx + 1);
+          if (!_loadedProviders.contains(providerId)) {
+            _loadProviderChannels(providerId);
+            _filteredChannels = [];
+            return;
+          }
           channels = channels
               .where((c) => c.providerId == providerId && c.groupTitle == groupTitle)
               .toList();
@@ -1270,8 +1309,37 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
   @override
   Widget build(BuildContext context) {
     if (_isLoading && _allChannels.isEmpty) {
-      return const Scaffold(
-        body: Center(child: CircularProgressIndicator()),
+      // Show app shell immediately with loading indicator in channel area only
+      return Scaffold(
+        body: Row(
+          children: [
+            // Sidebar placeholder
+            Container(
+              width: 220,
+              color: Theme.of(context).colorScheme.surface,
+              child: const Center(
+                child: Padding(
+                  padding: EdgeInsets.all(20),
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+              ),
+            ),
+            // Main content area
+            const Expanded(
+              child: Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    CircularProgressIndicator(),
+                    SizedBox(height: 16),
+                    Text('Loading channels…',
+                      style: TextStyle(color: Colors.white54)),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
       );
     }
 
