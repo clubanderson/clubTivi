@@ -295,11 +295,10 @@ class StreamAlternativesService {
     required String excludeUrl,
   }) {
     final seen = <String>{excludeUrl};
-    final results = <AlternativeDetail>[];
 
     // Match confidence by reason (how sure we are it's the same channel)
     const _matchConfidence = <String, double>{
-      'vanity name': 1.0,
+      'confirmed': 1.0,
       'tvgId': 0.95,
       'EPG+call sign': 0.90,
       'EPG': 0.65,
@@ -308,24 +307,32 @@ class StreamAlternativesService {
       'original name': 0.40,
     };
 
+    // Track results by stream URL so we can accumulate match reasons
+    final resultsByUrl = <String, AlternativeDetail>{};
+
     void addTagged(List<Channel>? channels, String reason) {
       if (channels == null) return;
       final confidence = _matchConfidence[reason] ?? 0.3;
       final epgMatch = reason == 'EPG+call sign' || reason == 'EPG';
       for (final ch in channels) {
-        if (ch.id != channelId &&
-            ch.streamUrl.isNotEmpty &&
-            seen.add(ch.streamUrl)) {
-          final streamHealth = _health.getScore(ch.streamUrl);
-          // Composite: 60% match confidence + 40% stream health
-          final composite = confidence * 0.6 + streamHealth * 0.4;
-          results.add(AlternativeDetail(
-            channel: ch,
-            matchReason: reason,
-            healthScore: composite,
-            providerName: _providerNames[ch.providerId] ?? ch.providerId,
-            hasEpgMatch: epgMatch || (epgChannelId != null && epgChannelId!.isNotEmpty && ch.tvgId != null && ch.tvgId == epgChannelId),
-          ));
+        if (ch.id != channelId && ch.streamUrl.isNotEmpty) {
+          final existing = resultsByUrl[ch.streamUrl];
+          if (existing != null) {
+            // Add this reason to existing entry
+            existing.matchReasons.add(reason);
+          } else {
+            seen.add(ch.streamUrl);
+            final streamHealth = _health.getScore(ch.streamUrl);
+            final composite = confidence * 0.6 + streamHealth * 0.4;
+            final detail = AlternativeDetail(
+              channel: ch,
+              matchReasons: {reason},
+              healthScore: composite,
+              providerName: _providerNames[ch.providerId] ?? ch.providerId,
+              hasEpgMatch: epgMatch || (epgChannelId != null && epgChannelId!.isNotEmpty && ch.tvgId != null && ch.tvgId == epgChannelId),
+            );
+            resultsByUrl[ch.streamUrl] = detail;
+          }
         }
       }
     }
@@ -378,6 +385,7 @@ class StreamAlternativesService {
     }
 
     // Sort by health score descending
+    final results = resultsByUrl.values.toList();
     results.sort((a, b) => b.healthScore.compareTo(a.healthScore));
     return results;
   }
@@ -451,16 +459,19 @@ final streamAlternativesProvider = Provider<StreamAlternativesService>((ref) {
 /// A single failover alternative with match metadata for UI display.
 class AlternativeDetail {
   final Channel channel;
-  final String matchReason;
+  final Set<String> matchReasons;
   final double healthScore;
   final String providerName;
   final bool hasEpgMatch;
 
   const AlternativeDetail({
     required this.channel,
-    required this.matchReason,
+    required this.matchReasons,
     required this.healthScore,
     this.providerName = '',
     this.hasEpgMatch = false,
   });
+
+  /// Primary match reason (highest confidence).
+  String get matchReason => matchReasons.isNotEmpty ? matchReasons.first : '';
 }

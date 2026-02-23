@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io' show Platform;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:media_kit/src/player/native/player/real.dart' as native_player;
@@ -43,6 +44,11 @@ class PlayerService {
   Timer? _failoverCheckTimer;
   int _consecutiveLowBuffer = 0;
 
+  /// Broadcast current stream URL changes (for UI like failover dialog).
+  final _currentUrlController = StreamController<String?>.broadcast();
+  Stream<String?> get currentUrlStream => _currentUrlController.stream;
+  String? get currentUrl => _currentUrl;
+
   /// Callback invoked when auto-failover switches streams.
   /// Provides the provider name or URL fragment for UI toast.
   void Function(String message)? onFailover;
@@ -65,14 +71,16 @@ class PlayerService {
   Future<void> _initPlayer(Player p) async {
     final np = p.platform;
     if (np is native_player.NativePlayer) {
-      // Exclude only eac3/ac3 AudioToolbox decoders which silently fail
-      // on surround streams — keep aac_at since most streams use AAC fine
-      await np.setProperty('ad', '-ac3_at,-eac3_at');
+      // Force FFmpeg software decoders for AC-3/EAC-3 (AudioToolbox decoders
+      // silently fail on surround streams and non-standard MPEG-TS codec tags)
+      await np.setProperty('ad', 'lavc:eac3,lavc:ac3,');
       // Allow non-standard codec tags (e.g. 0x0087 for EAC-3 in MPEG-TS)
       await np.setProperty('ad-lavc-o', 'strict=-2');
       // Give the demuxer enough data to detect non-standard audio codecs
       await np.setProperty('demuxer-lavf-probesize', '5000000');
-      await np.setProperty('demuxer-lavf-analyzeduration', '5');
+      await np.setProperty('demuxer-lavf-analyzeduration', '5000000');
+      // Enable non-strict MPEG-TS parsing for non-standard codec tags
+      await np.setProperty('demuxer-lavf-o', 'strict=-2');
       // Downmix surround to stereo for output compatibility
       await np.setProperty('audio-channels', 'stereo');
       // Normalize volume when downmixing surround to stereo
@@ -139,6 +147,14 @@ class PlayerService {
     await player.open(Media(url));
     await _bufferManager.applyForStream(url, this);
     await player.setVolume(100.0);
+
+    // Log audio track info for debugging
+    player.stream.tracks.first.then((tracks) {
+      debugPrint('[Player] Audio tracks: ${tracks.audio.length}');
+      for (final a in tracks.audio) {
+        debugPrint('[Player]   audio: id=${a.id} title=${a.title} lang=${a.language}');
+      }
+    }).ignore();
 
     // Reset and start buffer tracking for the new stream
     bufferHistory.fillRange(0, 60, false);
@@ -255,9 +271,6 @@ class PlayerService {
       if (player.state.buffering) bufferingSeconds++;
     });
   }
-
-  /// Current stream URL for external reference.
-  String? get currentUrl => _currentUrl;
 
   // ── Auto-failover monitor ──────────────────────────────────────────────
 

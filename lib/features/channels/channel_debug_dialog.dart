@@ -474,7 +474,7 @@ class _ChannelDebugDialogState extends State<ChannelDebugDialog> {
                       child: _failoverRow(
                         name: ch.name,
                         providerName: widget.currentProviderName,
-                        badge: 'source',
+                        badges: {'source'},
                         badgeColor: null,
                         healthScore: 1.0,
                         isPlaying: _playingChannelId == null,
@@ -496,11 +496,10 @@ class _ChannelDebugDialogState extends State<ChannelDebugDialog> {
                                   child: _failoverRow(
                                     name: alt.channel.name,
                                     providerName: alt.providerName.isNotEmpty ? alt.providerName : null,
-                                    badge: alt.matchReason,
+                                    badges: alt.matchReasons,
                                     badgeColor: decision == true ? const Color(0xFF00B894) : null,
                                     healthScore: alt.healthScore,
                                     isPlaying: isPlaying,
-                                    hasEpgMatch: alt.hasEpgMatch,
                                     streamUrl: alt.channel.streamUrl,
                                   ),
                                 ),
@@ -606,15 +605,14 @@ class _ChannelDebugDialogState extends State<ChannelDebugDialog> {
   }
 
   /// A single row in the failover group showing channel name, provider badge,
-  /// match reason badge, and health score.
+  /// match reason badges, and health score.
   Widget _failoverRow({
     required String name,
     String? providerName,
-    required String badge,
+    required Set<String> badges,
     Color? badgeColor,
     double? healthScore,
     bool isPlaying = false,
-    bool hasEpgMatch = false,
     String? streamUrl,
   }) {
     final healthColor = healthScore == null
@@ -677,36 +675,30 @@ class _ChannelDebugDialogState extends State<ChannelDebugDialog> {
             ),
           ),
           const SizedBox(width: 4),
-          // Match reason badge
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
-            decoration: BoxDecoration(
-              color: badgeColor?.withAlpha(40) ?? Colors.white10,
-              borderRadius: BorderRadius.circular(4),
-            ),
-            child: Text(
-              badge,
-              style: TextStyle(
-                color: badgeColor ?? Colors.white38,
-                fontSize: 8,
+          // Match reason badges
+          ...badges.map((b) {
+            final isEpg = b == 'EPG' || b == 'EPG+call sign';
+            final color = badgeColor ?? (isEpg ? const Color(0xFF00CEC9) : Colors.white38);
+            final bgColor = badgeColor?.withAlpha(40) ?? (isEpg ? const Color(0xFF00CEC9).withAlpha(40) : Colors.white10);
+            return Padding(
+              padding: const EdgeInsets.only(right: 3),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                decoration: BoxDecoration(
+                  color: bgColor,
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: Text(
+                  b,
+                  style: TextStyle(
+                    color: color,
+                    fontSize: 8,
+                    fontWeight: isEpg ? FontWeight.bold : FontWeight.normal,
+                  ),
+                ),
               ),
-            ),
-          ),
-          // EPG badge
-          if (hasEpgMatch) ...[
-            const SizedBox(width: 4),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
-              decoration: BoxDecoration(
-                color: const Color(0xFF00CEC9).withAlpha(40),
-                borderRadius: BorderRadius.circular(4),
-              ),
-              child: const Text(
-                'EPG',
-                style: TextStyle(color: Color(0xFF00CEC9), fontSize: 8, fontWeight: FontWeight.bold),
-              ),
-            ),
-          ],
+            );
+          }),
           // Health %
           if (healthScore != null) ...[
             const SizedBox(width: 4),
