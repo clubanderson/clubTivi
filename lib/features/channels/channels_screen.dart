@@ -37,6 +37,7 @@ class ChannelsScreen extends ConsumerStatefulWidget {
 
 class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
   static bool _updateCheckDone = false;
+  bool _initialLoadDone = false;
   List<db.Channel> _allChannels = [];
   List<db.Channel> _filteredChannels = [];
   List<String> _groups = [];
@@ -46,7 +47,6 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
   int _selectedIndex = -1;
   db.Channel? _previewChannel;
   List<db.EpgProgramme> _nowPlaying = [];
-  bool _isLoading = true;
 
   /// Maps channel ID → mapped EPG channel ID (from epg_mappings table)
   Map<String, String> _epgMappings = {};
@@ -558,13 +558,19 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
     final database = ref.read(databaseProvider);
     final isFirstLoad = _allChannels.isEmpty;
 
-    // ── Phase 0: providers + favorites + group names → instant UI ──
-    final providers = await database.getAllProviders();
-    final favLists = await database.getAllFavoriteLists();
-    final favChannelIds = await database.getAllFavoritedChannelIds();
+    // ── Micro-phase 1: providers + favIds (tiny queries) ──
+    final results = await Future.wait([
+      database.getAllProviders(),
+      database.getAllFavoriteLists(),
+      database.getAllFavoritedChannelIds(),
+      SharedPreferences.getInstance(),
+    ]);
+    final providers = results[0] as List<db.Provider>;
+    final favLists = results[1] as List<db.FavoriteList>;
+    final favChannelIds = results[2] as Set<String>;
+    final prefs = results[3] as SharedPreferences;
 
-    // Vanity names (SharedPreferences — instant)
-    final prefs = await SharedPreferences.getInstance();
+    // Vanity names (sync parse from already-loaded prefs)
     final vanityJson = prefs.getString('channel_vanity_names');
     if (vanityJson != null) {
       try {
@@ -573,21 +579,35 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
       } catch (_) {}
     }
 
-    // Group names per provider (fast SQL GROUP BY, no channel objects loaded)
-    final pGroups = await database.getProviderGroups();
-    // All group names for legacy "group:" filter
-    final allGroupNames = <String>{};
-    for (final gl in pGroups.values) allGroupNames.addAll(gl);
-    final groups = allGroupNames.toList()..sort();
-
-    // Favorite channels (~18 rows, direct query)
+    // ── Micro-phase 2: favorite channels (direct ID query, ~18 rows) ──
     List<db.Channel> favChannels = [];
     if (favChannelIds.isNotEmpty) {
       favChannels = await database.getChannelsByIds(favChannelIds);
     }
 
-    // Failover groups (small table)
-    final foGroups = await database.getAllFailoverGroups();
+    if (!mounted) return;
+    // FIRST RENDER — user sees Favorites immediately
+    setState(() {
+      _initialLoadDone = true;
+      _allChannels = favChannels;
+      _providers = providers;
+      _favoriteLists = favLists;
+      _favoritedChannelIds = favChannelIds;
+      _selectedGroup = 'Favorites';
+      _applyFilters();
+    });
+    if (isFirstLoad) _restoreSession();
+
+    // ── Background: sidebar groups + failover groups (non-blocking) ──
+    final bgResults = await Future.wait([
+      database.getProviderGroups(),
+      database.getAllFailoverGroups(),
+    ]);
+    final pGroups = bgResults[0] as Map<String, List<String>>;
+    final foGroups = bgResults[1] as List<db.FailoverGroup>;
+    final allGroupNames = <String>{};
+    for (final gl in pGroups.values) allGroupNames.addAll(gl);
+
     final foGroupMembers = <int, List<String>>{};
     for (final g in foGroups) {
       final members = await database.getFailoverGroupMembers(g.id);
@@ -597,38 +617,27 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
 
     if (!mounted) return;
     setState(() {
-      _allChannels = favChannels;
-      _providers = providers;
       _providerGroups = pGroups;
-      _groups = groups;
-      _favoriteLists = favLists;
-      _favoritedChannelIds = favChannelIds;
+      _groups = allGroupNames.toList()..sort();
       _failoverGroups = foGroups;
       _failoverGroupMembers = foGroupMembers;
       _failoverGroupIndex = foGroupIndex;
-      _isLoading = false;
-      _selectedGroup = 'Favorites';
-      _applyFilters();
     });
 
-    if (isFirstLoad) _restoreSession();
-
-    // ── Phase 1: EPG for favorites in background ──
+    // ── Background: EPG for favorites ──
     _loadEpgData(database, favChannels, favChannelIds);
 
-    // ── Phase 2: load remaining channels lazily in background ──
+    // ── Background: load all provider channels incrementally ──
     _backgroundLoading = true;
     for (final provider in providers) {
       if (!mounted) return;
       final channels = await database.getChannelsForProvider(provider.id);
       if (!mounted) return;
-      // Merge into _allChannels (avoid duplicates with favorites)
       final existingIds = _allChannels.map((c) => c.id).toSet();
       final newChannels = channels.where((c) => !existingIds.contains(c.id)).toList();
       _loadedProviders.add(provider.id);
       setState(() {
         _allChannels = [..._allChannels, ...newChannels];
-        // Re-apply filters only if user is viewing this provider or "All"
         if (_selectedGroup == 'All' || _selectedGroup == 'provider:${provider.id}' ||
             _selectedGroup.startsWith('provgroup:${provider.id}:')) {
           _applyFilters();
@@ -1308,42 +1317,24 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    if (_isLoading && _allChannels.isEmpty) {
-      // Show app shell immediately with loading indicator in channel area only
+    if (!_initialLoadDone) {
+      // Splash — absorbs DB load time
       return Scaffold(
-        body: Row(
-          children: [
-            // Sidebar placeholder
-            Container(
-              width: 220,
-              color: Theme.of(context).colorScheme.surface,
-              child: const Center(
-                child: Padding(
-                  padding: EdgeInsets.all(20),
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                ),
-              ),
-            ),
-            // Main content area
-            const Expanded(
-              child: Center(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    CircularProgressIndicator(),
-                    SizedBox(height: 16),
-                    Text('Loading channels…',
-                      style: TextStyle(color: Colors.white54)),
-                  ],
-                ),
-              ),
-            ),
-          ],
+        backgroundColor: const Color(0xFF0A0A1A),
+        body: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Image.asset('assets/icon/clubtivi-icon.png', width: 96, height: 96,
+                errorBuilder: (_, __, ___) => const Icon(Icons.tv, size: 64, color: Color(0xFF6C5CE7))),
+              const SizedBox(height: 16),
+              const Text('clubTivi', style: TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold)),
+            ],
+          ),
         ),
       );
     }
-
-    if (_allChannels.isEmpty) {
+    if (_allChannels.isEmpty && _providers.isEmpty) {
       return _buildEmptyState(context);
     }
 
@@ -2686,7 +2677,23 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
                   final isMultiSelected = _multiSelectMode && _multiSelectedChannelIds.contains(channel.id);
                   return InkWell(
                     onTap: () {
-                      if (_multiSelectMode) {
+                      final shiftHeld = HardwareKeyboard.instance.logicalKeysPressed
+                          .any((k) => k == LogicalKeyboardKey.shiftLeft || k == LogicalKeyboardKey.shiftRight);
+                      if (shiftHeld) {
+                        // Shift+click: enter multi-select or toggle selection
+                        setState(() {
+                          if (!_multiSelectMode) {
+                            _multiSelectMode = true;
+                            _multiSelectedChannelIds = {channel.id};
+                          } else {
+                            if (_multiSelectedChannelIds.contains(channel.id)) {
+                              _multiSelectedChannelIds.remove(channel.id);
+                            } else {
+                              _multiSelectedChannelIds.add(channel.id);
+                            }
+                          }
+                        });
+                      } else if (_multiSelectMode) {
                         setState(() {
                           if (_multiSelectedChannelIds.contains(channel.id)) {
                             _multiSelectedChannelIds.remove(channel.id);
@@ -2999,7 +3006,13 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
       children: [
         InkWell(
           onTap: () {
+            // Tap plays the group (first channel with failover through all members)
             if (_multiSelectMode) return;
+            if (members.isNotEmpty) _playFailoverGroup(group, members);
+          },
+          onSecondaryTap: () => _showFailoverGroupActions(group),
+          onDoubleTap: () {
+            // Double-tap toggles expand/collapse
             setState(() {
               if (isExpanded) {
                 _expandedFailoverGroups.remove(group.id);
@@ -3008,7 +3021,6 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
               }
             });
           },
-          onLongPress: () => _showFailoverGroupActions(group),
           borderRadius: BorderRadius.circular(8),
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
@@ -3019,12 +3031,6 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
             ),
             child: Row(
               children: [
-                Icon(
-                  isExpanded ? Icons.expand_less : Icons.expand_more,
-                  size: 20,
-                  color: Colors.white54,
-                ),
-                const SizedBox(width: 6),
                 const Icon(Icons.shield_outlined, size: 16, color: Color(0xFF6C5CE7)),
                 const SizedBox(width: 8),
                 Expanded(
@@ -3042,13 +3048,22 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
                   '${members.length} ch',
                   style: const TextStyle(color: Colors.white38, fontSize: 11),
                 ),
-                const SizedBox(width: 8),
-                // Play button — plays first channel with failover through group
+                const SizedBox(width: 4),
+                // Expand/collapse chevron
                 InkWell(
                   onTap: () {
-                    if (members.isNotEmpty) _playFailoverGroup(group, members);
+                    setState(() {
+                      if (isExpanded) {
+                        _expandedFailoverGroups.remove(group.id);
+                      } else {
+                        _expandedFailoverGroups.add(group.id);
+                      }
+                    });
                   },
-                  child: const Icon(Icons.play_circle_outline, size: 20, color: Color(0xFF6C5CE7)),
+                  child: Icon(
+                    isExpanded ? Icons.expand_less : Icons.expand_more,
+                    size: 20, color: Colors.white54,
+                  ),
                 ),
               ],
             ),
