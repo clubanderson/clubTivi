@@ -38,6 +38,7 @@ class ChannelsScreen extends ConsumerStatefulWidget {
 class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
   static bool _updateCheckDone = false;
   bool _initialLoadDone = false;
+  String _loadStatus = '';
   List<db.Channel> _allChannels = [];
   List<db.Channel> _filteredChannels = [];
   List<String> _groups = [];
@@ -559,6 +560,7 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
     final isFirstLoad = _allChannels.isEmpty;
 
     // ── Micro-phase 1: providers + favIds (tiny queries) ──
+    if (mounted) setState(() => _loadStatus = 'Loading providers…');
     final results = await Future.wait([
       database.getAllProviders(),
       database.getAllFavoriteLists(),
@@ -580,12 +582,14 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
     }
 
     // ── Micro-phase 2: favorite channels (direct ID query, ~18 rows) ──
+    if (mounted) setState(() => _loadStatus = 'Loading ${favChannelIds.length} favorites…');
     List<db.Channel> favChannels = [];
     if (favChannelIds.isNotEmpty) {
       favChannels = await database.getChannelsByIds(favChannelIds);
     }
 
     if (!mounted) return;
+    if (mounted) setState(() => _loadStatus = 'Found ${providers.length} providers, ${favChannels.length} favorites');
     // FIRST RENDER — user sees Favorites immediately
     setState(() {
       _initialLoadDone = true;
@@ -1318,17 +1322,19 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
   @override
   Widget build(BuildContext context) {
     if (!_initialLoadDone) {
-      // Splash — absorbs DB load time
       return Scaffold(
         backgroundColor: const Color(0xFF0A0A1A),
         body: Center(
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Image.asset('assets/icon/clubtivi-icon.png', width: 96, height: 96,
-                errorBuilder: (_, __, ___) => const Icon(Icons.tv, size: 64, color: Color(0xFF6C5CE7))),
-              const SizedBox(height: 16),
-              const Text('clubTivi', style: TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold)),
+              const SizedBox(
+                width: 48, height: 48,
+                child: CircularProgressIndicator(strokeWidth: 3, color: Color(0xFF6C5CE7)),
+              ),
+              const SizedBox(height: 20),
+              Text(_loadStatus,
+                style: const TextStyle(color: Colors.white54, fontSize: 13)),
             ],
           ),
         ),
