@@ -2630,8 +2630,7 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
                         _selectChannel(index);
                       }
                     },
-                    onDoubleTap: _multiSelectMode ? null : () => _goFullscreen(channel),
-                    onLongPress: () {
+                    onDoubleTap: () {
                       if (!_multiSelectMode) {
                         setState(() {
                           _multiSelectMode = true;
@@ -2641,6 +2640,7 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
                         _showFavoriteListSheet(channel);
                       }
                     },
+                    onLongPress: _multiSelectMode ? null : () => _goFullscreen(channel),
             borderRadius: BorderRadius.circular(8),
             child: Container(
               padding:
