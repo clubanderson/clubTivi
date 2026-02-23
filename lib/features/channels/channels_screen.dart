@@ -48,7 +48,7 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
   /// Maps channel ID → mapped EPG channel ID (from epg_mappings table)
   Map<String, String> _epgMappings = {};
   Set<String> _validEpgChannelIds = {};
-  bool _showGuideView = !Platform.isAndroid;
+  bool _showGuideView = true;
   final _searchController = TextEditingController();
   final _searchFocusNode = FocusNode();
   final _channelListController = ScrollController();
@@ -76,7 +76,7 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
   final _sidebarSearchController = TextEditingController();
   final _sidebarFocusNode = FocusScopeNode(debugLabel: 'sidebar');
   final _sidebarAllItemFocusNode = FocusNode(debugLabel: 'sidebar-all');
-  FocusNode? _firstChannelFocusNode;
+  final _firstChannelFocusNode = FocusNode(debugLabel: 'channel-first');
   String _sidebarSearchQuery = '';
 
   // Top bar auto-hide
@@ -372,6 +372,7 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
     _sidebarSearchController.dispose();
     _sidebarFocusNode.dispose();
     _sidebarAllItemFocusNode.dispose();
+    _firstChannelFocusNode.dispose();
     _channelListController.dispose();
     _guideScrollController.dispose();
     _guideIdleTimer?.cancel();
@@ -1608,9 +1609,7 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
         onKeyEvent: (node, event) {
           if (event is! KeyDownEvent) return KeyEventResult.ignored;
           if (event.logicalKey == LogicalKeyboardKey.arrowRight) {
-            if (_firstChannelFocusNode != null) {
-              _firstChannelFocusNode!.requestFocus();
-            }
+            _firstChannelFocusNode.requestFocus();
             return KeyEventResult.handled;
           }
           if (event.logicalKey == LogicalKeyboardKey.select ||
@@ -1647,7 +1646,7 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
       onKeyEvent: (node, event) {
         if (event is! KeyDownEvent) return KeyEventResult.ignored;
         if (event.logicalKey == LogicalKeyboardKey.arrowRight) {
-          if (_firstChannelFocusNode != null) _firstChannelFocusNode!.requestFocus();
+          _firstChannelFocusNode.requestFocus();
           return KeyEventResult.handled;
         }
         if (event.logicalKey == LogicalKeyboardKey.select ||
@@ -1792,9 +1791,7 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
           onKeyEvent: (node, event) {
             if (event is! KeyDownEvent) return KeyEventResult.ignored;
             if (event.logicalKey == LogicalKeyboardKey.arrowRight) {
-              if (_firstChannelFocusNode != null) {
-                _firstChannelFocusNode!.requestFocus();
-              }
+              _firstChannelFocusNode.requestFocus();
               return KeyEventResult.handled;
             }
             if (event.logicalKey == LogicalKeyboardKey.select ||
@@ -1885,9 +1882,7 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
           if (event is! KeyDownEvent) return KeyEventResult.ignored;
           if (event.logicalKey == LogicalKeyboardKey.arrowRight) {
             // RIGHT from sidebar → focus channel list
-            if (_firstChannelFocusNode != null) {
-              _firstChannelFocusNode!.requestFocus();
-            }
+            _firstChannelFocusNode.requestFocus();
             return KeyEventResult.handled;
           }
           if (event.logicalKey == LogicalKeyboardKey.select ||
@@ -1995,13 +1990,13 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
           child: GestureDetector(
             onSecondaryTapUp: (_) => _showFavoriteListSheet(channel),
             child: Focus(
+              focusNode: index == 0 ? _firstChannelFocusNode : null,
               autofocus: index == 0 && Platform.isAndroid,
               onFocusChange: (hasFocus) {
                 if (hasFocus && Platform.isAndroid) _selectChannel(index);
               },
               onKeyEvent: (node, event) {
                 // Track this node so sidebar can navigate back
-                if (index == 0) _firstChannelFocusNode = node;
                 if (event is! KeyDownEvent) return KeyEventResult.ignored;
                 final key = event.logicalKey;
                 // SELECT/ENTER → fullscreen

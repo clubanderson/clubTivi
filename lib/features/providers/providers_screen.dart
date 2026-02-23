@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../data/datasources/local/database.dart' as db;
@@ -31,6 +32,14 @@ class ProvidersScreen extends ConsumerWidget {
           },
         ),
         title: const Text('IPTV Providers'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.add, size: 28),
+            tooltip: 'Add Provider',
+            onPressed: () => showAddProviderDialog(context),
+          ),
+          const SizedBox(width: 8),
+        ],
       ),
       body: providersAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),
@@ -39,31 +48,13 @@ class ProvidersScreen extends ConsumerWidget {
           child: ListView(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             children: [
-              // Add Provider button at top — reachable via D-pad
-              Padding(
-                padding: const EdgeInsets.only(bottom: 16),
-                child: FilledButton.icon(
-                  autofocus: providers.isEmpty,
-                  onPressed: () => showAddProviderDialog(context),
-                  icon: const Icon(Icons.add),
-                  label: const Text('Add Provider'),
-                  style: FilledButton.styleFrom(
-                    minimumSize: const Size(double.infinity, 52),
-                  ),
-                ),
-              ),
               if (providers.isNotEmpty) ...[
                 const _SectionHeader(title: 'Your Providers'),
                 ...providers.map((p) => _ProviderCard(provider: p)),
                 const SizedBox(height: 24),
               ],
               const _SectionHeader(title: 'Free TV Providers'),
-              const SizedBox(height: 8),
-              const Text(
-                'Select to add free ad-supported channels',
-                style: TextStyle(color: Colors.white38, fontSize: 13),
-              ),
-              const SizedBox(height: 12),
+              const SizedBox(height: 4),
               ...FreeTvProvider.all.map((fp) => _FreeTvProviderTile(
                     freeProvider: fp,
                     isAdded: providers.any((p) => p.id == fp.id),
@@ -181,17 +172,21 @@ class _ProviderCard extends ConsumerWidget {
                   context: context,
                   builder: (_) => AlertDialog(
                     backgroundColor: const Color(0xFF1A1A2E),
-                    title: const Text('Delete Provider'),
-                    content: Text('Remove "${provider.name}" and all its channels?'),
+                    title: Row(
+                      children: [
+                        const Icon(Icons.delete_outline_rounded, color: Colors.redAccent),
+                        const SizedBox(width: 8),
+                        Text(provider.name),
+                      ],
+                    ),
                     actions: [
-                      TextButton(
+                      IconButton(
+                        icon: const Icon(Icons.close),
                         onPressed: () => Navigator.pop(context, false),
-                        child: const Text('Cancel'),
                       ),
-                      TextButton(
+                      IconButton(
+                        icon: const Icon(Icons.delete_forever, color: Colors.redAccent),
                         onPressed: () => Navigator.pop(context, true),
-                        child: const Text('Delete',
-                            style: TextStyle(color: Colors.redAccent)),
                       ),
                     ],
                   ),
@@ -301,35 +296,60 @@ class _FreeTvProviderTile extends ConsumerWidget {
     const accent = Color(0xFF6C5CE7);
     return Card(
       margin: const EdgeInsets.only(bottom: 8),
-      child: ListTile(
-        leading: Icon(freeProvider.icon, color: accent, size: 32),
-        title: Text(
-          freeProvider.name,
-          style: const TextStyle(fontWeight: FontWeight.w600),
-        ),
-        subtitle: Text(
-          freeProvider.description,
-          style: const TextStyle(fontSize: 12, color: Colors.white54),
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-        ),
-        trailing: isAdded
-            ? Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Icon(Icons.check_circle, color: Colors.greenAccent, size: 22),
-                  const SizedBox(width: 4),
-                  IconButton(
-                    icon: const Icon(Icons.refresh_rounded, color: Colors.white38, size: 20),
-                    tooltip: 'Re-sync',
-                    onPressed: () => _addProvider(context, ref),
+      child: Focus(
+        onKeyEvent: (node, event) {
+          if (event is! KeyDownEvent) return KeyEventResult.ignored;
+          if (event.logicalKey == LogicalKeyboardKey.select ||
+              event.logicalKey == LogicalKeyboardKey.enter) {
+            _addProvider(context, ref);
+            return KeyEventResult.handled;
+          }
+          return KeyEventResult.ignored;
+        },
+        child: Builder(
+          builder: (context) {
+            final hasFocus = Focus.of(context).hasFocus;
+            return InkWell(
+              borderRadius: BorderRadius.circular(12),
+              onTap: () => _addProvider(context, ref),
+              child: Container(
+                decoration: hasFocus
+                    ? BoxDecoration(
+                        border: Border.all(color: accent, width: 2),
+                        borderRadius: BorderRadius.circular(12),
+                      )
+                    : null,
+                child: ListTile(
+                  leading: Icon(freeProvider.icon, color: accent, size: 32),
+                  title: Text(
+                    freeProvider.name,
+                    style: const TextStyle(fontWeight: FontWeight.w600),
                   ),
-                ],
-              )
-            : IconButton(
-                icon: const Icon(Icons.add_circle_outline, color: accent, size: 28),
-                onPressed: () => _addProvider(context, ref),
+                  subtitle: Text(
+                    freeProvider.description,
+                    style: const TextStyle(fontSize: 12, color: Colors.white54),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  trailing: isAdded
+                      ? Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(Icons.check_circle, color: Colors.greenAccent, size: 22),
+                            const SizedBox(width: 4),
+                            IconButton(
+                              icon: const Icon(Icons.refresh_rounded, color: Colors.white38, size: 20),
+                              tooltip: 'Re-sync',
+                              onPressed: () => _addProvider(context, ref),
+                            ),
+                          ],
+                        )
+                      : const Icon(Icons.add_circle_outline, color: accent, size: 28),
+                ),
               ),
+            );
+          },
+        ),
       ),
     );
   }
