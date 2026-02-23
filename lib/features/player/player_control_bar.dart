@@ -384,8 +384,6 @@ class _PlayerControlBarState extends ConsumerState<PlayerControlBar> {
                             ),
                           ),
                         ),
-                      _iconBtn(Icons.camera_alt_outlined,
-                          onTap: widget.onScreenshot),
                       _iconBtn(
                         widget.isFavorite ? Icons.star : Icons.star_border,
                         color: widget.isFavorite ? Colors.amber : Colors.white,
