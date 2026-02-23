@@ -472,6 +472,9 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
 
   Future<void> _loadChannels() async {
     final database = ref.read(databaseProvider);
+    final isFirstLoad = _allChannels.isEmpty;
+
+    // ── Phase 1: channels + favorites → show UI instantly ──
     final providers = await database.getAllProviders();
     final List<db.Channel> allChannels = [];
     for (final provider in providers) {
@@ -479,7 +482,6 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
       allChannels.addAll(channels);
     }
 
-    // Extract unique groups
     final groupSet = <String>{};
     for (final ch in allChannels) {
       if (ch.groupTitle != null && ch.groupTitle!.isNotEmpty) {
@@ -488,26 +490,72 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
     }
     final groups = groupSet.toList()..sort();
 
-    // Load valid EPG channel IDs from all sources (must be done BEFORE mappings
-    // so we can resolve stale source IDs)
+    final favLists = await database.getAllFavoriteLists();
+    final favChannelIds = await database.getAllFavoritedChannelIds();
+
+    // Pre-compute provider groups for sidebar
+    final pGroups = <String, List<String>>{};
+    for (final prov in providers) {
+      final gSet = <String>{};
+      for (final ch in allChannels) {
+        if (ch.providerId == prov.id && ch.groupTitle != null && ch.groupTitle!.isNotEmpty) {
+          gSet.add(ch.groupTitle!);
+        }
+      }
+      pGroups[prov.id] = gSet.toList()..sort();
+    }
+
+    // Load vanity names (fast, from SharedPreferences)
+    final prefs = await SharedPreferences.getInstance();
+    final vanityJson = prefs.getString('channel_vanity_names');
+    if (vanityJson != null) {
+      try {
+        final decoded = jsonDecode(vanityJson) as Map<String, dynamic>;
+        _vanityNames = decoded.map((k, v) => MapEntry(k, v as String));
+      } catch (_) {}
+    }
+
+    if (!mounted) return;
+    setState(() {
+      _allChannels = allChannels;
+      _providers = providers;
+      _groups = groups;
+      _providerGroups = pGroups;
+      _favoriteLists = favLists;
+      _favoritedChannelIds = favChannelIds;
+      _isLoading = false;
+      _applyFilters();
+    });
+
+    // Restore session (last group/channel) immediately after UI renders
+    if (isFirstLoad) _restoreSession();
+
+    // ── Phase 2: EPG + indexes → load in background ──
+    _loadEpgData(database, allChannels, favChannelIds);
+  }
+
+  /// Loads EPG sources, mappings, and now-playing data in the background.
+  /// Updates state incrementally so the UI is never blocked.
+  Future<void> _loadEpgData(
+    db.AppDatabase database,
+    List<db.Channel> allChannels,
+    Set<String> favChannelIds,
+  ) async {
     final epgSources = await database.getAllEpgSources();
     final currentSourceIds = epgSources.map((s) => s.id).toSet();
     final validIds = <String>{};
-    final rawToPrefixed = <String, String>{}; // XMLTV channelId → prefixed id
-    final epgNameToId = <String, String>{}; // normalized EPG displayName → prefixed id
+    final rawToPrefixed = <String, String>{};
+    final epgNameToId = <String, String>{};
     for (final src in epgSources) {
       final chs = await database.getEpgChannelsForSource(src.id);
       for (final ch in chs) {
-        validIds.add(ch.id); // prefixed: sourceId_channelId
+        validIds.add(ch.id);
         rawToPrefixed[ch.channelId.toLowerCase()] = ch.id;
-        // Build name-based index for fuzzy EPG matching
         final normName = _normalizeForEpgMatch(ch.displayName);
         if (normName.isNotEmpty) epgNameToId[normName] = ch.id;
       }
     }
 
-    // Load EPG mappings (channel ID → prefixed EPG channel ID for programme lookup)
-    // If a mapping references a deleted/re-created source, resolve against current sources.
     final mappings = await database.getAllMappings();
     final epgMap = <String, String>{};
     for (final m in mappings) {
@@ -515,7 +563,6 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
       if (currentSourceIds.contains(m.epgSourceId)) {
         epgMap[m.channelId] = directKey;
       } else {
-        // Stale source ID — find the epgChannelId in any current source
         for (final srcId in currentSourceIds) {
           final candidate = '${srcId}_${m.epgChannelId}';
           if (validIds.contains(candidate)) {
@@ -526,13 +573,8 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
       }
     }
 
-    // Load favorite lists FIRST — EPG is scoped to favorites + failover alts
-    final favLists = await database.getAllFavoriteLists();
-    final favChannelIds = await database.getAllFavoritedChannelIds();
-
-    // Build the set of channels that need EPG: favorites + their failover alts
-    // Pre-build normalized name index to avoid O(n²) scan
-    final normNameIndex = <String, List<String>>{}; // normName → [channelIds]
+    // Build failover name index + EPG scope
+    final normNameIndex = <String, List<String>>{};
     for (final c in allChannels) {
       final norm = _normalizeName(c.name);
       (normNameIndex[norm] ??= []).add(c.id);
@@ -544,11 +586,8 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
       final alts = normNameIndex[normName];
       if (alts != null) epgScopeIds.addAll(alts);
     }
-    if (_isLoading) {
-      debugPrint('[EPG] Scoped to ${favChannelIds.length} favorites + ${epgScopeIds.length - favChannelIds.length} failover alts (${allChannels.length} total channels)');
-    }
 
-    // Load now-playing EPG data only for scoped channels
+    // Collect EPG channel IDs for now-playing lookup
     final epgChannelIds = <String>{};
     for (final c in allChannels) {
       if (!epgScopeIds.contains(c.id)) continue;
@@ -559,7 +598,6 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
         final prefixed = rawToPrefixed[c.tvgId!.toLowerCase()];
         if (prefixed != null) epgChannelIds.add(prefixed);
       }
-      // Fallback: match by normalized channel name
       if (!epgChannelIds.contains(epgMap[c.id])) {
         final normName = _normalizeForEpgMatch(c.name);
         if (normName.isNotEmpty) {
@@ -575,47 +613,12 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
 
     if (!mounted) return;
     setState(() {
-      _allChannels = allChannels;
-      _providers = providers;
-      _groups = groups;
-      // Pre-compute provider groups for sidebar (avoids re-scanning on every build)
-      final pGroups = <String, List<String>>{};
-      for (final prov in providers) {
-        final gSet = <String>{};
-        for (final ch in allChannels) {
-          if (ch.providerId == prov.id && ch.groupTitle != null && ch.groupTitle!.isNotEmpty) {
-            gSet.add(ch.groupTitle!);
-          }
-        }
-        pGroups[prov.id] = gSet.toList()..sort();
-      }
-      _providerGroups = pGroups;
       _nowPlaying = nowPlaying;
       _epgMappings = epgMap;
       _validEpgChannelIds = validIds;
       _rawToPrefixedEpg = rawToPrefixed;
       _epgNameToId = epgNameToId;
-      _favoriteLists = favLists;
-      _favoritedChannelIds = favChannelIds;
-      _isLoading = false;
     });
-
-    // Load vanity names
-    final prefs = await SharedPreferences.getInstance();
-    final vanityJson = prefs.getString('channel_vanity_names');
-    if (vanityJson != null) {
-      try {
-        final decoded = jsonDecode(vanityJson) as Map<String, dynamic>;
-        _vanityNames = decoded.map((k, v) => MapEntry(k, v as String));
-      } catch (_) {}
-    }
-
-    setState(() {
-      _applyFilters();
-    });
-
-    // Restore last session state
-    _restoreSession();
   }
 
   Future<void> _restoreSession() async {
