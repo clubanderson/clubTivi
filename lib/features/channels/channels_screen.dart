@@ -14,6 +14,7 @@ import 'package:media_kit_video/media_kit_video.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/fuzzy_match.dart';
+import '../../core/platform_info.dart';
 import '../../data/datasources/local/database.dart' as db;
 import '../../data/datasources/remote/tmdb_client.dart';
 import '../../data/services/app_update_service.dart';
@@ -1522,8 +1523,8 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
             ),
           ),
           if (_sidebarExpanded) ...[
-            // Search field — only on mobile (desktop uses the top search bar)
-            if (Platform.isAndroid || Platform.isIOS) ...[
+            // Search field — only on iOS (Android TV uses D-pad nav, desktop uses top bar)
+            if (Platform.isIOS) ...[
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 child: SizedBox(
@@ -1570,22 +1571,14 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
           Expanded(
             child: _sidebarExpanded ? _buildSidebarTree() : _buildCollapsedSidebar(),
           ),
-          // TV navigation items (Providers, Settings) — only on Android TV
+          // TV navigation items (Settings) — only on Android TV
           if (Platform.isAndroid) ...[
             const Divider(height: 1, color: Colors.white10),
             if (_sidebarExpanded) ...[
-              _buildSidebarNavItem(Icons.dns_rounded, 'Providers', () async {
-                await context.push('/providers');
-                if (mounted) _loadChannels();
-              }),
               _buildSidebarNavItem(Icons.settings_rounded, 'Settings', () {
                 context.push('/settings');
               }),
             ] else ...[
-              _sidebarIcon(Icons.dns_rounded, 'Providers', false, () async {
-                await context.push('/providers');
-                if (mounted) _loadChannels();
-              }),
               _sidebarIcon(Icons.settings_rounded, 'Settings', false, () {
                 context.push('/settings');
               }),
