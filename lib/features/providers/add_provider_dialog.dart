@@ -163,7 +163,7 @@ class _AddProviderPageState extends ConsumerState<_AddProviderPage> {
             pf!.unfocus();
             return;
           }
-          WidgetsBinding.instance.addPostFrameCallback((_) {
+          Future.microtask(() {
             Navigator.of(context).pop();
           });
         },

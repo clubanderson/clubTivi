@@ -6,11 +6,13 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:media_kit_video/media_kit_video.dart';
+import 'package:path_provider/path_provider.dart';
 
 import '../../data/datasources/local/database.dart' as db;
 import '../../features/providers/provider_manager.dart' show databaseProvider;
 import '../casting/cast_service.dart';
 import '../casting/cast_dialog.dart';
+import '../channels/channel_debug_dialog.dart';
 import 'player_control_bar.dart';
 import 'player_service.dart';
 
@@ -40,6 +42,8 @@ class PlayerScreen extends ConsumerStatefulWidget {
 class _PlayerScreenState extends ConsumerState<PlayerScreen> {
   bool _showOverlay = true;
   int _currentUrlIndex = 0;
+  bool _showChannelList = false;
+  bool _isFavorite = false;
 
   // Channel switching state
   late int _channelIndex;
@@ -60,6 +64,9 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
   String? _nextTitle;
   String? _nextTime;
 
+  // Favorite lists
+  List<db.FavoriteList> _favoriteLists = [];
+
   @override
   void initState() {
     super.initState();
@@ -70,6 +77,23 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
     _startPlayback();
     _autoHideOverlay();
     _loadEpgInfo();
+    _loadFavoriteState();
+  }
+
+  Future<void> _loadFavoriteState() async {
+    if (widget.channels.isEmpty) return;
+    final ch = widget.channels[_channelIndex];
+    final channelId = ch['id'] as String? ?? '';
+    if (channelId.isEmpty) return;
+    final database = ref.read(databaseProvider);
+    final lists = await database.getAllFavoriteLists();
+    final listsForChannel = await database.getListsForChannel(channelId);
+    if (mounted) {
+      setState(() {
+        _favoriteLists = lists;
+        _isFavorite = listsForChannel.isNotEmpty;
+      });
+    }
   }
 
   Future<void> _loadEpgInfo() async {
@@ -265,6 +289,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
     ref.read(playerServiceProvider).play(ch['streamUrl'] as String? ?? '');
     _autoHideOverlay();
     _loadEpgInfo();
+    _loadFavoriteState();
   }
 
   void _adjustVolume(double delta) {
@@ -307,12 +332,19 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
               // TiviMate-style control bar overlay
               PlayerControlBar(
                 isCasting: ref.read(castServiceProvider).isCasting,
+                isFavorite: _isFavorite,
                 onCastTap: () => _showCastPicker(),
                 onBackTap: () {
                   GoRouter.of(context).canPop()
                       ? GoRouter.of(context).pop()
                       : GoRouter.of(context).go('/');
                 },
+                onScreenshot: _takeScreenshot,
+                onFavorite: _toggleFavorite,
+                onPip: _enterPip,
+                onInfo: _showInfoDialog,
+                onSettings: () => GoRouter.of(context).push('/settings'),
+                onChannelList: () => setState(() => _showChannelList = !_showChannelList),
               ),
 
               // Channel info overlay (top, shown alongside control bar)
@@ -381,22 +413,6 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
                             ],
                           ),
                         ),
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 8, vertical: 4),
-                          decoration: BoxDecoration(
-                            color: Colors.white24,
-                            borderRadius: BorderRadius.circular(4),
-                          ),
-                          child: const Text(
-                            'ESC',
-                            style: TextStyle(
-                              color: Colors.white70,
-                              fontSize: 11,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ),
                       ],
                     ),
                   ),
@@ -440,10 +456,250 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
                     ),
                   ),
                 ),
+              // Channel list overlay
+              if (_showChannelList && widget.channels.isNotEmpty)
+                Positioned(
+                  right: 0, top: 0, bottom: 0,
+                  width: 320,
+                  child: Container(
+                    color: Colors.black.withValues(alpha: 0.85),
+                    child: Column(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.fromLTRB(16, 40, 8, 8),
+                          child: Row(
+                            children: [
+                              const Icon(Icons.list, color: Colors.white70, size: 20),
+                              const SizedBox(width: 8),
+                              const Text('Channels', style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w600)),
+                              const Spacer(),
+                              IconButton(
+                                icon: const Icon(Icons.close, color: Colors.white54, size: 20),
+                                onPressed: () => setState(() => _showChannelList = false),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const Divider(height: 1, color: Colors.white10),
+                        Expanded(
+                          child: ListView.builder(
+                            itemCount: widget.channels.length,
+                            itemBuilder: (ctx, i) {
+                              final ch = widget.channels[i];
+                              final name = ch['name'] as String? ?? '';
+                              final isCurrent = i == _channelIndex;
+                              return ListTile(
+                                dense: true,
+                                selected: isCurrent,
+                                selectedTileColor: const Color(0xFF6C5CE7).withValues(alpha: 0.3),
+                                leading: ch['tvgLogo'] != null
+                                    ? Image.network(ch['tvgLogo'] as String, width: 28, height: 28, errorBuilder: (_, __, ___) => const Icon(Icons.tv, size: 28, color: Colors.white30))
+                                    : const Icon(Icons.tv, size: 28, color: Colors.white30),
+                                title: Text(name, style: TextStyle(
+                                  color: isCurrent ? Colors.white : Colors.white70,
+                                  fontWeight: isCurrent ? FontWeight.bold : FontWeight.normal,
+                                  fontSize: 13,
+                                ), maxLines: 1, overflow: TextOverflow.ellipsis),
+                                onTap: () {
+                                  setState(() => _showChannelList = false);
+                                  if (i != _channelIndex) {
+                                    _switchChannel(i - _channelIndex);
+                                  }
+                                },
+                              );
+                            },
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
             ],
           ),
         ),
       ),
     );
+  }
+
+  // ---- Action handlers ----
+
+  Future<void> _takeScreenshot() async {
+    final ps = ref.read(playerServiceProvider);
+    try {
+      final dir = await getTemporaryDirectory();
+      final path = '${dir.path}/clubtivi_screenshot_${DateTime.now().millisecondsSinceEpoch}.png';
+      final result = await ps.takeScreenshot(path);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(result != null ? 'Screenshot saved' : 'Screenshot not available')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Screenshot failed: $e'), backgroundColor: Colors.red),
+        );
+      }
+    }
+  }
+
+  void _toggleFavorite() {
+    if (widget.channels.isEmpty) return;
+    final ch = widget.channels[_channelIndex];
+    final channelId = ch['id'] as String? ?? '';
+    final channelName = ch['name'] as String? ?? '';
+    if (channelId.isEmpty) return;
+    _showFavoriteListSheet(channelId, channelName);
+  }
+
+  Future<void> _showFavoriteListSheet(String channelId, String channelName) async {
+    final database = ref.read(databaseProvider);
+    final listsForChannel = await database.getListsForChannel(channelId);
+    final checkedIds = listsForChannel.map((l) => l.id).toSet();
+
+    if (!mounted) return;
+    await showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: const Color(0xFF1A1A2E),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (ctx, setSheetState) {
+            return Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      const Icon(Icons.star_rounded, color: Colors.amber, size: 20),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'Add "$channelName" to list',
+                          style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.bold),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  if (_favoriteLists.isEmpty)
+                    const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 16),
+                      child: Center(
+                        child: Text('No favorite lists yet', style: TextStyle(color: Colors.white38)),
+                      ),
+                    ),
+                  ..._favoriteLists.map((list) {
+                    final isInList = checkedIds.contains(list.id);
+                    return CheckboxListTile(
+                      dense: true,
+                      value: isInList,
+                      activeColor: const Color(0xFFE17055),
+                      title: Text('★ ${list.name}',
+                          style: const TextStyle(color: Colors.white70, fontSize: 13)),
+                      onChanged: (val) async {
+                        if (val == true) {
+                          await database.addChannelToList(list.id, channelId);
+                          checkedIds.add(list.id);
+                        } else {
+                          await database.removeChannelFromList(list.id, channelId);
+                          checkedIds.remove(list.id);
+                        }
+                        setSheetState(() {});
+                      },
+                    );
+                  }),
+                  const Divider(color: Colors.white12),
+                  TextButton.icon(
+                    onPressed: () async {
+                      final name = await _showCreateListDialog();
+                      if (name != null && name.isNotEmpty) {
+                        final newList = await database.createFavoriteList(name);
+                        await database.addChannelToList(newList.id, channelId);
+                        checkedIds.add(newList.id);
+                        final updated = await database.getAllFavoriteLists();
+                        setState(() => _favoriteLists = updated);
+                        setSheetState(() {});
+                      }
+                    },
+                    icon: const Icon(Icons.add_rounded, size: 18),
+                    label: const Text('Create new list'),
+                    style: TextButton.styleFrom(foregroundColor: Colors.cyanAccent),
+                  ),
+                  const SizedBox(height: 8),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+    // Refresh favorite state after sheet closes
+    final listsAfter = await database.getListsForChannel(channelId);
+    if (mounted) {
+      setState(() => _isFavorite = listsAfter.isNotEmpty);
+    }
+  }
+
+  Future<String?> _showCreateListDialog() async {
+    String name = '';
+    return showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF1A1A2E),
+        title: const Text('New Favorite List', style: TextStyle(color: Colors.white)),
+        content: TextField(
+          autofocus: true,
+          style: const TextStyle(color: Colors.white),
+          decoration: const InputDecoration(
+            hintText: 'e.g. Sports, News, Kids',
+            hintStyle: TextStyle(color: Colors.white38),
+          ),
+          onChanged: (v) => name = v,
+          onSubmitted: (v) => Navigator.of(ctx).pop(v.trim()),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('Cancel')),
+          TextButton(onPressed: () => Navigator.of(ctx).pop(name.trim()), child: const Text('Create')),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _enterPip() async {
+    // PiP not yet available on desktop — show a message
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Picture-in-Picture — available on mobile'),
+        duration: Duration(seconds: 2),
+      ),
+    );
+  }
+
+  void _showInfoDialog() {
+    // Build a db.Channel from current channel data for the debug dialog
+    if (widget.channels.isEmpty) return;
+    final ch = widget.channels[_channelIndex];
+    final channel = db.Channel(
+      id: ch['id'] as String? ?? '',
+      providerId: ch['providerId'] as String? ?? '',
+      name: ch['name'] as String? ?? '',
+      groupTitle: ch['groupTitle'] as String? ?? '',
+      streamUrl: ch['streamUrl'] as String? ?? '',
+      streamType: ch['streamType'] as String? ?? 'live',
+      tvgId: ch['tvgId'] as String?,
+      tvgName: ch['tvgName'] as String?,
+      tvgLogo: ch['tvgLogo'] as String?,
+      favorite: false,
+      hidden: false,
+      sortOrder: 0,
+    );
+    final ps = ref.read(playerServiceProvider);
+    ChannelDebugDialog.show(context, channel, ps);
   }
 }

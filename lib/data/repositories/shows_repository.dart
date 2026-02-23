@@ -1,7 +1,7 @@
 import 'package:logger/logger.dart';
 import '../datasources/remote/trakt_client.dart';
 import '../datasources/remote/tmdb_client.dart';
-import '../datasources/remote/debrid_client.dart';
+import '../datasources/remote/debrid_service.dart';
 import '../datasources/remote/torrent_search_client.dart';
 import '../models/show.dart';
 
@@ -9,14 +9,14 @@ import '../models/show.dart';
 class ShowsRepository {
   final TraktClient? _trakt;
   final TmdbClient? _tmdb;
-  final DebridClient? _debrid;
+  final DebridService? _debrid;
   final TorrentSearchClient _torrentSearch;
   final _log = Logger(printer: SimplePrinter());
 
   ShowsRepository({
     TraktClient? trakt,
     TmdbClient? tmdb,
-    DebridClient? debrid,
+    DebridService? debrid,
     TorrentSearchClient? torrentSearch,
   })  : _trakt = trakt,
         _tmdb = tmdb,

@@ -19,6 +19,7 @@ class GuideScreen extends ConsumerStatefulWidget {
 class _GuideScreenState extends ConsumerState<GuideScreen> {
   DateTime _focusTime = DateTime.now();
   final _scrollController = ScrollController();
+  final _scrollOffset = ValueNotifier<double>(0.0);
   String _searchQuery = '';
   final _searchController = TextEditingController();
   final _focusNode = FocusNode();
@@ -38,11 +39,18 @@ class _GuideScreenState extends ConsumerState<GuideScreen> {
   void initState() {
     super.initState();
     _loadMappings();
+    // Pre-set offset to "now" so rows render correctly before jumpTo fires
+    final nowMinutes = _focusTime.hour * 60 + _focusTime.minute;
+    final initialOffset = (nowMinutes * _pixelsPerMinute - 100).clamp(0.0, 24 * 60 * _pixelsPerMinute);
+    _scrollOffset.value = initialOffset;
+    // Sync scroll offset to ValueNotifier for all rows
+    _scrollController.addListener(() {
+      _scrollOffset.value = _scrollController.offset;
+    });
     // Scroll to "now" on load
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (_scrollController.hasClients) {
-        final nowMinutes = _focusTime.hour * 60 + _focusTime.minute;
-        _scrollController.jumpTo(nowMinutes * _pixelsPerMinute - 100);
+        _scrollController.jumpTo(initialOffset);
       }
     });
   }
@@ -50,16 +58,28 @@ class _GuideScreenState extends ConsumerState<GuideScreen> {
   Future<void> _loadMappings() async {
     final database = ref.read(databaseProvider);
     final mappings = await database.getAllMappings();
-    final epgMap = <String, String>{};
-    for (final m in mappings) {
-      epgMap[m.channelId] = '${m.epgSourceId}_${m.epgChannelId}';
-    }
     final epgSources = await database.getAllEpgSources();
+    final currentSourceIds = epgSources.map((s) => s.id).toSet();
     final validIds = <String>{};
     for (final src in epgSources) {
       final chs = await database.getEpgChannelsForSource(src.id);
       for (final ch in chs) {
         validIds.add(ch.id);
+      }
+    }
+    // Resolve mappings — handle stale source IDs from deleted/re-created sources
+    final epgMap = <String, String>{};
+    for (final m in mappings) {
+      if (currentSourceIds.contains(m.epgSourceId)) {
+        epgMap[m.channelId] = '${m.epgSourceId}_${m.epgChannelId}';
+      } else {
+        for (final srcId in currentSourceIds) {
+          final candidate = '${srcId}_${m.epgChannelId}';
+          if (validIds.contains(candidate)) {
+            epgMap[m.channelId] = candidate;
+            break;
+          }
+        }
       }
     }
     if (!mounted) return;
@@ -85,6 +105,7 @@ class _GuideScreenState extends ConsumerState<GuideScreen> {
   @override
   void dispose() {
     _scrollController.dispose();
+    _scrollOffset.dispose();
     _searchController.dispose();
     _focusNode.dispose();
     super.dispose();
@@ -101,7 +122,7 @@ class _GuideScreenState extends ConsumerState<GuideScreen> {
       return;
     }
     if (event.logicalKey == LogicalKeyboardKey.escape) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
+      Future.microtask(() {
         if (!mounted) return;
         if (context.canPop()) {
           context.pop();
@@ -169,12 +190,19 @@ class _GuideScreenState extends ConsumerState<GuideScreen> {
           }
           return Column(
             children: [
-              // Time ruler
+              // Time ruler — offset by 120px to align with programme columns
               SizedBox(
                 height: 32,
-                child: _TimeRuler(
-                  scrollController: _scrollController,
-                  focusDate: _focusTime,
+                child: Row(
+                  children: [
+                    const SizedBox(width: 120),
+                    Expanded(
+                      child: _TimeRuler(
+                        scrollController: _scrollController,
+                        focusDate: _focusTime,
+                      ),
+                    ),
+                  ],
                 ),
               ),
               const Divider(height: 1),
@@ -236,7 +264,7 @@ class _GuideScreenState extends ConsumerState<GuideScreen> {
                         return _ChannelGuideRow(
                           channelName: channel.name,
                           channelLogo: channel.tvgLogo,
-                          scrollController: _scrollController,
+                          scrollOffset: _scrollOffset,
                           database: database,
                           epgChannelId: epgId,
                           focusDate: _focusTime,
@@ -278,13 +306,17 @@ class _TimeRuler extends StatelessWidget {
       child: Row(
         children: List.generate(24, (hour) {
           final width = 60 * _GuideScreenState._pixelsPerMinute;
+          final h12 = hour == 0 ? 12 : (hour > 12 ? hour - 12 : hour);
+          final ampm = hour < 12 ? 'AM' : 'PM';
           return SizedBox(
             width: width,
             child: Padding(
               padding: const EdgeInsets.only(left: 4),
               child: Text(
-                '${hour.toString().padLeft(2, '0')}:00',
+                '$h12:00 $ampm',
                 style: const TextStyle(fontSize: 11, color: Colors.white38),
+                overflow: TextOverflow.clip,
+                maxLines: 1,
               ),
             ),
           );
@@ -297,7 +329,7 @@ class _TimeRuler extends StatelessWidget {
 class _ChannelGuideRow extends StatefulWidget {
   final String channelName;
   final String? channelLogo;
-  final ScrollController scrollController;
+  final ValueNotifier<double> scrollOffset;
   final db.AppDatabase database;
   final String? epgChannelId;
   final DateTime focusDate;
@@ -306,7 +338,7 @@ class _ChannelGuideRow extends StatefulWidget {
   const _ChannelGuideRow({
     required this.channelName,
     this.channelLogo,
-    required this.scrollController,
+    required this.scrollOffset,
     required this.database,
     this.epgChannelId,
     required this.focusDate,
@@ -351,7 +383,22 @@ class _ChannelGuideRowState extends State<_ChannelGuideRow> {
         start: dayStart,
         end: dayEnd,
       );
-      if (mounted) setState(() { _programmes = progs; _loading = false; });
+      // Deduplicate — EPG data can have entries from multiple sources
+      // with near-identical times. Remove any programme that significantly
+      // overlaps (>50% of its duration) with an already-kept programme.
+      final unique = <db.EpgProgramme>[];
+      for (final p in progs) {
+        final dominated = unique.any((u) {
+          final oStart = p.start.isAfter(u.start) ? p.start : u.start;
+          final oEnd = p.stop.isBefore(u.stop) ? p.stop : u.stop;
+          final overlapMs = oEnd.difference(oStart).inMilliseconds;
+          if (overlapMs <= 0) return false;
+          final pMs = p.stop.difference(p.start).inMilliseconds;
+          return pMs > 0 && overlapMs > pMs * 0.5;
+        });
+        if (!dominated) unique.add(p);
+      }
+      if (mounted) setState(() { _programmes = unique; _loading = false; });
     } catch (_) {
       if (mounted) setState(() { _programmes = []; _loading = false; });
     }
@@ -364,73 +411,75 @@ class _ChannelGuideRowState extends State<_ChannelGuideRow> {
         widget.focusDate.year, widget.focusDate.month, widget.focusDate.day);
     final now = DateTime.now();
 
-    return SizedBox(
-      height: 56,
-      child: Row(
-        children: [
-          // Channel label
-          SizedBox(
-            width: 120,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 8),
-              child: Row(
-                children: [
-                  if (widget.channelLogo != null && widget.channelLogo!.isNotEmpty)
-                    Padding(
-                      padding: const EdgeInsets.only(right: 6),
-                      child: Image.network(widget.channelLogo!, width: 24, height: 24,
-                        errorBuilder: (_, __, ___) => const Icon(Icons.tv, size: 18, color: Colors.white24)),
+    return ClipRect(
+      child: SizedBox(
+        height: 56,
+        child: Row(
+          children: [
+            // Channel label
+            SizedBox(
+              width: 120,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+                child: Row(
+                  children: [
+                    if (widget.channelLogo != null && widget.channelLogo!.isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(right: 6),
+                        child: Image.network(widget.channelLogo!, width: 24, height: 24,
+                          errorBuilder: (_, __, ___) => const Icon(Icons.tv, size: 18, color: Colors.white24)),
+                      ),
+                    Expanded(
+                      child: Text(widget.channelName,
+                        style: const TextStyle(fontSize: 11),
+                        maxLines: 2, overflow: TextOverflow.ellipsis),
                     ),
-                  Expanded(
-                    child: Text(widget.channelName,
-                      style: const TextStyle(fontSize: 11),
-                      maxLines: 2, overflow: TextOverflow.ellipsis),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
-          ),
-          // Programme timeline
-          Expanded(
-            child: SingleChildScrollView(
-              controller: widget.scrollController,
-              scrollDirection: Axis.horizontal,
-              child: SizedBox(
-                width: 24 * 60 * ppm,
-                height: 52,
-                child: _loading
-                    ? const SizedBox.shrink()
-                    : (_programmes == null || _programmes!.isEmpty)
-                        ? Container(
-                            margin: const EdgeInsets.symmetric(vertical: 2),
-                            decoration: BoxDecoration(
-                              color: Colors.white.withValues(alpha: 0.03),
-                              borderRadius: BorderRadius.circular(4),
+            // Programme timeline — synced scroll row
+            Expanded(
+              child: _SyncedScrollRow(
+                scrollOffset: widget.scrollOffset,
+                child: SizedBox(
+                  width: 24 * 60 * ppm,
+                  height: 52,
+                  child: _loading
+                      ? const SizedBox.shrink()
+                      : (_programmes == null || _programmes!.isEmpty)
+                          ? Container(
+                              margin: const EdgeInsets.symmetric(vertical: 2),
+                              decoration: BoxDecoration(
+                                color: Colors.white.withValues(alpha: 0.03),
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              child: const Center(
+                                child: Text('No EPG data',
+                                  style: TextStyle(fontSize: 10, color: Colors.white24)),
+                              ),
+                            )
+                          : Stack(
+                              clipBehavior: Clip.hardEdge,
+                              children: [
+                                for (final prog in _programmes!)
+                                  _buildProgrammeBlock(prog, dayStart, now, ppm),
+                                // Now indicator line
+                                if (now.year == dayStart.year &&
+                                    now.month == dayStart.month &&
+                                    now.day == dayStart.day)
+                                  Positioned(
+                                    left: now.difference(dayStart).inMinutes * ppm,
+                                    top: 0, bottom: 0,
+                                    child: Container(width: 2, color: Colors.red),
+                                  ),
+                              ],
                             ),
-                            child: const Center(
-                              child: Text('No EPG data',
-                                style: TextStyle(fontSize: 10, color: Colors.white24)),
-                            ),
-                          )
-                        : Stack(
-                            children: [
-                              for (final prog in _programmes!)
-                                _buildProgrammeBlock(prog, dayStart, now, ppm),
-                              // Now indicator line
-                              if (now.year == dayStart.year &&
-                                  now.month == dayStart.month &&
-                                  now.day == dayStart.day)
-                                Positioned(
-                                  left: now.difference(dayStart).inMinutes * ppm,
-                                  top: 0, bottom: 0,
-                                  child: Container(width: 2, color: Colors.red),
-                                ),
-                            ],
-                          ),
+                ),
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -448,8 +497,18 @@ class _ChannelGuideRowState extends State<_ChannelGuideRow> {
       top: 2, bottom: 2,
       width: width,
       child: Tooltip(
-        message: '${prog.title}\n${_fmtTime(prog.start)} – ${_fmtTime(prog.stop)}',
-        child: Container(
+        richMessage: _buildProgrammeTooltip(prog),
+        waitDuration: const Duration(milliseconds: 400),
+        preferBelow: true,
+        decoration: BoxDecoration(
+          color: const Color(0xFF1A1A2E),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: Colors.white24),
+        ),
+        padding: const EdgeInsets.all(12),
+        child: MouseRegion(
+          cursor: SystemMouseCursors.click,
+          child: Container(
           margin: const EdgeInsets.only(right: 1),
           padding: const EdgeInsets.symmetric(horizontal: 4),
           decoration: BoxDecoration(
@@ -459,6 +518,7 @@ class _ChannelGuideRowState extends State<_ChannelGuideRow> {
             borderRadius: BorderRadius.circular(3),
             border: isNow ? Border.all(color: Colors.blueAccent, width: 1) : null,
           ),
+          clipBehavior: Clip.hardEdge,
           alignment: Alignment.centerLeft,
           child: Text(
             prog.title,
@@ -467,15 +527,61 @@ class _ChannelGuideRowState extends State<_ChannelGuideRow> {
               color: isNow ? Colors.white : Colors.white70,
               fontWeight: isNow ? FontWeight.bold : FontWeight.normal,
             ),
-            maxLines: 2, overflow: TextOverflow.ellipsis,
+            maxLines: 1, overflow: TextOverflow.ellipsis,
           ),
+        ),
         ),
       ),
     );
   }
 
+  InlineSpan _buildProgrammeTooltip(db.EpgProgramme prog) {
+    final buf = StringBuffer();
+    buf.writeln(prog.title);
+    buf.writeln('${_fmtTime(prog.start)} – ${_fmtTime(prog.stop)}');
+    if (prog.subtitle != null && prog.subtitle!.isNotEmpty) {
+      buf.writeln(prog.subtitle!);
+    }
+    if (prog.episodeNum != null && prog.episodeNum!.isNotEmpty) {
+      final ep = _formatEpisodeNum(prog.episodeNum!);
+      if (ep.isNotEmpty) buf.writeln(ep);
+    }
+    if (prog.category != null && prog.category!.isNotEmpty) {
+      buf.writeln('Category: ${prog.category}');
+    }
+    if (prog.description != null && prog.description!.isNotEmpty) {
+      var desc = prog.description!;
+      if (desc.length > 200) desc = '${desc.substring(0, 200)}…';
+      buf.writeln(desc);
+    }
+    final imdbQuery = Uri.encodeComponent(prog.title);
+    buf.writeln('🔗 imdb.com/find/?q=$imdbQuery');
+    return TextSpan(
+      text: buf.toString().trimRight(),
+      style: const TextStyle(fontSize: 12, height: 1.4),
+    );
+  }
+
+  /// Parse XMLTV episode-num (e.g. "1.4." = S02E05, "0.5.0/1" = S01E06)
+  String _formatEpisodeNum(String raw) {
+    // xmltv_ns format: "season.episode.part" (0-indexed)
+    final parts = raw.split('.');
+    if (parts.length >= 2) {
+      final s = int.tryParse(parts[0].trim());
+      final ePart = parts[1].trim().split('/')[0];
+      final e = int.tryParse(ePart);
+      if (s != null && e != null) {
+        return 'S${(s + 1).toString().padLeft(2, '0')}E${(e + 1).toString().padLeft(2, '0')}';
+      }
+    }
+    // Fallback: show raw
+    return 'Episode: $raw';
+  }
+
   String _fmtTime(DateTime dt) {
-    return '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
+    final h = dt.hour == 0 ? 12 : (dt.hour > 12 ? dt.hour - 12 : dt.hour);
+    final ampm = dt.hour < 12 ? 'AM' : 'PM';
+    return '$h:${dt.minute.toString().padLeft(2, '0')} $ampm';
   }
 }
 
@@ -498,6 +604,57 @@ class _GuideEmptyState extends StatelessWidget {
               style: TextStyle(fontSize: 14, color: Colors.white38)),
         ],
       ),
+    );
+  }
+}
+
+/// A horizontal scroll view that syncs position from a ValueNotifier.
+/// Each row gets its own ScrollController; NeverScrollableScrollPhysics
+/// prevents independent scrolling — only the time ruler drives offset.
+class _SyncedScrollRow extends StatefulWidget {
+  final ValueNotifier<double> scrollOffset;
+  final Widget child;
+
+  const _SyncedScrollRow({required this.scrollOffset, required this.child});
+
+  @override
+  State<_SyncedScrollRow> createState() => _SyncedScrollRowState();
+}
+
+class _SyncedScrollRowState extends State<_SyncedScrollRow> {
+  final _controller = ScrollController();
+
+  @override
+  void initState() {
+    super.initState();
+    widget.scrollOffset.addListener(_sync);
+    WidgetsBinding.instance.addPostFrameCallback((_) => _sync());
+  }
+
+  void _sync() {
+    if (!_controller.hasClients) return;
+    final target = widget.scrollOffset.value.clamp(
+      0.0, _controller.position.maxScrollExtent,
+    );
+    if ((_controller.offset - target).abs() > 0.5) {
+      _controller.jumpTo(target);
+    }
+  }
+
+  @override
+  void dispose() {
+    widget.scrollOffset.removeListener(_sync);
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SingleChildScrollView(
+      controller: _controller,
+      scrollDirection: Axis.horizontal,
+      physics: const NeverScrollableScrollPhysics(),
+      child: widget.child,
     );
   }
 }

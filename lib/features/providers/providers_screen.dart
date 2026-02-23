@@ -22,7 +22,7 @@ class ProvidersScreen extends ConsumerWidget {
     return CallbackShortcuts(
       bindings: {
         const SingleActivator(LogicalKeyboardKey.escape): () {
-          WidgetsBinding.instance.addPostFrameCallback((_) {
+          Future.microtask(() {
             if (context.canPop()) {
               context.pop();
             } else {

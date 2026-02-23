@@ -49,6 +49,7 @@ class _ShowsScreenState extends ConsumerState<ShowsScreen> {
       backgroundColor: const Color(0xFF0A0A1A),
       body: KeyboardListener(
         focusNode: _keyboardFocusNode,
+        autofocus: true,
         onKeyEvent: _handleKeyEvent,
         child: Column(
           children: [
@@ -66,11 +67,14 @@ class _ShowsScreenState extends ConsumerState<ShowsScreen> {
     return CallbackShortcuts(
       bindings: {
         const SingleActivator(LogicalKeyboardKey.escape): () {
-          if (context.canPop()) {
-            context.pop();
-          } else {
-            context.go('/');
-          }
+          Future.microtask(() {
+            if (!mounted) return;
+            if (context.canPop()) {
+              context.pop();
+            } else {
+              context.go('/');
+            }
+          });
         },
       },
       child: Focus(
@@ -341,7 +345,7 @@ class _ShowsScreenState extends ConsumerState<ShowsScreen> {
             ref.read(showSearchQueryProvider.notifier).state = '';
           });
         } else {
-          WidgetsBinding.instance.addPostFrameCallback((_) {
+          Future.microtask(() {
             if (!mounted) return;
             if (context.canPop()) {
               context.pop();

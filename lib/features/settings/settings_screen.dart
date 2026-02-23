@@ -10,6 +10,7 @@ import 'package:share_plus/share_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../core/countdown_snackbar.dart';
 import '../../data/datasources/local/database.dart' as db;
 import '../../data/services/app_update_service.dart';
 import '../../data/services/backup_service.dart';
@@ -18,6 +19,8 @@ import '../providers/provider_manager.dart';
 import '../remote/web_remote_server.dart';
 import 'add_epg_source_dialog.dart';
 import '../shows/shows_providers.dart';
+import '../../data/datasources/remote/trakt_client.dart';
+import '../../data/datasources/remote/tmdb_client.dart';
 
 Future<void> _exportBackup(BuildContext context) async {
   try {
@@ -151,15 +154,16 @@ Future<void> _checkForUpdates(BuildContext context) async {
 
   if (release == null) {
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Could not check for updates')),
+      countdownSnackBar('Could not check for updates', seconds: 5),
     );
     return;
   }
 
   if (!release.isNewer) {
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('You\'re up to date! (v${AppUpdateService.currentVersion})'),
+      countdownSnackBar(
+        'You\'re up to date! (v${AppUpdateService.currentVersion})',
+        seconds: 5,
       ),
     );
     return;
@@ -296,7 +300,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             pf!.unfocus();
             return;
           }
-          WidgetsBinding.instance.addPostFrameCallback((_) {
+          Future.microtask(() {
             if (Navigator.of(context).canPop()) {
               Navigator.of(context).pop();
             } else {
@@ -325,10 +329,22 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         child: ListView(
           children: [
           _SettingsSection(
-            title: 'EPG',
+            title: 'Providers',
             children: [
               ListTile(
                 autofocus: true,
+                leading: const Icon(Icons.dns_rounded),
+                title: const Text('Manage Providers'),
+                subtitle: const Text('M3U, Xtream Codes, free TV sources'),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () => context.push('/providers'),
+              ),
+            ],
+          ),
+          _SettingsSection(
+            title: 'EPG',
+            children: [
+              ListTile(
                 leading: const Icon(Icons.source_rounded),
                 title: const Text('EPG Sources'),
                 subtitle: const Text('Manage XMLTV feeds (epg.best, etc.)'),
@@ -674,7 +690,7 @@ class _EpgSourcesScreenState extends ConsumerState<_EpgSourcesScreen> {
             pf!.unfocus();
             return;
           }
-          WidgetsBinding.instance.addPostFrameCallback((_) {
+          Future.microtask(() {
             Navigator.of(context).pop();
           });
         },
@@ -812,107 +828,328 @@ class _ShowsApiKeysSection extends ConsumerStatefulWidget {
 class _ShowsApiKeysSectionState extends ConsumerState<_ShowsApiKeysSection> {
   final _traktCtrl = TextEditingController();
   final _tmdbCtrl = TextEditingController();
-  final _debridCtrl = TextEditingController();
   bool _loaded = false;
+  bool _traktVerifying = false;
+  bool? _traktVerified;
+  bool _tmdbVerifying = false;
+  bool? _tmdbVerified;
 
   @override
   void dispose() {
     _traktCtrl.dispose();
     _tmdbCtrl.dispose();
-    _debridCtrl.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     final keys = ref.watch(showsApiKeysProvider);
-    if (!_loaded && keys.traktClientId.isNotEmpty) {
+    if (!_loaded && (keys.traktClientId.isNotEmpty || keys.tmdbApiKey.isNotEmpty)) {
       _traktCtrl.text = keys.traktClientId;
       _tmdbCtrl.text = keys.tmdbApiKey;
-      _debridCtrl.text = keys.debridApiToken;
       _loaded = true;
     }
 
+    final debridCount = keys.configuredDebridCount;
+
     return _SettingsSection(
-      title: 'Shows & Movies (Trakt + TMDB + Real-Debrid)',
+      title: 'Shows & Movies',
       children: [
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          child: Column(
-            children: [
-              _apiKeyField(
-                controller: _traktCtrl,
-                label: 'Trakt Client ID',
-                hint: 'Get from trakt.tv/oauth/applications',
-                icon: Icons.tv,
-                hasValue: keys.hasTraktKey,
-              ),
-              const SizedBox(height: 8),
-              _apiKeyField(
-                controller: _tmdbCtrl,
-                label: 'TMDB API Key',
-                hint: 'API Key or Read Access Token from themoviedb.org',
-                icon: Icons.image,
-                hasValue: keys.hasTmdbKey,
-              ),
-              const SizedBox(height: 8),
-              _apiKeyField(
-                controller: _debridCtrl,
-                label: 'Real-Debrid API Token',
-                hint: 'Get from real-debrid.com/apitoken',
-                icon: Icons.cloud_download,
-                hasValue: keys.hasDebridKey,
-              ),
-              const SizedBox(height: 12),
-              SizedBox(
-                width: double.infinity,
-                child: FilledButton.icon(
-                  onPressed: () async {
-                    await ref.read(showsApiKeysProvider.notifier).save(
-                      traktClientId: _traktCtrl.text.trim(),
-                      tmdbApiKey: _tmdbCtrl.text.trim(),
-                      debridApiToken: _debridCtrl.text.trim(),
-                    );
-                    // Invalidate shows repo so it picks up new keys
-                    ref.invalidate(showsRepositoryProvider);
-                    if (context.mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Shows API keys saved')),
-                      );
-                    }
-                  },
-                  icon: const Icon(Icons.save),
-                  label: const Text('Save Keys'),
-                ),
-              ),
-            ],
+        _ApiKeyCard(
+          title: 'Trakt',
+          subtitle: keys.hasTraktKey ? 'Configured ✓' : 'Not configured',
+          isConfigured: keys.hasTraktKey,
+          icon: Icons.tv_rounded,
+          controller: _traktCtrl,
+          tokenLabel: 'Client ID',
+          tokenHint: 'trakt.tv/oauth/applications',
+          tokenUrl: 'https://trakt.tv/oauth/applications',
+          isVerifying: _traktVerifying,
+          verifyResult: _traktVerified,
+          onSave: () => _saveTrakt(),
+          onVerify: () => _verifyTrakt(),
+          onClear: () {
+            _traktCtrl.clear();
+            _saveTrakt();
+          },
+        ),
+        _ApiKeyCard(
+          title: 'TMDB',
+          subtitle: keys.hasTmdbKey ? 'Configured ✓' : 'Not configured',
+          isConfigured: keys.hasTmdbKey,
+          icon: Icons.image_rounded,
+          controller: _tmdbCtrl,
+          tokenLabel: 'API Key',
+          tokenHint: 'themoviedb.org/settings/api',
+          tokenUrl: 'https://www.themoviedb.org/settings/api',
+          isVerifying: _tmdbVerifying,
+          verifyResult: _tmdbVerified,
+          onSave: () => _saveTmdb(),
+          onVerify: () => _verifyTmdb(),
+          onClear: () {
+            _tmdbCtrl.clear();
+            _saveTmdb();
+          },
+        ),
+        ListTile(
+          leading: const Icon(Icons.cloud_download_rounded),
+          title: const Text('Debrid Services'),
+          subtitle: Text(
+            debridCount > 0
+                ? '$debridCount service${debridCount > 1 ? 's' : ''} configured'
+                : 'Not configured',
+            style: TextStyle(
+              fontSize: 12,
+              color: debridCount > 0 ? Colors.green : Colors.white38,
+            ),
           ),
+          trailing: const Icon(Icons.chevron_right),
+          onTap: () => context.push('/debrid-services'),
         ),
       ],
     );
   }
 
-  Widget _apiKeyField({
-    required TextEditingController controller,
-    required String label,
-    required String hint,
-    required IconData icon,
-    required bool hasValue,
-  }) {
-    return TextFormField(
-      controller: controller,
-      obscureText: true,
-      decoration: InputDecoration(
-        labelText: label,
-        hintText: hint,
-        prefixIcon: Icon(icon),
-        suffixIcon: hasValue
-            ? const Icon(Icons.check_circle, color: Colors.green, size: 20)
-            : null,
-        border: const OutlineInputBorder(),
-        isDense: true,
+  Future<void> _saveTrakt() async {
+    final keys = ref.read(showsApiKeysProvider);
+    await ref.read(showsApiKeysProvider.notifier).save(
+      traktClientId: _traktCtrl.text.trim(),
+      tmdbApiKey: keys.tmdbApiKey,
+      debridTokens: keys.debridTokens,
+    );
+    ref.invalidate(showsRepositoryProvider);
+    if (mounted) {
+      setState(() => _traktVerified = null);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Trakt key saved')),
+      );
+    }
+  }
+
+  Future<void> _saveTmdb() async {
+    final keys = ref.read(showsApiKeysProvider);
+    await ref.read(showsApiKeysProvider.notifier).save(
+      traktClientId: keys.traktClientId,
+      tmdbApiKey: _tmdbCtrl.text.trim(),
+      debridTokens: keys.debridTokens,
+    );
+    ref.invalidate(showsRepositoryProvider);
+    if (mounted) {
+      setState(() => _tmdbVerified = null);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('TMDB key saved')),
+      );
+    }
+  }
+
+  Future<void> _verifyTrakt() async {
+    final token = _traktCtrl.text.trim();
+    if (token.isEmpty) return;
+    setState(() { _traktVerifying = true; _traktVerified = null; });
+    try {
+      final client = TraktClient(clientId: token);
+      final results = await client.getTrendingShows(limit: 1);
+      if (mounted) setState(() => _traktVerified = results.isNotEmpty);
+    } catch (_) {
+      if (mounted) setState(() => _traktVerified = false);
+    } finally {
+      if (mounted) setState(() => _traktVerifying = false);
+    }
+  }
+
+  Future<void> _verifyTmdb() async {
+    final token = _tmdbCtrl.text.trim();
+    if (token.isEmpty) return;
+    setState(() { _tmdbVerifying = true; _tmdbVerified = null; });
+    try {
+      final client = TmdbClient(apiKey: token);
+      final results = await client.getTrendingTv();
+      if (mounted) setState(() => _tmdbVerified = results.isNotEmpty);
+    } catch (_) {
+      if (mounted) setState(() => _tmdbVerified = false);
+    } finally {
+      if (mounted) setState(() => _tmdbVerifying = false);
+    }
+  }
+
+}
+
+/// Reusable card for API key configuration (matches debrid card style).
+class _ApiKeyCard extends StatefulWidget {
+  final String title;
+  final String subtitle;
+  final bool isConfigured;
+  final IconData icon;
+  final TextEditingController controller;
+  final String tokenLabel;
+  final String tokenHint;
+  final String tokenUrl;
+  final bool isVerifying;
+  final bool? verifyResult;
+  final VoidCallback onSave;
+  final VoidCallback onVerify;
+  final VoidCallback onClear;
+
+  const _ApiKeyCard({
+    required this.title,
+    required this.subtitle,
+    required this.isConfigured,
+    required this.icon,
+    required this.controller,
+    required this.tokenLabel,
+    required this.tokenHint,
+    required this.tokenUrl,
+    required this.isVerifying,
+    this.verifyResult,
+    required this.onSave,
+    required this.onVerify,
+    required this.onClear,
+  });
+
+  @override
+  State<_ApiKeyCard> createState() => _ApiKeyCardState();
+}
+
+class _ApiKeyCardState extends State<_ApiKeyCard> {
+  bool _expanded = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _expanded = !widget.isConfigured;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final hasToken = widget.controller.text.trim().isNotEmpty;
+
+    return Card(
+      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+      color: const Color(0xFF16213E),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: Column(
+        children: [
+          ListTile(
+            leading: Icon(
+              widget.icon,
+              color: widget.isConfigured
+                  ? const Color(0xFF6C5CE7)
+                  : Colors.white30,
+            ),
+            title: Text(
+              widget.title,
+              style: TextStyle(
+                fontWeight: FontWeight.w600,
+                color: widget.isConfigured ? Colors.white : Colors.white70,
+              ),
+            ),
+            subtitle: Text(
+              widget.subtitle,
+              style: TextStyle(
+                fontSize: 12,
+                color: widget.isConfigured ? Colors.green : Colors.white38,
+              ),
+            ),
+            trailing: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (widget.isConfigured)
+                  IconButton(
+                    icon: const Icon(Icons.delete_outline, size: 20,
+                        color: Colors.redAccent),
+                    tooltip: 'Remove',
+                    onPressed: widget.onClear,
+                  ),
+                Icon(
+                  _expanded
+                      ? Icons.expand_less_rounded
+                      : Icons.expand_more_rounded,
+                  color: Colors.white38,
+                ),
+              ],
+            ),
+            onTap: () => setState(() => _expanded = !_expanded),
+          ),
+          if (_expanded)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  TextFormField(
+                    controller: widget.controller,
+                    obscureText: true,
+                    decoration: InputDecoration(
+                      labelText: widget.tokenLabel,
+                      hintText: widget.tokenHint,
+                      prefixIcon: const Icon(Icons.vpn_key, size: 20),
+                      suffixIcon: _buildSuffixIcon(),
+                      border: const OutlineInputBorder(),
+                      isDense: true,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: FilledButton.icon(
+                          onPressed: hasToken ? widget.onSave : null,
+                          icon: const Icon(Icons.save, size: 18),
+                          label: const Text('Save'),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      OutlinedButton.icon(
+                        onPressed: hasToken && !widget.isVerifying
+                            ? widget.onVerify
+                            : null,
+                        icon: widget.isVerifying
+                            ? const SizedBox(
+                                width: 16, height: 16,
+                                child: CircularProgressIndicator(strokeWidth: 2),
+                              )
+                            : const Icon(Icons.verified_outlined, size: 18),
+                        label: const Text('Verify'),
+                      ),
+                      const SizedBox(width: 8),
+                      OutlinedButton.icon(
+                        onPressed: () {
+                          final url = Uri.parse(widget.tokenUrl);
+                          launchUrl(url, mode: LaunchMode.externalApplication);
+                        },
+                        icon: const Icon(Icons.open_in_new, size: 16),
+                        label: const Text('Get Key'),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+        ],
       ),
     );
+  }
+
+  Widget? _buildSuffixIcon() {
+    if (widget.isVerifying) {
+      return const Padding(
+        padding: EdgeInsets.all(12),
+        child: SizedBox(
+          width: 18, height: 18,
+          child: CircularProgressIndicator(strokeWidth: 2),
+        ),
+      );
+    }
+    if (widget.verifyResult == true) {
+      return const Icon(Icons.check_circle, color: Colors.green, size: 20);
+    }
+    if (widget.verifyResult == false) {
+      return const Icon(Icons.error, color: Colors.redAccent, size: 20);
+    }
+    if (widget.isConfigured) {
+      return const Icon(Icons.check_circle, color: Colors.green, size: 20);
+    }
+    return null;
   }
 }
 

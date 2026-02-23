@@ -89,7 +89,7 @@ class _MultiViewScreenState extends ConsumerState<MultiViewScreen> {
     return CallbackShortcuts(
       bindings: {
         const SingleActivator(LogicalKeyboardKey.escape): () {
-          WidgetsBinding.instance.addPostFrameCallback((_) {
+          Future.microtask(() {
             Navigator.of(context).pop();
           });
         },

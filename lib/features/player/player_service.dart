@@ -158,6 +158,21 @@ class PlayerService {
     return null;
   }
 
+  /// Take a screenshot via mpv's screenshot-to-file command.
+  Future<String?> takeScreenshot(String path) async {
+    final np = player.platform;
+    if (np is native_player.NativePlayer) {
+      try {
+        await np.setProperty('screenshot-format', 'png');
+        await np.command(['screenshot-to-file', path, 'video']);
+        return path;
+      } catch (_) {
+        return null;
+      }
+    }
+    return null;
+  }
+
   void dispose() {
     _tracksSub?.cancel();
     _player?.dispose();
