@@ -68,6 +68,11 @@ class PlayerService {
       // Exclude only eac3/ac3 AudioToolbox decoders which silently fail
       // on surround streams — keep aac_at since most streams use AAC fine
       await np.setProperty('ad', '-ac3_at,-eac3_at');
+      // Allow non-standard codec tags (e.g. 0x0087 for EAC-3 in MPEG-TS)
+      await np.setProperty('ad-lavc-o', 'strict=-2');
+      // Give the demuxer enough data to detect non-standard audio codecs
+      await np.setProperty('demuxer-lavf-probesize', '5000000');
+      await np.setProperty('demuxer-lavf-analyzeduration', '5');
       // Downmix surround to stereo for output compatibility
       await np.setProperty('audio-channels', 'stereo');
       // Normalize volume when downmixing surround to stereo
