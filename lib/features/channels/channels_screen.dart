@@ -39,6 +39,7 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
   static bool _updateCheckDone = false;
   bool _initialLoadDone = false;
   String _loadStatus = '';
+  bool _epgLoading = false;
   List<db.Channel> _allChannels = [];
   List<db.Channel> _filteredChannels = [];
   List<String> _groups = [];
@@ -629,7 +630,9 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
     });
 
     // ── Background: EPG for favorites ──
-    _loadEpgData(database, favChannels, favChannelIds);
+    setState(() => _epgLoading = true);
+    await _loadEpgData(database, favChannels, favChannelIds);
+    if (mounted) setState(() => _epgLoading = false);
 
     // ── Background: load all provider channels incrementally ──
     _backgroundLoading = true;
@@ -2828,6 +2831,15 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
                               fontSize: 11,
                             ),
                             overflow: TextOverflow.ellipsis,
+                          )
+                        else if (_epgLoading)
+                          const Text(
+                            'Loading guide…',
+                            style: TextStyle(
+                              color: Colors.white24,
+                              fontSize: 11,
+                              fontStyle: FontStyle.italic,
+                            ),
                           ),
                       ],
                     ),
