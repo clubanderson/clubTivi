@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -38,10 +39,24 @@ class StreamAlternativesService {
   /// Normalized name → list of channels.
   Map<String, List<Channel>> _nameIndex = {};
 
+  /// Call sign → list of channels (e.g., WCBS, WABC, KABC).
+  Map<String, List<Channel>> _callSignIndex = {};
+
+  /// Provider ID → display name cache.
+  Map<String, String> _providerNames = {};
+
   /// All channels cached for fuzzy fallback.
   List<Channel> _allChannels = [];
 
   StreamAlternativesService(this._db, this._health);
+
+  /// Completes when the initial rebuild() finishes.
+  Future<void> get ready => _readyCompleter.future;
+  final _readyCompleter = Completer<void>();
+
+  /// Look up friendly provider name from provider ID.
+  String providerName(String providerId) =>
+      _providerNames[providerId] ?? providerId;
 
   /// Rebuild the index. Call on init, after EPG refresh, or provider changes.
   Future<void> rebuild() async {
@@ -49,10 +64,20 @@ class StreamAlternativesService {
     _epgIndex.clear();
     _tvgIdIndex.clear();
     _nameIndex.clear();
+    _callSignIndex.clear();
+    _providerNames.clear();
 
     final channels = await _db.getAllChannels();
     final mappings = await _db.getAllMappings();
     _allChannels = channels.map(_dbToChannel).toList();
+
+    // Build provider name cache
+    try {
+      final providers = await _db.getAllProviders();
+      for (final p in providers) {
+        _providerNames[p.id] = p.name;
+      }
+    } catch (_) {}
 
     // Load vanity names from SharedPreferences
     Map<String, String> vanityNames = {};
@@ -92,24 +117,49 @@ class StreamAlternativesService {
         _tvgIdIndex.putIfAbsent(ch.tvgId!, () => []).add(ch);
       }
 
-      // 4. Normalized name index
+      // 4. Normalized name index (index both DB name and tvgName)
       final normName = _normalizeName(ch.name);
       if (normName.isNotEmpty) {
         _nameIndex.putIfAbsent(normName, () => []).add(ch);
       }
+      if (ch.tvgName != null && ch.tvgName!.isNotEmpty) {
+        final normTvg = _normalizeName(ch.tvgName!);
+        if (normTvg.isNotEmpty && normTvg != normName) {
+          _nameIndex.putIfAbsent(normTvg, () => []).add(ch);
+        }
+      }
+
+      // 5. Call sign index — extract from name, tvgName, and tvgId
+      final callSigns = <String>{};
+      final cs1 = _extractCallSign(ch.name);
+      if (cs1 != null) callSigns.add(cs1);
+      if (ch.tvgName != null) {
+        final cs2 = _extractCallSign(ch.tvgName!);
+        if (cs2 != null) callSigns.add(cs2);
+      }
+      if (ch.tvgId != null) {
+        final cs3 = _extractCallSign(ch.tvgId!);
+        if (cs3 != null) callSigns.add(cs3);
+      }
+      for (final cs in callSigns) {
+        _callSignIndex.putIfAbsent(cs, () => []).add(ch);
+      }
     }
+
+    if (!_readyCompleter.isCompleted) _readyCompleter.complete();
   }
 
   /// Get ranked alternative stream URLs for a channel.
   ///
-  /// Returns URLs sorted by health score (best first), excluding
-  /// [excludeUrl] (the currently-playing stream).
+  /// Searches using both vanity name and original provider name to find
+  /// the widest set of alternatives. Vanity matches are highest priority.
   List<String> getAlternatives({
     required String channelId,
     String? epgChannelId,
     String? tvgId,
     String? channelName,
     String? vanityName,
+    String? originalName,
     required String excludeUrl,
   }) {
     final seen = <String>{excludeUrl};
@@ -138,10 +188,8 @@ class StreamAlternativesService {
     }
 
     // Priority 3: Same EPG + same call sign
-    // Only match if channels share a call sign (e.g., both WABC)
-    // to avoid false matches across local affiliates
     if (epgChannelId != null && epgChannelId.isNotEmpty) {
-      final callSign = _extractCallSign(channelName ?? '');
+      final callSign = _extractCallSign(channelName ?? originalName ?? '');
       final epgGroup = _epgIndex[epgChannelId];
       if (epgGroup != null && callSign != null) {
         final sameCallSign = epgGroup.where((ch) {
@@ -150,31 +198,47 @@ class StreamAlternativesService {
         }).toList();
         addCandidates(sameCallSign);
       } else if (callSign == null) {
-        // Non-local channel (ESPN, CNN, etc.) — EPG match is safe
         addCandidates(epgGroup);
       }
     }
 
-    // Priority 4: Normalized name match
+    // Priority 4: Call sign match across all channels
+    final callSign = _extractCallSign(channelName ?? '') ??
+        _extractCallSign(originalName ?? '');
+    if (callSign != null) {
+      addCandidates(_callSignIndex[callSign]);
+    }
+
+    // Priority 5: Normalized name match (try vanity name first, then original)
     if (channelName != null && channelName.isNotEmpty) {
       final normName = _normalizeName(channelName);
       addCandidates(_nameIndex[normName]);
     }
+    if (originalName != null && originalName.isNotEmpty) {
+      final normOrig = _normalizeName(originalName);
+      addCandidates(_nameIndex[normOrig]);
+    }
 
-    // Priority 5: Fuzzy keyword match
-    if (results.isEmpty && channelName != null) {
-      final words = _normalizeName(channelName)
-          .split(RegExp(r'\s+'))
-          .where((w) => w.length > 2)
-          .toList();
-      if (words.isNotEmpty) {
-        for (final ch in _allChannels) {
-          if (ch.id != channelId &&
-              ch.streamUrl.isNotEmpty &&
-              seen.add(ch.streamUrl)) {
-            final lower = ch.name.toLowerCase();
-            if (words.every((w) => lower.contains(w))) {
-              results.add(ch.streamUrl);
+    // Priority 6: Fuzzy keyword match (search with both names)
+    if (results.isEmpty) {
+      final searchNames = <String>[
+        if (channelName != null) channelName,
+        if (originalName != null && originalName != channelName) originalName,
+      ];
+      for (final name in searchNames) {
+        final words = _normalizeName(name)
+            .split(RegExp(r'\s+'))
+            .where((w) => w.length > 2)
+            .toList();
+        if (words.isNotEmpty) {
+          for (final ch in _allChannels) {
+            if (ch.id != channelId &&
+                ch.streamUrl.isNotEmpty &&
+                seen.add(ch.streamUrl)) {
+              final lower = ch.name.toLowerCase();
+              if (words.every((w) => lower.contains(w))) {
+                results.add(ch.streamUrl);
+              }
             }
           }
         }
@@ -227,6 +291,7 @@ class StreamAlternativesService {
     String? tvgId,
     String? channelName,
     String? vanityName,
+    String? originalName,
     required String excludeUrl,
   }) {
     final seen = <String>{excludeUrl};
@@ -242,12 +307,13 @@ class StreamAlternativesService {
             channel: ch,
             matchReason: reason,
             healthScore: _health.getScore(ch.streamUrl),
+            providerName: _providerNames[ch.providerId] ?? ch.providerId,
           ));
         }
       }
     }
 
-    // Priority 1: Same vanity name
+    // Priority 1: Same vanity name (user-confirmed)
     if (vanityName != null && vanityName.isNotEmpty) {
       final key = vanityName.toLowerCase().trim();
       addTagged(_vanityIndex[key], 'vanity name');
@@ -260,11 +326,13 @@ class StreamAlternativesService {
 
     // Priority 3: Same EPG + call sign
     if (epgChannelId != null && epgChannelId.isNotEmpty) {
-      final callSign = _extractCallSign(channelName ?? '');
+      final callSign = _extractCallSign(channelName ?? '') ??
+          _extractCallSign(originalName ?? '');
       final epgGroup = _epgIndex[epgChannelId];
       if (epgGroup != null && callSign != null) {
         final sameCall = epgGroup.where((ch) {
-          final other = _extractCallSign(ch.name);
+          final other = _extractCallSign(ch.name) ??
+              _extractCallSign(ch.tvgName ?? '');
           return other != null && other == callSign;
         }).toList();
         addTagged(sameCall, 'EPG+call sign');
@@ -273,10 +341,23 @@ class StreamAlternativesService {
       }
     }
 
-    // Priority 4: Normalized name
+    // Priority 4: Call sign match across all channels
+    final callSign = _extractCallSign(channelName ?? '') ??
+        _extractCallSign(originalName ?? '');
+    if (callSign != null) {
+      addTagged(_callSignIndex[callSign], 'call sign');
+    }
+
+    // Priority 5a: Normalized vanity/display name match
     if (channelName != null && channelName.isNotEmpty) {
       final normName = _normalizeName(channelName);
       addTagged(_nameIndex[normName], 'name');
+    }
+
+    // Priority 5b: Normalized original provider name match
+    if (originalName != null && originalName.isNotEmpty) {
+      final normOrig = _normalizeName(originalName);
+      addTagged(_nameIndex[normOrig], 'original name');
     }
 
     // Sort by health score descending
@@ -355,10 +436,12 @@ class AlternativeDetail {
   final Channel channel;
   final String matchReason;
   final double healthScore;
+  final String providerName;
 
   const AlternativeDetail({
     required this.channel,
     required this.matchReason,
     required this.healthScore,
+    this.providerName = '',
   });
 }

@@ -1,8 +1,10 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:media_kit/media_kit.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../data/datasources/local/database.dart' as db;
 import '../../data/models/channel.dart' hide Provider;
@@ -16,7 +18,12 @@ class ChannelDebugDialog extends StatefulWidget {
   final PlayerService playerService;
   final String? mappedEpgId;
   final String? originalName;
+  final String? vanityName;
+  final String? currentProviderName;
   final List<AlternativeDetail> alternatives;
+  /// Called when user confirms applying vanity name to alternatives.
+  /// Passes list of channel IDs that should receive the vanity name.
+  final void Function(List<String> channelIds, String vanityName)? onVanityApplied;
 
   const ChannelDebugDialog({
     super.key,
@@ -24,7 +31,10 @@ class ChannelDebugDialog extends StatefulWidget {
     required this.playerService,
     this.mappedEpgId,
     this.originalName,
+    this.vanityName,
+    this.currentProviderName,
     this.alternatives = const [],
+    this.onVanityApplied,
   });
 
   /// Convenience launcher.
@@ -34,7 +44,10 @@ class ChannelDebugDialog extends StatefulWidget {
     PlayerService playerService, {
     String? mappedEpgId,
     String? originalName,
+    String? vanityName,
+    String? currentProviderName,
     List<AlternativeDetail> alternatives = const [],
+    void Function(List<String> channelIds, String vanityName)? onVanityApplied,
   }) {
     showModalBottomSheet(
       context: context,
@@ -48,7 +61,10 @@ class ChannelDebugDialog extends StatefulWidget {
         playerService: playerService,
         mappedEpgId: mappedEpgId,
         originalName: originalName,
+        vanityName: vanityName,
+        currentProviderName: currentProviderName,
         alternatives: alternatives,
+        onVanityApplied: onVanityApplied,
       ),
     );
   }
@@ -251,113 +267,64 @@ class _ChannelDebugDialogState extends State<ChannelDebugDialog> {
                 ),
               ),
               const SizedBox(height: 8),
-              // Failover alternatives
-              if (widget.alternatives.isNotEmpty)
-                Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF16213E),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Row(
-                        children: [
-                          const Icon(Icons.swap_horiz, size: 14, color: Colors.white54),
-                          const SizedBox(width: 4),
-                          Text(
-                            'Failover Alternatives (${widget.alternatives.length})',
-                            style: const TextStyle(
-                                color: Colors.white70,
-                                fontSize: 11,
-                                fontWeight: FontWeight.bold),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 4),
-                      ...widget.alternatives.take(8).map((alt) {
-                        final healthPct = (alt.healthScore * 100).toStringAsFixed(0);
-                        final healthColor = alt.healthScore > 0.7
-                            ? const Color(0xFF00B894)
-                            : alt.healthScore > 0.4
-                                ? const Color(0xFFFDCB6E)
-                                : const Color(0xFFFF6B6B);
-                        return Padding(
-                          padding: const EdgeInsets.only(bottom: 2),
-                          child: Row(
-                            children: [
-                              Container(
-                                width: 6,
-                                height: 6,
-                                decoration: BoxDecoration(
-                                  color: healthColor,
-                                  shape: BoxShape.circle,
-                                ),
-                              ),
-                              const SizedBox(width: 6),
-                              Expanded(
-                                child: Text(
-                                  alt.channel.name,
-                                  style: const TextStyle(
-                                      color: Colors.white, fontSize: 10),
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ),
-                              const SizedBox(width: 4),
-                              Container(
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 4, vertical: 1),
-                                decoration: BoxDecoration(
-                                  color: Colors.white10,
-                                  borderRadius: BorderRadius.circular(4),
-                                ),
-                                child: Text(
-                                  alt.matchReason,
-                                  style: const TextStyle(
-                                      color: Colors.white38, fontSize: 8),
-                                ),
-                              ),
-                              const SizedBox(width: 4),
-                              Text(
-                                '$healthPct%',
-                                style: TextStyle(
-                                    color: healthColor,
-                                    fontSize: 9,
-                                    fontWeight: FontWeight.bold),
-                              ),
-                            ],
-                          ),
-                        );
-                      }),
+              // Failover alternatives (shows current + alternatives)
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF16213E),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Row(
+                      children: [
+                        const Icon(Icons.swap_horiz, size: 14, color: Colors.white54),
+                        const SizedBox(width: 4),
+                        Text(
+                          'Failover Group (${widget.alternatives.length + 1})',
+                          style: const TextStyle(
+                              color: Colors.white70,
+                              fontSize: 11,
+                              fontWeight: FontWeight.bold),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    // Current channel (always first)
+                    _failoverRow(
+                      name: ch.name,
+                      providerName: widget.currentProviderName,
+                      badge: 'current',
+                      badgeColor: const Color(0xFF00B894),
+                      healthScore: null,
+                    ),
+                    if (widget.alternatives.isNotEmpty) ...[
+                      const Divider(color: Colors.white12, height: 8),
+                      ...widget.alternatives.take(8).map((alt) => _failoverRow(
+                        name: alt.channel.name,
+                        providerName: alt.providerName.isNotEmpty ? alt.providerName : null,
+                        badge: alt.matchReason,
+                        badgeColor: null,
+                        healthScore: alt.healthScore,
+                      )),
                       if (widget.alternatives.length > 8)
                         Text(
                           '  +${widget.alternatives.length - 8} more',
                           style: const TextStyle(
                               color: Colors.white38, fontSize: 9),
                         ),
-                    ],
-                  ),
-                ),
-              if (widget.alternatives.isEmpty)
-                Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF16213E),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: const Row(
-                    children: [
-                      Icon(Icons.swap_horiz, size: 14, color: Colors.white24),
-                      SizedBox(width: 4),
-                      Text(
-                        'No failover alternatives found',
-                        style: TextStyle(color: Colors.white38, fontSize: 11),
+                    ] else ...[
+                      const Divider(color: Colors.white12, height: 8),
+                      const Text(
+                        '  No failover alternatives found',
+                        style: TextStyle(color: Colors.white38, fontSize: 10),
                       ),
                     ],
-                  ),
+                  ],
                 ),
+              ),
               const SizedBox(height: 8),
               // Buffering sparkline (compact, full width)
               Container(
@@ -393,6 +360,112 @@ class _ChannelDebugDialogState extends State<ChannelDebugDialog> {
           ),
         );
       },
+    );
+  }
+
+  /// A single row in the failover group showing channel name, provider badge,
+  /// match reason badge, and health score.
+  Widget _failoverRow({
+    required String name,
+    String? providerName,
+    required String badge,
+    Color? badgeColor,
+    double? healthScore,
+  }) {
+    final isCurrentRow = badge == 'current';
+    final healthColor = healthScore == null
+        ? const Color(0xFF00B894)
+        : healthScore > 0.7
+            ? const Color(0xFF00B894)
+            : healthScore > 0.4
+                ? const Color(0xFFFDCB6E)
+                : const Color(0xFFFF6B6B);
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 2),
+      child: Row(
+        children: [
+          // Health dot
+          Container(
+            width: 6,
+            height: 6,
+            decoration: BoxDecoration(
+              color: isCurrentRow ? const Color(0xFF00B894) : healthColor,
+              shape: BoxShape.circle,
+            ),
+          ),
+          const SizedBox(width: 6),
+          // Provider badge
+          if (providerName != null && providerName.isNotEmpty) ...[
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+              decoration: BoxDecoration(
+                color: isCurrentRow
+                    ? const Color(0xFF00B894).withAlpha(40)
+                    : const Color(0xFF6C5CE7).withAlpha(40),
+                borderRadius: BorderRadius.circular(4),
+                border: Border.all(
+                  color: isCurrentRow
+                      ? const Color(0xFF00B894).withAlpha(80)
+                      : const Color(0xFF6C5CE7).withAlpha(80),
+                  width: 0.5,
+                ),
+              ),
+              child: Text(
+                providerName,
+                style: TextStyle(
+                  color: isCurrentRow
+                      ? const Color(0xFF00B894)
+                      : const Color(0xFF6C5CE7),
+                  fontSize: 8,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+            const SizedBox(width: 4),
+          ],
+          // Channel name
+          Expanded(
+            child: Text(
+              name,
+              style: TextStyle(
+                color: isCurrentRow ? Colors.white : Colors.white70,
+                fontSize: 10,
+                fontWeight: isCurrentRow ? FontWeight.bold : FontWeight.normal,
+              ),
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          const SizedBox(width: 4),
+          // Match reason badge
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+            decoration: BoxDecoration(
+              color: badgeColor?.withAlpha(40) ?? Colors.white10,
+              borderRadius: BorderRadius.circular(4),
+            ),
+            child: Text(
+              badge,
+              style: TextStyle(
+                color: badgeColor ?? Colors.white38,
+                fontSize: 8,
+                fontWeight: isCurrentRow ? FontWeight.bold : FontWeight.normal,
+              ),
+            ),
+          ),
+          // Health %
+          if (healthScore != null) ...[
+            const SizedBox(width: 4),
+            Text(
+              '${(healthScore * 100).toStringAsFixed(0)}%',
+              style: TextStyle(
+                color: healthColor,
+                fontSize: 9,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ],
+        ],
+      ),
     );
   }
 

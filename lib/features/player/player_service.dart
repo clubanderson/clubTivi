@@ -37,6 +37,7 @@ class PlayerService {
   String? _currentTvgId;
   String? _currentChannelName;
   String? _currentVanityName;
+  String? _currentOriginalName;
   StreamAlternativesService? _alternatives;
   StreamHealthTracker? _healthTracker;
   Timer? _failoverCheckTimer;
@@ -115,6 +116,7 @@ class PlayerService {
     String? tvgId,
     String? channelName,
     String? vanityName,
+    String? originalName,
   }) async {
     _isBuffering = false;
     _bufferStartTime = null;
@@ -125,6 +127,7 @@ class PlayerService {
     _currentTvgId = tvgId;
     _currentChannelName = channelName;
     _currentVanityName = vanityName;
+    _currentOriginalName = originalName;
     _tracksSub?.cancel();
     _failoverCheckTimer?.cancel();
     await _ensureReady();
@@ -287,6 +290,7 @@ class PlayerService {
       tvgId: _currentTvgId,
       channelName: _currentChannelName,
       vanityName: _currentVanityName,
+      originalName: _currentOriginalName,
       excludeUrl: _currentUrl!,
     );
 

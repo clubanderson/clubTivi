@@ -173,6 +173,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
         tvgId: widget.channels.isNotEmpty ? widget.channels[_channelIndex]['tvgId'] as String? : null,
         channelName: _currentChannelName,
         vanityName: widget.channels.isNotEmpty ? widget.channels[_channelIndex]['vanityName'] as String? : null,
+        originalName: widget.channels.isNotEmpty ? widget.channels[_channelIndex]['tvgName'] as String? : null,
       );
     }
 
@@ -945,36 +946,41 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
   }
 
   void _showInfoDialog() {
-    // Build a db.Channel from current channel data for the debug dialog
     if (widget.channels.isEmpty) return;
-    final ch = widget.channels[_channelIndex];
-    final channel = db.Channel(
-      id: ch['id'] as String? ?? '',
-      providerId: ch['providerId'] as String? ?? '',
-      name: ch['name'] as String? ?? '',
-      groupTitle: ch['groupTitle'] as String? ?? '',
-      streamUrl: ch['streamUrl'] as String? ?? '',
-      streamType: ch['streamType'] as String? ?? 'live',
-      tvgId: ch['tvgId'] as String?,
-      tvgName: ch['tvgName'] as String?,
-      tvgLogo: ch['tvgLogo'] as String?,
-      favorite: false,
-      hidden: false,
-      sortOrder: 0,
-    );
-    final ps = ref.read(playerServiceProvider);
-    final epgId = ch['epgId'] as String?;
-    final alts = ref.read(streamAlternativesProvider).getAlternativeDetails(
-      channelId: ch['id'] as String? ?? '',
-      epgChannelId: epgId,
-      tvgId: ch['tvgId'] as String?,
-      channelName: ch['name'] as String?,
-      vanityName: ch['vanityName'] as String?,
-      excludeUrl: ch['streamUrl'] as String? ?? '',
-    );
-    ChannelDebugDialog.show(context, channel, ps,
-        mappedEpgId: epgId,
-        originalName: ch['originalName'] as String? ?? ch['name'] as String?,
-        alternatives: alts);
+    try {
+      final ch = widget.channels[_channelIndex];
+      final channel = db.Channel(
+        id: ch['id']?.toString() ?? '',
+        providerId: ch['providerId']?.toString() ?? '',
+        name: ch['name']?.toString() ?? '',
+        groupTitle: ch['groupTitle']?.toString() ?? '',
+        streamUrl: ch['streamUrl']?.toString() ?? '',
+        streamType: ch['streamType']?.toString() ?? 'live',
+        tvgId: ch['tvgId']?.toString(),
+        tvgName: ch['tvgName']?.toString(),
+        tvgLogo: ch['tvgLogo']?.toString(),
+        favorite: false,
+        hidden: false,
+        sortOrder: 0,
+      );
+      final ps = ref.read(playerServiceProvider);
+      final epgId = ch['epgId']?.toString();
+      final alts = ref.read(streamAlternativesProvider).getAlternativeDetails(
+        channelId: ch['id']?.toString() ?? '',
+        epgChannelId: epgId,
+        tvgId: ch['tvgId']?.toString(),
+        channelName: ch['name']?.toString(),
+        vanityName: ch['vanityName']?.toString(),
+        originalName: ch['tvgName']?.toString(),
+        excludeUrl: ch['streamUrl']?.toString() ?? '',
+      );
+      ChannelDebugDialog.show(context, channel, ps,
+          mappedEpgId: epgId,
+          originalName: ch['tvgName']?.toString() ?? ch['originalName']?.toString() ?? ch['name']?.toString(),
+          currentProviderName: ref.read(streamAlternativesProvider).providerName(ch['providerId']?.toString() ?? ''),
+          alternatives: alts);
+    } catch (e) {
+      debugPrint('Error showing info dialog: $e');
+    }
   }
 }

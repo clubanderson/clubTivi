@@ -357,6 +357,7 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
         tvgId: _failoverSuggestion!.tvgId,
         channelName: _failoverSuggestion!.name,
         vanityName: _vanityNames[_failoverSuggestion!.id],
+        originalName: _failoverSuggestion!.tvgName,
       );
       setState(() {
         _previewChannel = _failoverSuggestion;
@@ -715,6 +716,7 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
       tvgId: channel.tvgId,
       channelName: channel.name,
       vanityName: _vanityNames[channel.id],
+      originalName: channel.tvgName,
     );
     setState(() {
       _selectedIndex = index;
@@ -737,6 +739,7 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
       tvgId: channel.tvgId,
       channelName: channel.name,
       vanityName: _vanityNames[channel.id],
+      originalName: channel.tvgName,
     );
     setState(() {
       _selectedIndex = swapTo;
@@ -827,6 +830,7 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
         tvgId: channel.tvgId,
         channelName: channel.name,
         vanityName: _vanityNames[channel.id],
+        originalName: channel.tvgName,
         excludeUrl: channel.streamUrl,
       );
     } catch (_) {
@@ -973,7 +977,8 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
         final alts = _getFailoverAlts(_previewChannel!);
         ChannelDebugDialog.show(context, _previewChannel!, ps,
             mappedEpgId: _getEpgId(_previewChannel!),
-            originalName: _previewChannel!.name,
+            originalName: _previewChannel!.tvgName ?? _previewChannel!.name,
+            currentProviderName: ref.read(streamAlternativesProvider).providerName(_previewChannel!.providerId),
             alternatives: alts);
       }
       return;
@@ -1533,7 +1538,9 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
                                       final ps = ref.read(playerServiceProvider);
                                       ChannelDebugDialog.show(context, _previewChannel!, ps,
                                           mappedEpgId: _getEpgId(_previewChannel!),
-                                          originalName: _previewChannel!.name);
+                                          originalName: _previewChannel!.tvgName ?? _previewChannel!.name,
+                                          currentProviderName: ref.read(streamAlternativesProvider).providerName(_previewChannel!.providerId),
+                                          alternatives: _getFailoverAlts(_previewChannel!));
                                     },
                                     icon: const Icon(Icons.info_outline, size: 16),
                                     padding: EdgeInsets.zero,
@@ -3388,7 +3395,10 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
         case 'debug':
           final ps = ref.read(playerServiceProvider);
           ChannelDebugDialog.show(context, channel, ps,
-              mappedEpgId: _getEpgId(channel), originalName: channel.name);
+              mappedEpgId: _getEpgId(channel),
+              originalName: channel.tvgName ?? channel.name,
+              currentProviderName: ref.read(streamAlternativesProvider).providerName(channel.providerId),
+              alternatives: _getFailoverAlts(channel));
       }
     });
   }
