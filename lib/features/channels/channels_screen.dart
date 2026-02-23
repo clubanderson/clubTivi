@@ -892,6 +892,15 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
       }
     }
 
+    // Hide channels that belong to a failover group — group rows replace them
+    if (_failoverGroupMembers.isNotEmpty) {
+      final grouped = <String>{};
+      for (final ids in _failoverGroupMembers.values) {
+        grouped.addAll(ids);
+      }
+      channels = channels.where((c) => !grouped.contains(c.id)).toList();
+    }
+
     _filteredChannels = channels;
     if (_selectedIndex >= _filteredChannels.length) {
       _selectedIndex = _filteredChannels.isEmpty ? -1 : 0;
@@ -2982,12 +2991,24 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
             child: const Text('Cancel'),
           ),
           const SizedBox(width: 8),
+          if (_failoverGroups.isNotEmpty)
+            FilledButton.icon(
+              onPressed: _multiSelectedChannelIds.isNotEmpty
+                  ? _addToExistingFailoverGroup
+                  : null,
+              icon: const Icon(Icons.add, size: 16),
+              label: const Text('Add to Group'),
+              style: FilledButton.styleFrom(
+                backgroundColor: const Color(0xFF2D3436),
+              ),
+            ),
+          if (_failoverGroups.isNotEmpty) const SizedBox(width: 8),
           FilledButton.icon(
             onPressed: _multiSelectedChannelIds.length >= 2
                 ? _createFailoverGroupFromSelection
                 : null,
             icon: const Icon(Icons.shield_outlined, size: 16),
-            label: const Text('Create Failover Group'),
+            label: const Text('New Group'),
             style: FilledButton.styleFrom(
               backgroundColor: const Color(0xFF6C5CE7),
             ),
@@ -3081,10 +3102,84 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
     }
   }
 
+  Future<void> _addToExistingFailoverGroup() async {
+    if (_multiSelectedChannelIds.isEmpty) return;
+    final selected = await showModalBottomSheet<db.FailoverGroup>(
+      context: context,
+      backgroundColor: const Color(0xFF1A1A2E),
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Padding(
+              padding: EdgeInsets.all(16),
+              child: Text('Add to Failover Group',
+                  style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
+            ),
+            ..._failoverGroups.map((g) {
+              final count = _failoverGroupMembers[g.id]?.length ?? 0;
+              return ListTile(
+                leading: const Icon(Icons.shield_outlined, color: Color(0xFF6C5CE7)),
+                title: Text(g.name, style: const TextStyle(color: Colors.white)),
+                subtitle: Text('$count channels', style: const TextStyle(color: Colors.white38, fontSize: 12)),
+                onTap: () => Navigator.pop(ctx, g),
+              );
+            }),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+    if (selected == null || !mounted) return;
+
+    final database = ref.read(databaseProvider);
+    final existing = _failoverGroupMembers[selected.id] ?? [];
+    final newIds = _filteredChannels
+        .where((c) => _multiSelectedChannelIds.contains(c.id) && !existing.contains(c.id))
+        .map((c) => c.id)
+        .toList();
+    if (newIds.isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('All selected channels are already in this group'),
+            duration: Duration(seconds: 2),
+            behavior: SnackBarBehavior.floating,
+            width: 350,
+          ),
+        );
+      }
+      return;
+    }
+    await database.addChannelsToFailoverGroup(selected.id, newIds);
+
+    setState(() {
+      _multiSelectMode = false;
+      _multiSelectedChannelIds.clear();
+    });
+    await _reloadFailoverGroups();
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Added ${newIds.length} channel${newIds.length == 1 ? '' : 's'} to "${selected.name}"'),
+          duration: const Duration(seconds: 3),
+          behavior: SnackBarBehavior.floating,
+          width: 350,
+        ),
+      );
+    }
+  }
+
   Widget _buildFailoverGroupRow(db.FailoverGroup group, List<db.Channel> members) {
     final isExpanded = _expandedFailoverGroups.contains(group.id);
-    // EPG from first member channel
-    final epgText = members.isNotEmpty ? _getChannelNowPlaying(members.first) : null;
+    // Use first member for logo and EPG
+    final primary = members.isNotEmpty ? members.first : null;
+    String? epgText;
+    for (final m in members) {
+      epgText = _getChannelNowPlaying(m);
+      if (epgText != null) break;
+    }
     return Column(
       children: [
         InkWell(
@@ -3106,41 +3201,75 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
             decoration: BoxDecoration(
-              color: const Color(0xFF16213E).withValues(alpha: 0.6),
               borderRadius: BorderRadius.circular(8),
               border: Border.all(color: const Color(0xFF6C5CE7).withValues(alpha: 0.3)),
             ),
             child: Row(
               children: [
-                const Icon(Icons.shield_outlined, size: 16, color: Color(0xFF6C5CE7)),
-                const SizedBox(width: 8),
+                // Channel logo from primary member
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(6),
+                  child: SizedBox(
+                    width: 36,
+                    height: 36,
+                    child: primary?.tvgLogo != null && primary!.tvgLogo!.isNotEmpty
+                        ? Image.network(
+                            primary.tvgLogo!,
+                            fit: BoxFit.cover,
+                            errorBuilder: (_, __, ___) => Container(
+                              color: const Color(0xFF16213E),
+                              child: const Icon(Icons.shield_outlined, size: 18, color: Color(0xFF6C5CE7)),
+                            ),
+                          )
+                        : Container(
+                            color: const Color(0xFF16213E),
+                            child: const Icon(Icons.shield_outlined, size: 18, color: Color(0xFF6C5CE7)),
+                          ),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                // Name + EPG
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
+                      Row(
+                        children: [
+                          const Icon(Icons.shield_outlined, size: 12, color: Color(0xFF6C5CE7)),
+                          const SizedBox(width: 4),
+                          Flexible(
+                            child: Text(
+                              group.name,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 13,
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
+                      ),
                       Text(
-                        group.name,
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 13,
-                        ),
+                        '${members.length} streams · failover group',
+                        style: const TextStyle(color: Colors.white38, fontSize: 11),
                         overflow: TextOverflow.ellipsis,
                       ),
                       if (epgText != null)
                         Text(
                           epgText,
-                          style: const TextStyle(color: Colors.white38, fontSize: 11),
+                          style: const TextStyle(color: Color(0xFF6C5CE7), fontSize: 11),
                           overflow: TextOverflow.ellipsis,
+                        )
+                      else if (_epgLoading)
+                        const Text(
+                          'Loading guide…',
+                          style: TextStyle(color: Colors.white24, fontSize: 11, fontStyle: FontStyle.italic),
                         ),
                     ],
                   ),
                 ),
-                Text(
-                  '${members.length} ch',
-                  style: const TextStyle(color: Colors.white38, fontSize: 11),
-                ),
-                const SizedBox(width: 4),
+                // Expand/collapse chevron
                 InkWell(
                   onTap: () {
                     setState(() {
@@ -3164,17 +3293,16 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
           ...members.asMap().entries.map((entry) {
             final idx = entry.key;
             final ch = entry.value;
-            final globalIdx = _filteredChannels.indexWhere((c) => c.id == ch.id);
-            final isPlaying = globalIdx == _selectedIndex && globalIdx >= 0;
             return Padding(
-              padding: const EdgeInsets.only(left: 24),
+              padding: const EdgeInsets.only(left: 32),
               child: InkWell(
                 onTap: () {
-                  if (globalIdx >= 0) _selectChannel(globalIdx);
+                  // Play this specific member with failover through others
+                  _playFailoverGroup(group, members);
                 },
                 onSecondaryTap: () => _showMemberActions(group, ch),
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
                   child: Row(
                     children: [
                       Text(
@@ -3182,31 +3310,35 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
                         style: const TextStyle(color: Colors.white24, fontSize: 11),
                       ),
                       const SizedBox(width: 8),
-                      if (ch.tvgLogo != null && ch.tvgLogo!.isNotEmpty)
-                        ClipRRect(
-                          borderRadius: BorderRadius.circular(4),
-                          child: Image.network(
-                            ch.tvgLogo!,
-                            width: 24, height: 24,
-                            fit: BoxFit.cover,
-                            errorBuilder: (_, __, ___) => const SizedBox(width: 24, height: 24),
-                          ),
-                        )
-                      else
-                        const SizedBox(width: 24, height: 24),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          _channelDisplayName(ch),
-                          style: TextStyle(
-                            color: isPlaying ? Colors.white : Colors.white60,
-                            fontSize: 12,
-                          ),
-                          overflow: TextOverflow.ellipsis,
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(4),
+                        child: SizedBox(
+                          width: 24, height: 24,
+                          child: ch.tvgLogo != null && ch.tvgLogo!.isNotEmpty
+                              ? Image.network(ch.tvgLogo!, fit: BoxFit.cover,
+                                  errorBuilder: (_, __, ___) => const Icon(Icons.tv, size: 14, color: Colors.white24))
+                              : const Icon(Icons.tv, size: 14, color: Colors.white24),
                         ),
                       ),
-                      if (isPlaying)
-                        const Icon(Icons.play_arrow_rounded, color: Color(0xFF6C5CE7), size: 16),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              _channelDisplayName(ch),
+                              style: const TextStyle(color: Colors.white60, fontSize: 12),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            if (_getProviderName(ch.providerId).isNotEmpty)
+                              Text(
+                                _getProviderName(ch.providerId),
+                                style: const TextStyle(color: Colors.white24, fontSize: 10),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                          ],
+                        ),
+                      ),
                     ],
                   ),
                 ),
