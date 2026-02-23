@@ -58,6 +58,7 @@ class PlayerService {
   final _currentUrlController = StreamController<String?>.broadcast();
   Stream<String?> get currentUrlStream => _currentUrlController.stream;
   String? get currentUrl => _currentUrl;
+  String? get currentChannelId => _currentChannelId;
 
   /// Callback invoked when auto-failover switches streams.
   /// Provides the provider name or URL fragment for UI toast.
