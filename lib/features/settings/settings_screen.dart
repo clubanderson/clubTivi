@@ -311,7 +311,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         },
       },
       child: Focus(
-        autofocus: true,
+        autofocus: !Platform.isAndroid,
         child: Scaffold(
       appBar: AppBar(
         leading: IconButton(
@@ -1018,7 +1018,7 @@ class _ApiKeyCardState extends State<_ApiKeyCard> {
   @override
   void initState() {
     super.initState();
-    _expanded = !widget.isConfigured;
+    _expanded = Platform.isAndroid ? false : !widget.isConfigured;
   }
 
   @override
@@ -1073,58 +1073,66 @@ class _ApiKeyCardState extends State<_ApiKeyCard> {
             onTap: () => setState(() => _expanded = !_expanded),
           ),
           if (_expanded)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  TextFormField(
-                    controller: widget.controller,
-                    obscureText: true,
-                    decoration: InputDecoration(
-                      labelText: widget.tokenLabel,
-                      hintText: widget.tokenHint,
-                      prefixIcon: const Icon(Icons.vpn_key, size: 20),
-                      suffixIcon: _buildSuffixIcon(),
-                      border: const OutlineInputBorder(),
-                      isDense: true,
+            FocusTraversalGroup(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    TextFormField(
+                      controller: widget.controller,
+                      obscureText: true,
+                      textInputAction: TextInputAction.done,
+                      onFieldSubmitted: (_) {
+                        if (widget.controller.text.trim().isNotEmpty) {
+                          widget.onSave();
+                        }
+                      },
+                      decoration: InputDecoration(
+                        labelText: widget.tokenLabel,
+                        hintText: widget.tokenHint,
+                        prefixIcon: const Icon(Icons.vpn_key, size: 20),
+                        suffixIcon: _buildSuffixIcon(),
+                        border: const OutlineInputBorder(),
+                        isDense: true,
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 8),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: FilledButton.icon(
-                          onPressed: hasToken ? widget.onSave : null,
-                          icon: const Icon(Icons.save, size: 18),
-                          label: const Text('Save'),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: FilledButton.icon(
+                            onPressed: hasToken ? widget.onSave : null,
+                            icon: const Icon(Icons.save, size: 18),
+                            label: const Text('Save'),
+                          ),
                         ),
-                      ),
-                      const SizedBox(width: 8),
-                      OutlinedButton.icon(
-                        onPressed: hasToken && !widget.isVerifying
-                            ? widget.onVerify
-                            : null,
-                        icon: widget.isVerifying
-                            ? const SizedBox(
-                                width: 16, height: 16,
-                                child: CircularProgressIndicator(strokeWidth: 2),
-                              )
-                            : const Icon(Icons.verified_outlined, size: 18),
-                        label: const Text('Verify'),
-                      ),
-                      const SizedBox(width: 8),
-                      OutlinedButton.icon(
-                        onPressed: () {
-                          final url = Uri.parse(widget.tokenUrl);
-                          launchUrl(url, mode: LaunchMode.externalApplication);
-                        },
-                        icon: const Icon(Icons.open_in_new, size: 16),
-                        label: const Text('Get Key'),
-                      ),
-                    ],
-                  ),
-                ],
+                        const SizedBox(width: 8),
+                        OutlinedButton.icon(
+                          onPressed: hasToken && !widget.isVerifying
+                              ? widget.onVerify
+                              : null,
+                          icon: widget.isVerifying
+                              ? const SizedBox(
+                                  width: 16, height: 16,
+                                  child: CircularProgressIndicator(strokeWidth: 2),
+                                )
+                              : const Icon(Icons.verified_outlined, size: 18),
+                          label: const Text('Verify'),
+                        ),
+                        const SizedBox(width: 8),
+                        OutlinedButton.icon(
+                          onPressed: () {
+                            final url = Uri.parse(widget.tokenUrl);
+                            launchUrl(url, mode: LaunchMode.externalApplication);
+                          },
+                          icon: const Icon(Icons.open_in_new, size: 16),
+                          label: const Text('Get Key'),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
               ),
             ),
         ],
