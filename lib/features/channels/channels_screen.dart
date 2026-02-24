@@ -124,6 +124,9 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
   // Multi-select mode for failover group creation
   bool _multiSelectMode = false;
   Set<String> _multiSelectedChannelIds = {};
+  // Long-press timer for TV remote multi-select (CENTER held >600ms)
+  Timer? _longPressTimer;
+  String? _longPressChannelId;
 
   // Failover groups state
   List<db.FailoverGroup> _failoverGroups = [];
@@ -553,6 +556,7 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
     _bufferingSub?.cancel();
     _providersSub?.cancel();
     _channelsSub?.cancel();
+    _longPressTimer?.cancel();
     _focusNode.dispose();
     super.dispose();
   }
@@ -2695,10 +2699,63 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
               },
               onKeyEvent: (node, event) {
                 // Track this node so sidebar can navigate back
-                if (event is! KeyDownEvent) return KeyEventResult.ignored;
                 final key = event.logicalKey;
-                // SHIFT+ENTER → toggle multi-select
-                if ((key == LogicalKeyboardKey.select || key == LogicalKeyboardKey.enter) &&
+                final isCenterKey = key == LogicalKeyboardKey.select ||
+                    key == LogicalKeyboardKey.enter ||
+                    key == LogicalKeyboardKey.gameButtonA;
+
+                // Long-press CENTER on TV remote → enter/toggle multi-select
+                if (Platform.isAndroid && isCenterKey) {
+                  if (event is KeyDownEvent) {
+                    _longPressChannelId = channel.id;
+                    _longPressTimer?.cancel();
+                    _longPressTimer = Timer(const Duration(milliseconds: 400), () {
+                      if (!mounted) return;
+                      setState(() {
+                        if (!_multiSelectMode) {
+                          _multiSelectMode = true;
+                          _multiSelectedChannelIds = {channel.id};
+                        } else {
+                          if (_multiSelectedChannelIds.contains(channel.id)) {
+                            _multiSelectedChannelIds.remove(channel.id);
+                          } else {
+                            _multiSelectedChannelIds.add(channel.id);
+                          }
+                        }
+                      });
+                      _longPressChannelId = null;
+                    });
+                    return KeyEventResult.handled;
+                  }
+                  if (event is KeyUpEvent) {
+                    final wasLongPress = _longPressChannelId == null;
+                    _longPressTimer?.cancel();
+                    _longPressTimer = null;
+                    _longPressChannelId = null;
+                    if (wasLongPress) {
+                      // Long-press already fired, consume the up event
+                      return KeyEventResult.handled;
+                    }
+                    // Short press: toggle selection if in multi-select, else fullscreen
+                    if (_multiSelectMode) {
+                      setState(() {
+                        if (_multiSelectedChannelIds.contains(channel.id)) {
+                          _multiSelectedChannelIds.remove(channel.id);
+                        } else {
+                          _multiSelectedChannelIds.add(channel.id);
+                        }
+                      });
+                    } else {
+                      _goFullscreen(channel);
+                    }
+                    return KeyEventResult.handled;
+                  }
+                  return KeyEventResult.handled;
+                }
+
+                if (event is! KeyDownEvent) return KeyEventResult.ignored;
+                // SHIFT+ENTER → toggle multi-select (keyboard/desktop)
+                if (isCenterKey &&
                     HardwareKeyboard.instance.logicalKeysPressed.any((k) =>
                         k == LogicalKeyboardKey.shiftLeft || k == LogicalKeyboardKey.shiftRight)) {
                   setState(() {
@@ -2715,16 +2772,49 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
                   });
                   return KeyEventResult.handled;
                 }
-                // SELECT/ENTER → fullscreen
-                if (key == LogicalKeyboardKey.select ||
-                    key == LogicalKeyboardKey.enter ||
-                    key == LogicalKeyboardKey.gameButtonA) {
-                  _goFullscreen(channel);
+                // SELECT/ENTER → toggle in multi-select, else fullscreen
+                if (isCenterKey) {
+                  if (_multiSelectMode) {
+                    setState(() {
+                      if (_multiSelectedChannelIds.contains(channel.id)) {
+                        _multiSelectedChannelIds.remove(channel.id);
+                      } else {
+                        _multiSelectedChannelIds.add(channel.id);
+                      }
+                    });
+                  } else {
+                    _goFullscreen(channel);
+                  }
                   return KeyEventResult.handled;
                 }
                 // LEFT from channel list → focus sidebar
                 if (key == LogicalKeyboardKey.arrowLeft) {
                   _sidebarAllItemFocusNode.requestFocus();
+                  return KeyEventResult.handled;
+                }
+                // BACK exits multi-select mode on TV
+                if (_multiSelectMode && key == LogicalKeyboardKey.goBack) {
+                  setState(() {
+                    _multiSelectMode = false;
+                    _multiSelectedChannelIds.clear();
+                  });
+                  return KeyEventResult.handled;
+                }
+                // MENU/contextMenu → toggle multi-select for this channel
+                if (key == LogicalKeyboardKey.contextMenu ||
+                    key == LogicalKeyboardKey.f5) {
+                  setState(() {
+                    if (!_multiSelectMode) {
+                      _multiSelectMode = true;
+                      _multiSelectedChannelIds = {channel.id};
+                    } else {
+                      if (_multiSelectedChannelIds.contains(channel.id)) {
+                        _multiSelectedChannelIds.remove(channel.id);
+                      } else {
+                        _multiSelectedChannelIds.add(channel.id);
+                      }
+                    }
+                  });
                   return KeyEventResult.handled;
                 }
                 return KeyEventResult.ignored; // Let Flutter handle UP/DOWN naturally
@@ -2778,7 +2868,17 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
                         _selectChannel(index);
                       }
                     },
-                    onLongPress: _multiSelectMode ? null : () => _goFullscreen(channel),
+                    onLongPress: _multiSelectMode ? null : () {
+                      if (Platform.isAndroid) {
+                        // TV: long-press enters multi-select
+                        setState(() {
+                          _multiSelectMode = true;
+                          _multiSelectedChannelIds = {channel.id};
+                        });
+                      } else {
+                        _goFullscreen(channel);
+                      }
+                    },
             borderRadius: BorderRadius.circular(8),
             child: Container(
               padding:
@@ -3206,7 +3306,8 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
   }
 
   Widget _buildMultiSelectBar() {
-    return Container(
+    return FocusTraversalGroup(
+      child: Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
       decoration: BoxDecoration(
         color: const Color(0xFF1A1A2E),
@@ -3221,37 +3322,65 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
             style: const TextStyle(color: Colors.white70, fontSize: 13),
           ),
           const Spacer(),
-          TextButton(
-            onPressed: () => setState(() {
-              _multiSelectMode = false;
-              _multiSelectedChannelIds.clear();
-            }),
-            child: const Text('Cancel'),
+          Focus(
+            child: Builder(
+              builder: (ctx) {
+                final focused = Focus.of(ctx).hasFocus;
+                return TextButton(
+                  style: focused ? TextButton.styleFrom(
+                    side: const BorderSide(color: Color(0xFF6C5CE7), width: 2),
+                  ) : null,
+                  onPressed: () => setState(() {
+                    _multiSelectMode = false;
+                    _multiSelectedChannelIds.clear();
+                  }),
+                  child: const Text('Cancel'),
+                );
+              },
+            ),
           ),
           const SizedBox(width: 8),
           if (_failoverGroups.isNotEmpty)
-            FilledButton.icon(
-              onPressed: _multiSelectedChannelIds.isNotEmpty
-                  ? _addToExistingFailoverGroup
-                  : null,
-              icon: const Icon(Icons.add, size: 16),
-              label: const Text('Add to Smart Channel'),
-              style: FilledButton.styleFrom(
-                backgroundColor: const Color(0xFF2D3436),
+            Focus(
+              child: Builder(
+                builder: (ctx) {
+                  final focused = Focus.of(ctx).hasFocus;
+                  return FilledButton.icon(
+                    onPressed: _multiSelectedChannelIds.isNotEmpty
+                        ? _addToExistingFailoverGroup
+                        : null,
+                    icon: const Icon(Icons.add, size: 16),
+                    label: const Text('Add to Smart Channel'),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: const Color(0xFF2D3436),
+                      side: focused ? const BorderSide(color: Colors.white, width: 2) : null,
+                    ),
+                  );
+                },
               ),
             ),
           if (_failoverGroups.isNotEmpty) const SizedBox(width: 8),
-          FilledButton.icon(
-            onPressed: _multiSelectedChannelIds.length >= 2
-                ? _createFailoverGroupFromSelection
-                : null,
-            icon: const Icon(Icons.bolt, size: 16),
-            label: const Text('New Smart Channel'),
-            style: FilledButton.styleFrom(
-              backgroundColor: const Color(0xFF6C5CE7),
+          Focus(
+            autofocus: Platform.isAndroid,
+            child: Builder(
+              builder: (ctx) {
+                final focused = Focus.of(ctx).hasFocus;
+                return FilledButton.icon(
+                  onPressed: _multiSelectedChannelIds.length >= 2
+                      ? _createFailoverGroupFromSelection
+                      : null,
+                  icon: const Icon(Icons.bolt, size: 16),
+                  label: const Text('New Smart Channel'),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: const Color(0xFF6C5CE7),
+                    side: focused ? const BorderSide(color: Colors.white, width: 2) : null,
+                  ),
+                );
+              },
             ),
           ),
         ],
+      ),
       ),
     );
   }
@@ -4568,16 +4697,98 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
                             if (hasFocus && Platform.isAndroid) _selectChannel(index);
                           },
                           onKeyEvent: (node, event) {
-                            if (event is! KeyDownEvent) return KeyEventResult.ignored;
                             final key = event.logicalKey;
-                            if (key == LogicalKeyboardKey.select ||
+                            final isCenterKey = key == LogicalKeyboardKey.select ||
                                 key == LogicalKeyboardKey.enter ||
-                                key == LogicalKeyboardKey.gameButtonA) {
-                              _goFullscreen(channel);
+                                key == LogicalKeyboardKey.gameButtonA;
+
+                            // Long-press CENTER on TV remote → enter/toggle multi-select
+                            if (Platform.isAndroid && isCenterKey) {
+                              if (event is KeyDownEvent) {
+                                _longPressChannelId = channel.id;
+                                _longPressTimer?.cancel();
+                                _longPressTimer = Timer(const Duration(milliseconds: 400), () {
+                                  if (!mounted) return;
+                                  setState(() {
+                                    if (!_multiSelectMode) {
+                                      _multiSelectMode = true;
+                                      _multiSelectedChannelIds = {channel.id};
+                                    } else {
+                                      if (_multiSelectedChannelIds.contains(channel.id)) {
+                                        _multiSelectedChannelIds.remove(channel.id);
+                                      } else {
+                                        _multiSelectedChannelIds.add(channel.id);
+                                      }
+                                    }
+                                  });
+                                  _longPressChannelId = null;
+                                });
+                                return KeyEventResult.handled;
+                              }
+                              if (event is KeyUpEvent) {
+                                final wasLongPress = _longPressChannelId == null;
+                                _longPressTimer?.cancel();
+                                _longPressTimer = null;
+                                _longPressChannelId = null;
+                                if (wasLongPress) return KeyEventResult.handled;
+                                if (_multiSelectMode) {
+                                  setState(() {
+                                    if (_multiSelectedChannelIds.contains(channel.id)) {
+                                      _multiSelectedChannelIds.remove(channel.id);
+                                    } else {
+                                      _multiSelectedChannelIds.add(channel.id);
+                                    }
+                                  });
+                                } else {
+                                  _goFullscreen(channel);
+                                }
+                                return KeyEventResult.handled;
+                              }
+                              return KeyEventResult.handled;
+                            }
+
+                            if (event is! KeyDownEvent) return KeyEventResult.ignored;
+                            if (isCenterKey) {
+                              if (_multiSelectMode) {
+                                setState(() {
+                                  if (_multiSelectedChannelIds.contains(channel.id)) {
+                                    _multiSelectedChannelIds.remove(channel.id);
+                                  } else {
+                                    _multiSelectedChannelIds.add(channel.id);
+                                  }
+                                });
+                              } else {
+                                _goFullscreen(channel);
+                              }
                               return KeyEventResult.handled;
                             }
                             if (key == LogicalKeyboardKey.arrowLeft) {
                               _sidebarAllItemFocusNode.requestFocus();
+                              return KeyEventResult.handled;
+                            }
+                            // BACK exits multi-select mode
+                            if (_multiSelectMode && key == LogicalKeyboardKey.goBack) {
+                              setState(() {
+                                _multiSelectMode = false;
+                                _multiSelectedChannelIds.clear();
+                              });
+                              return KeyEventResult.handled;
+                            }
+                            // MENU/contextMenu/F5 → toggle multi-select
+                            if (key == LogicalKeyboardKey.contextMenu ||
+                                key == LogicalKeyboardKey.f5) {
+                              setState(() {
+                                if (!_multiSelectMode) {
+                                  _multiSelectMode = true;
+                                  _multiSelectedChannelIds = {channel.id};
+                                } else {
+                                  if (_multiSelectedChannelIds.contains(channel.id)) {
+                                    _multiSelectedChannelIds.remove(channel.id);
+                                  } else {
+                                    _multiSelectedChannelIds.add(channel.id);
+                                  }
+                                }
+                              });
                               return KeyEventResult.handled;
                             }
                             return KeyEventResult.ignored;
@@ -4633,6 +4844,14 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
                           onSecondaryTapUp: (details) => _showGuideChannelMenu(
                             channel, details.globalPosition,
                           ),
+                          onLongPress: _multiSelectMode ? null : () {
+                            if (Platform.isAndroid) {
+                              setState(() {
+                                _multiSelectMode = true;
+                                _multiSelectedChannelIds = {channel.id};
+                              });
+                            }
+                          },
                           child: Container(
                             height: 48,
                             decoration: BoxDecoration(
