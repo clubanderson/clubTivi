@@ -30,7 +30,7 @@ class ClubTiviTheme {
         centerTitle: false,
       ),
       // Focus highlight for D-pad / remote navigation
-      focusColor: _accent.withValues(alpha: 0.3),
+      focusColor: _accent.withValues(alpha: 0.45),
       hoverColor: _accent.withValues(alpha: 0.1),
       // ListTile focus/hover styling
       listTileTheme: ListTileThemeData(

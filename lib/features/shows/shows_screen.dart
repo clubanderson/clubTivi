@@ -1,3 +1,4 @@
+import 'dart:io' show Platform;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -49,7 +50,7 @@ class _ShowsScreenState extends ConsumerState<ShowsScreen> {
       backgroundColor: const Color(0xFF0A0A1A),
       body: KeyboardListener(
         focusNode: _keyboardFocusNode,
-        autofocus: true,
+        autofocus: !Platform.isAndroid,
         onKeyEvent: _handleKeyEvent,
         child: Column(
           children: [
@@ -78,7 +79,7 @@ class _ShowsScreenState extends ConsumerState<ShowsScreen> {
         },
       },
       child: Focus(
-        autofocus: true,
+        autofocus: !Platform.isAndroid,
         child: Scaffold(
       backgroundColor: const Color(0xFF0A0A1A),
       body: Center(
@@ -105,6 +106,7 @@ class _ShowsScreenState extends ConsumerState<ShowsScreen> {
               ),
               const SizedBox(height: 32),
               ElevatedButton.icon(
+                autofocus: true,
                 onPressed: () => context.go('/settings'),
                 icon: const Icon(Icons.settings),
                 label: const Text('Go to Settings'),
@@ -192,28 +194,30 @@ class _ShowsScreenState extends ConsumerState<ShowsScreen> {
     if (_isSearching) return const SizedBox.shrink();
     return SizedBox(
       height: 48,
-      child: ListView.builder(
+      child: SingleChildScrollView(
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.symmetric(horizontal: 20),
-        itemCount: _categories.length,
-        itemBuilder: (context, index) {
-          final selected = index == _selectedCategory;
-          return Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 4),
-            child: ChoiceChip(
-              label: Text(_categories[index]),
-              selected: selected,
-              selectedColor: const Color(0xFF6C5CE7),
-              backgroundColor: const Color(0xFF1A1A2E),
-              labelStyle: TextStyle(
-                color: selected ? Colors.white : Colors.white60,
-                fontWeight: selected ? FontWeight.bold : FontWeight.normal,
+        child: Row(
+          children: List.generate(_categories.length, (index) {
+            final selected = index == _selectedCategory;
+            return Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 4),
+              child: ChoiceChip(
+                autofocus: Platform.isAndroid && selected,
+                label: Text(_categories[index]),
+                selected: selected,
+                selectedColor: const Color(0xFF6C5CE7),
+                backgroundColor: const Color(0xFF1A1A2E),
+                labelStyle: TextStyle(
+                  color: selected ? Colors.white : Colors.white60,
+                  fontWeight: selected ? FontWeight.bold : FontWeight.normal,
+                ),
+                side: BorderSide.none,
+                onSelected: (_) => setState(() => _selectedCategory = index),
               ),
-              side: BorderSide.none,
-              onSelected: (_) => setState(() => _selectedCategory = index),
-            ),
-          );
-        },
+            );
+          }),
+        ),
       ),
     );
   }
@@ -324,7 +328,7 @@ class _ShowsScreenState extends ConsumerState<ShowsScreen> {
   }
 
   void _openShow(Show show) {
-    context.go('/shows/${show.traktId}', extra: show);
+    context.push('/shows/${show.traktId}', extra: show);
   }
 
   void _handleKeyEvent(KeyEvent event) {
@@ -371,72 +375,97 @@ class _ShowPosterCard extends ConsumerWidget {
       (favs) => favs.any((s) => s.traktId == show.traktId),
     ));
 
-    return GestureDetector(
-      onTap: onTap,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Expanded(
-            child: Stack(
-              children: [
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(8),
-                  child: show.posterUrl != null && show.posterUrl!.isNotEmpty
-                      ? CachedNetworkImage(
-                          imageUrl: show.posterUrl!,
-                          fit: BoxFit.cover,
-                          width: double.infinity,
-                          height: double.infinity,
-                          placeholder: (_, __) => Container(
-                            color: const Color(0xFF1A1A2E),
-                            child: const Center(
-                              child: Icon(Icons.movie, color: Colors.white24, size: 40),
+    return Focus(
+      onKeyEvent: (node, event) {
+        if (event is KeyDownEvent &&
+            (event.logicalKey == LogicalKeyboardKey.select ||
+             event.logicalKey == LogicalKeyboardKey.enter ||
+             event.logicalKey == LogicalKeyboardKey.gameButtonA)) {
+          onTap();
+          return KeyEventResult.handled;
+        }
+        return KeyEventResult.ignored;
+      },
+      child: Builder(
+        builder: (context) {
+          final hasFocus = Focus.of(context).hasFocus;
+          return GestureDetector(
+            onTap: onTap,
+            child: Container(
+              decoration: hasFocus
+                  ? BoxDecoration(
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: const Color(0xFF6C5CE7), width: 2),
+                    )
+                  : null,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: Stack(
+                      children: [
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(8),
+                          child: show.posterUrl != null && show.posterUrl!.isNotEmpty
+                              ? CachedNetworkImage(
+                                  imageUrl: show.posterUrl!,
+                                  fit: BoxFit.cover,
+                                  width: double.infinity,
+                                  height: double.infinity,
+                                  placeholder: (_, __) => Container(
+                                    color: const Color(0xFF1A1A2E),
+                                    child: const Center(
+                                      child: Icon(Icons.movie, color: Colors.white24, size: 40),
+                                    ),
+                                  ),
+                                  errorWidget: (_, __, ___) => _placeholderPoster(),
+                                )
+                              : _placeholderPoster(),
+                        ),
+                        // Favorite heart button
+                        Positioned(
+                          top: 4,
+                          right: 4,
+                          child: GestureDetector(
+                            onTap: () => ref.read(favoritesProvider.notifier).toggle(show),
+                            child: Container(
+                              padding: const EdgeInsets.all(4),
+                              decoration: BoxDecoration(
+                                color: Colors.black54,
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: Icon(
+                                isFav ? Icons.favorite : Icons.favorite_border,
+                                color: isFav ? Colors.redAccent : Colors.white70,
+                                size: 18,
+                              ),
                             ),
                           ),
-                          errorWidget: (_, __, ___) => _placeholderPoster(),
-                        )
-                      : _placeholderPoster(),
-                ),
-                // Favorite heart button
-                Positioned(
-                  top: 4,
-                  right: 4,
-                  child: GestureDetector(
-                    onTap: () => ref.read(favoritesProvider.notifier).toggle(show),
-                    child: Container(
-                      padding: const EdgeInsets.all(4),
-                      decoration: BoxDecoration(
-                        color: Colors.black54,
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Icon(
-                        isFav ? Icons.favorite : Icons.favorite_border,
-                        color: isFav ? Colors.redAccent : Colors.white70,
-                        size: 18,
-                      ),
+                        ),
+                      ],
                     ),
                   ),
-                ),
-              ],
+                  const SizedBox(height: 6),
+                  Text(
+                    show.title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                  if (show.year != null)
+                    Text(
+                      '${show.year}${show.rating != null ? ' • ★ ${show.rating!.toStringAsFixed(1)}' : ''}',
+                      style: const TextStyle(color: Colors.white38, fontSize: 11),
+                    ),
+                ],
+              ),
             ),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            show.title,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 13,
-              fontWeight: FontWeight.w500,
-            ),
-          ),
-          if (show.year != null)
-            Text(
-              '${show.year}${show.rating != null ? ' • ★ ${show.rating!.toStringAsFixed(1)}' : ''}',
-              style: const TextStyle(color: Colors.white38, fontSize: 11),
-            ),
-        ],
+          );
+        },
       ),
     );
   }

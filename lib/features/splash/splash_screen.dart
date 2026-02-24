@@ -1,3 +1,4 @@
+import 'dart:io' show Platform;
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
@@ -13,7 +14,8 @@ class SplashScreen extends StatefulWidget {
 class _SplashScreenState extends State<SplashScreen>
     with TickerProviderStateMixin {
   late final AnimationController _controller;
-  late final AnimationController _glowController;
+  // Glow controller only created on non-TV platforms
+  AnimationController? _glowController;
 
   // Staggered animations driven by _controller (0→1 over 3s)
   late final Animation<double> _iconScale;
@@ -26,31 +28,36 @@ class _SplashScreenState extends State<SplashScreen>
   late final Animation<double> _taglineOpacity;
   late final Animation<double> _fadeOut;
 
-  // Continuous glow pulse
-  late final Animation<double> _glowPulse;
+  // Continuous glow pulse (null on TV)
+  Animation<double>? _glowPulse;
 
   static const _accent = Color(0xFF6C5CE7);
   static const _surface = Color(0xFF0A0A0F);
+
+  // TV mode: skip GPU-heavy effects (CustomPaint, shimmer, glow loop)
+  static final bool _isTV = Platform.isAndroid;
 
   @override
   void initState() {
     super.initState();
 
-    // Main timeline: 3.5 seconds total
+    // Shorter duration on TV to reduce GPU work
     _controller = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 3500),
+      duration: Duration(milliseconds: _isTV ? 2000 : 3500),
     );
 
-    // Glow pulse: loops continuously
-    _glowController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 2000),
-    )..repeat(reverse: true);
+    // Glow pulse: only on desktop (continuous loop is expensive on TV GPUs)
+    if (!_isTV) {
+      _glowController = AnimationController(
+        vsync: this,
+        duration: const Duration(milliseconds: 2000),
+      )..repeat(reverse: true);
 
-    _glowPulse = Tween<double>(begin: 0.3, end: 0.7).animate(
-      CurvedAnimation(parent: _glowController, curve: Curves.easeInOut),
-    );
+      _glowPulse = Tween<double>(begin: 0.3, end: 0.7).animate(
+        CurvedAnimation(parent: _glowController!, curve: Curves.easeInOut),
+      );
+    }
 
     // Icon: scale in with elastic bounce (0.0→0.4 of timeline)
     _iconScale = Tween<double>(begin: 0.0, end: 1.0).animate(
@@ -130,7 +137,7 @@ class _SplashScreenState extends State<SplashScreen>
   @override
   void dispose() {
     _controller.dispose();
-    _glowController.dispose();
+    _glowController?.dispose();
     super.dispose();
   }
 
@@ -139,18 +146,21 @@ class _SplashScreenState extends State<SplashScreen>
     return Scaffold(
       backgroundColor: _surface,
       body: AnimatedBuilder(
-        animation: Listenable.merge([_controller, _glowController]),
+        animation: _glowController != null
+            ? Listenable.merge([_controller, _glowController!])
+            : _controller,
         builder: (context, _) {
           return FadeTransition(
             opacity: _fadeOut,
             child: Stack(
               children: [
-                // Animated radial glow background
+                // Animated radial glow background (skip on TV)
+                if (!_isTV)
                 Positioned.fill(
                   child: CustomPaint(
                     painter: _GlowPainter(
                       color: _accent,
-                      intensity: _glowPulse.value,
+                      intensity: _glowPulse?.value ?? 0.5,
                       progress: _iconOpacity.value,
                     ),
                   ),
@@ -167,7 +177,8 @@ class _SplashScreenState extends State<SplashScreen>
                         child: Stack(
                           alignment: Alignment.center,
                           children: [
-                            // Streaming wave arcs
+                            // Streaming wave arcs (skip on TV — CustomPaint expensive)
+                            if (!_isTV)
                             Positioned(
                               right: 8,
                               top: 20,
@@ -197,12 +208,22 @@ class _SplashScreenState extends State<SplashScreen>
                         ),
                       ),
                       const SizedBox(height: 32),
-                      // Title with shimmer
+                      // Title (plain text on TV, shimmer on desktop)
                       SlideTransition(
                         position: _titleSlide,
                         child: Opacity(
                           opacity: _titleOpacity.value,
-                          child: Shimmer.fromColors(
+                          child: _isTV
+                              ? const Text(
+                                  'clubTivi',
+                                  style: TextStyle(
+                                    fontSize: 42,
+                                    fontWeight: FontWeight.w700,
+                                    letterSpacing: 2,
+                                    color: Colors.white,
+                                  ),
+                                )
+                              : Shimmer.fromColors(
                             baseColor: Colors.white,
                             highlightColor: _accent.withValues(alpha: 0.9),
                             period: const Duration(milliseconds: 2000),
