@@ -2992,7 +2992,35 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
       mainAxisSize: MainAxisSize.min,
       children: [
         // Main group row — same layout as regular guide row
-        GestureDetector(
+        Focus(
+          onKeyEvent: (node, event) {
+            if (event is! KeyDownEvent) return KeyEventResult.ignored;
+            final key = event.logicalKey;
+            if (key == LogicalKeyboardKey.select ||
+                key == LogicalKeyboardKey.enter ||
+                key == LogicalKeyboardKey.gameButtonA) {
+              _playFailoverGroup(group, members);
+              return KeyEventResult.handled;
+            }
+            if (key == LogicalKeyboardKey.arrowRight && !isExpanded) {
+              setState(() => _expandedFailoverGroups.add(group.id));
+              return KeyEventResult.handled;
+            }
+            if (key == LogicalKeyboardKey.arrowLeft && isExpanded) {
+              setState(() => _expandedFailoverGroups.remove(group.id));
+              return KeyEventResult.handled;
+            }
+            if (key == LogicalKeyboardKey.contextMenu ||
+                key == LogicalKeyboardKey.f5) {
+              _showFailoverGroupActions(group);
+              return KeyEventResult.handled;
+            }
+            return KeyEventResult.ignored;
+          },
+          child: Builder(
+            builder: (context) {
+              final focused = Focus.of(context).hasFocus;
+              return GestureDetector(
           behavior: HitTestBehavior.opaque,
           onTap: () => _playFailoverGroup(group, members),
           onSecondaryTapUp: (_) => _showFailoverGroupActions(group),
@@ -3005,10 +3033,14 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
           child: Container(
             height: 48,
             decoration: BoxDecoration(
-              color: isGroupPlaying ? const Color(0xFF6C5CE7).withValues(alpha: 0.2) : null,
+              color: isGroupPlaying
+                  ? const Color(0xFF6C5CE7).withValues(alpha: 0.2)
+                  : focused
+                      ? const Color(0xFF6C5CE7).withValues(alpha: 0.1)
+                      : null,
               border: Border(
                 bottom: const BorderSide(color: Colors.white10, width: 0.5),
-                left: BorderSide(color: const Color(0xFF6C5CE7), width: isGroupPlaying ? 3 : 2),
+                left: BorderSide(color: const Color(0xFF6C5CE7), width: isGroupPlaying ? 3 : focused ? 3 : 2),
               ),
             ),
             child: Row(
@@ -3089,6 +3121,9 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
               ],
             ),
           ),
+        );
+            },
+          ),
         ),
         // Expanded member rows
         if (isExpanded)
@@ -3097,14 +3132,38 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
             final ch = entry.value;
             final ps = ref.read(playerServiceProvider);
             final isPlaying = ps.currentChannelId == ch.id || (ps.currentChannelId == null && ps.currentUrl == ch.streamUrl);
-            return GestureDetector(
+            return Focus(
+              onKeyEvent: (node, event) {
+                if (event is! KeyDownEvent) return KeyEventResult.ignored;
+                final key = event.logicalKey;
+                if (key == LogicalKeyboardKey.select ||
+                    key == LogicalKeyboardKey.enter ||
+                    key == LogicalKeyboardKey.gameButtonA) {
+                  _playFailoverGroup(group, members, playChannel: ch);
+                  return KeyEventResult.handled;
+                }
+                if (key == LogicalKeyboardKey.contextMenu ||
+                    key == LogicalKeyboardKey.f5) {
+                  _showMemberActions(group, ch);
+                  return KeyEventResult.handled;
+                }
+                return KeyEventResult.ignored;
+              },
+              child: Builder(
+                builder: (context) {
+                  final focused = Focus.of(context).hasFocus;
+                  return GestureDetector(
               behavior: HitTestBehavior.opaque,
               onTap: () => _playFailoverGroup(group, members, playChannel: ch),
               onSecondaryTapUp: (_) => _showMemberActions(group, ch),
               child: Container(
                 height: 36,
                 decoration: BoxDecoration(
-                  color: isPlaying ? const Color(0xFF6C5CE7).withValues(alpha: 0.2) : const Color(0xFF0D1117),
+                  color: isPlaying
+                      ? const Color(0xFF6C5CE7).withValues(alpha: 0.2)
+                      : focused
+                          ? const Color(0xFF6C5CE7).withValues(alpha: 0.1)
+                          : const Color(0xFF0D1117),
                   border: const Border(bottom: BorderSide(color: Colors.white10, width: 0.5)),
                 ),
                 padding: const EdgeInsets.only(left: 24),
@@ -3136,6 +3195,9 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
                     const SizedBox(width: 8),
                   ],
                 ),
+              ),
+            );
+                },
               ),
             );
           }),
@@ -3365,7 +3427,44 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
         (ps.currentChannelId == null && ps.currentUrl == m.streamUrl));
     return Column(
       children: [
-        InkWell(
+        Focus(
+          onKeyEvent: (node, event) {
+            if (event is! KeyDownEvent) return KeyEventResult.ignored;
+            final key = event.logicalKey;
+            // CENTER/SELECT → play the Smart Channel
+            if (key == LogicalKeyboardKey.select ||
+                key == LogicalKeyboardKey.enter ||
+                key == LogicalKeyboardKey.gameButtonA) {
+              if (!_multiSelectMode && members.isNotEmpty) {
+                _playFailoverGroup(group, members);
+              }
+              return KeyEventResult.handled;
+            }
+            // RIGHT → expand, LEFT → collapse/focus sidebar
+            if (key == LogicalKeyboardKey.arrowRight && !isExpanded) {
+              setState(() => _expandedFailoverGroups.add(group.id));
+              return KeyEventResult.handled;
+            }
+            if (key == LogicalKeyboardKey.arrowLeft) {
+              if (isExpanded) {
+                setState(() => _expandedFailoverGroups.remove(group.id));
+                return KeyEventResult.handled;
+              }
+              _sidebarAllItemFocusNode.requestFocus();
+              return KeyEventResult.handled;
+            }
+            // MENU / long-press context → show group actions
+            if (key == LogicalKeyboardKey.contextMenu ||
+                key == LogicalKeyboardKey.f5) {
+              _showFailoverGroupActions(group);
+              return KeyEventResult.handled;
+            }
+            return KeyEventResult.ignored;
+          },
+          child: Builder(
+            builder: (context) {
+              final focused = Focus.of(context).hasFocus;
+              return InkWell(
           onTap: () {
             if (_multiSelectMode) return;
             if (members.isNotEmpty) _playFailoverGroup(group, members);
@@ -3385,10 +3484,16 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(8),
-              color: isPlaying ? const Color(0xFF6C5CE7).withValues(alpha: 0.25) : null,
+              color: isPlaying
+                  ? const Color(0xFF6C5CE7).withValues(alpha: 0.25)
+                  : focused
+                      ? const Color(0xFF6C5CE7).withValues(alpha: 0.15)
+                      : null,
               border: Border.all(color: isPlaying
                   ? const Color(0xFF6C5CE7)
-                  : const Color(0xFF6C5CE7).withValues(alpha: 0.3)),
+                  : focused
+                      ? const Color(0xFF6C5CE7).withValues(alpha: 0.7)
+                      : const Color(0xFF6C5CE7).withValues(alpha: 0.3)),
             ),
             child: Row(
               children: [
@@ -3474,6 +3579,9 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
               ],
             ),
           ),
+        );
+            },
+          ),
         ),
         if (isExpanded)
           ...members.asMap().entries.map((entry) {
@@ -3483,7 +3591,31 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
             final isPlaying = ps.currentChannelId == ch.id || (ps.currentChannelId == null && ps.currentUrl == ch.streamUrl);
             return Padding(
               padding: const EdgeInsets.only(left: 32),
-              child: InkWell(
+              child: Focus(
+                onKeyEvent: (node, event) {
+                  if (event is! KeyDownEvent) return KeyEventResult.ignored;
+                  final key = event.logicalKey;
+                  if (key == LogicalKeyboardKey.select ||
+                      key == LogicalKeyboardKey.enter ||
+                      key == LogicalKeyboardKey.gameButtonA) {
+                    _playFailoverGroup(group, members, playChannel: ch);
+                    return KeyEventResult.handled;
+                  }
+                  if (key == LogicalKeyboardKey.arrowLeft) {
+                    _sidebarAllItemFocusNode.requestFocus();
+                    return KeyEventResult.handled;
+                  }
+                  if (key == LogicalKeyboardKey.contextMenu ||
+                      key == LogicalKeyboardKey.f5) {
+                    _showMemberActions(group, ch);
+                    return KeyEventResult.handled;
+                  }
+                  return KeyEventResult.ignored;
+                },
+                child: Builder(
+                  builder: (context) {
+                    final focused = Focus.of(context).hasFocus;
+                    return InkWell(
                 onTap: () {
                   _playFailoverGroup(group, members, playChannel: ch);
                 },
@@ -3491,8 +3623,15 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
                   decoration: BoxDecoration(
-                    color: isPlaying ? const Color(0xFF6C5CE7).withValues(alpha: 0.2) : null,
+                    color: isPlaying
+                        ? const Color(0xFF6C5CE7).withValues(alpha: 0.2)
+                        : focused
+                            ? const Color(0xFF6C5CE7).withValues(alpha: 0.1)
+                            : null,
                     borderRadius: BorderRadius.circular(6),
+                    border: focused
+                        ? Border.all(color: const Color(0xFF6C5CE7).withValues(alpha: 0.5))
+                        : null,
                   ),
                   child: Row(
                     children: [
@@ -3538,6 +3677,9 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
                         const Icon(Icons.play_arrow_rounded, color: Color(0xFF6C5CE7), size: 16),
                     ],
                   ),
+                ),
+              );
+                  },
                 ),
               ),
             );
