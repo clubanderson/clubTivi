@@ -168,56 +168,55 @@ class _AddProviderPageState extends ConsumerState<_AddProviderPage> {
           });
         },
       },
-      child: Focus(
-        autofocus: true,
-        child: Scaffold(
-      backgroundColor: const Color(0xFF0A0A0F),
-      appBar: AppBar(
-        leading: IconButton(
-          icon: const Icon(Icons.close),
-          onPressed: () => Navigator.of(context).pop(),
+      child: Scaffold(
+        backgroundColor: const Color(0xFF0A0A0F),
+        appBar: AppBar(
+          leading: IconButton(
+            icon: const Icon(Icons.close),
+            onPressed: () => Navigator.of(context).pop(),
+          ),
+          title: const Text('Add Provider'),
         ),
-        title: const Text('Add Provider'),
-      ),
-      body: Form(
-        key: _formKey,
-        child: ListView(
-          padding: const EdgeInsets.all(20),
-          children: [
-            // Provider type dropdown — D-pad navigable as a form field
-            DropdownButtonFormField<_ProviderType>(
-              value: _type,
-              autofocus: true,
-              decoration: const InputDecoration(
-                labelText: 'Provider Type',
-                prefixIcon: Icon(Icons.live_tv),
-              ),
-              dropdownColor: const Color(0xFF1A1A2E),
-              items: const [
-                DropdownMenuItem(
-                  value: _ProviderType.m3u,
-                  child: Text('M3U Playlist'),
+        body: Form(
+          key: _formKey,
+          child: FocusTraversalGroup(
+            child: ListView(
+              padding: const EdgeInsets.all(20),
+              children: [
+                // Provider type dropdown — D-pad navigable as a form field
+                DropdownButtonFormField<_ProviderType>(
+                  value: _type,
+                  autofocus: true,
+                  decoration: const InputDecoration(
+                    labelText: 'Provider Type',
+                    prefixIcon: Icon(Icons.live_tv),
+                  ),
+                  dropdownColor: const Color(0xFF1A1A2E),
+                  items: const [
+                    DropdownMenuItem(
+                      value: _ProviderType.m3u,
+                      child: Text('M3U Playlist'),
+                    ),
+                    DropdownMenuItem(
+                      value: _ProviderType.xtream,
+                      child: Text('Xtream Codes'),
+                    ),
+                  ],
+                  onChanged: (v) {
+                    if (v != null) setState(() => _type = v);
+                  },
                 ),
-                DropdownMenuItem(
-                  value: _ProviderType.xtream,
-                  child: Text('Xtream Codes'),
-                ),
+                const SizedBox(height: 24),
+                // Fields change based on type
+                if (_type == _ProviderType.m3u) ..._buildM3uFields(),
+                if (_type == _ProviderType.xtream) ..._buildXtreamFields(),
+                const SizedBox(height: 24),
+                _buildSubmitButton(),
               ],
-              onChanged: (v) {
-                if (v != null) setState(() => _type = v);
-              },
             ),
-            const SizedBox(height: 24),
-            // Fields change based on type
-            if (_type == _ProviderType.m3u) ..._buildM3uFields(),
-            if (_type == _ProviderType.xtream) ..._buildXtreamFields(),
-            const SizedBox(height: 24),
-            _buildSubmitButton(),
-          ],
+          ),
         ),
       ),
-    ),
-    ),
     );
   }
 
