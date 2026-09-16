@@ -5,18 +5,19 @@ import '../../data/datasources/remote/trakt_client.dart';
 import '../../data/datasources/remote/tmdb_client.dart';
 import '../../data/datasources/remote/debrid_service.dart';
 import '../../data/datasources/remote/torrent_search_client.dart';
-import '../../data/repositories/shows_repository.dart';
-import '../../data/models/show.dart';
+import '../../data/repositories/vod_repository.dart';
+import '../../data/models/vod_title.dart';
+import '../providers/provider_manager.dart';
 
 // SharedPreferences keys for API credentials
 const _kTraktClientId = 'shows_trakt_client_id';
 const _kTmdbApiKey = 'shows_tmdb_api_key';
 const _kDebridTokens = 'shows_debrid_tokens'; // JSON map of type→token
 
-/// Provider for the shows repository (rebuilds when API keys change)
-final showsRepositoryProvider = FutureProvider<ShowsRepository>((ref) async {
+/// Provider for the VOD repository (rebuilds when API keys change)
+final vodRepositoryProvider = FutureProvider<VodRepository>((ref) async {
   // Watch API keys so repository rebuilds when keys are saved
-  final keys = ref.watch(showsApiKeysProvider);
+  final keys = ref.watch(vodApiKeysProvider);
 
   // Use the first configured debrid service (priority order)
   DebridService? debrid;
@@ -28,7 +29,7 @@ final showsRepositoryProvider = FutureProvider<ShowsRepository>((ref) async {
     }
   }
 
-  return ShowsRepository(
+  return VodRepository(
     trakt: keys.hasTraktKey
         ? TraktClient(clientId: keys.traktClientId)
         : null,
@@ -37,59 +38,62 @@ final showsRepositoryProvider = FutureProvider<ShowsRepository>((ref) async {
         : null,
     debrid: debrid,
     torrentSearch: TorrentSearchClient(),
+    // Local Xtream VOD/series catalogs (stored at provider refresh) so
+    // show/movie playback can match provider sources without API calls.
+    database: ref.watch(databaseProvider),
   );
 });
 
 /// Trending shows
-final trendingShowsProvider = FutureProvider<List<Show>>((ref) async {
-  final repo = await ref.watch(showsRepositoryProvider.future);
-  return repo.getTrendingShows();
+final trendingSeriesProvider = FutureProvider<List<VodTitle>>((ref) async {
+  final repo = await ref.watch(vodRepositoryProvider.future);
+  return repo.getTrendingSeries();
 });
 
 /// Popular shows
-final popularShowsProvider = FutureProvider<List<Show>>((ref) async {
-  final repo = await ref.watch(showsRepositoryProvider.future);
-  return repo.getPopularShows();
+final popularSeriesProvider = FutureProvider<List<VodTitle>>((ref) async {
+  final repo = await ref.watch(vodRepositoryProvider.future);
+  return repo.getPopularSeries();
 });
 
 /// Trending movies
-final trendingMoviesProvider = FutureProvider<List<Show>>((ref) async {
-  final repo = await ref.watch(showsRepositoryProvider.future);
+final trendingMoviesProvider = FutureProvider<List<VodTitle>>((ref) async {
+  final repo = await ref.watch(vodRepositoryProvider.future);
   return repo.getTrendingMovies();
 });
 
 /// Popular movies
-final popularMoviesProvider = FutureProvider<List<Show>>((ref) async {
-  final repo = await ref.watch(showsRepositoryProvider.future);
+final popularMoviesProvider = FutureProvider<List<VodTitle>>((ref) async {
+  final repo = await ref.watch(vodRepositoryProvider.future);
   return repo.getPopularMovies();
 });
 
 /// Search results
-final showSearchQueryProvider = StateProvider<String>((ref) => '');
+final vodSearchQueryProvider = StateProvider<String>((ref) => '');
 
-final showSearchResultsProvider = FutureProvider<List<Show>>((ref) async {
-  final query = ref.watch(showSearchQueryProvider);
+final vodSearchResultsProvider = FutureProvider<List<VodTitle>>((ref) async {
+  final query = ref.watch(vodSearchQueryProvider);
   if (query.isEmpty) return [];
-  final repo = await ref.watch(showsRepositoryProvider.future);
+  final repo = await ref.watch(vodRepositoryProvider.future);
   return repo.search(query);
 });
 
-/// Show detail provider (family — parameterized by trakt ID + type)
-final showDetailProvider =
-    FutureProvider.family<ShowDetail?, ShowDetailParams>((ref, params) async {
-  final repo = await ref.watch(showsRepositoryProvider.future);
-  return repo.getShowDetail(params.traktId, type: params.type);
+/// VodTitle detail provider (family — parameterized by trakt ID + type)
+final vodDetailProvider =
+    FutureProvider.family<VodTitleDetail?, VodDetailParams>((ref, params) async {
+  final repo = await ref.watch(vodRepositoryProvider.future);
+  return repo.getVodTitleDetail(params.traktId, type: params.type);
 });
 
-class ShowDetailParams {
+class VodDetailParams {
   final int traktId;
-  final ShowType type;
-  const ShowDetailParams(this.traktId, {this.type = ShowType.show});
+  final VodTitleType type;
+  const VodDetailParams(this.traktId, {this.type = VodTitleType.series});
 
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
-      other is ShowDetailParams && traktId == other.traktId && type == other.type;
+      other is VodDetailParams && traktId == other.traktId && type == other.type;
 
   @override
   int get hashCode => traktId.hashCode ^ type.hashCode;
@@ -98,7 +102,7 @@ class ShowDetailParams {
 /// Episodes for a season
 final episodesProvider =
     FutureProvider.family<List<Episode>, EpisodeParams>((ref, params) async {
-  final repo = await ref.watch(showsRepositoryProvider.future);
+  final repo = await ref.watch(vodRepositoryProvider.future);
   return repo.getEpisodes(params.traktId, params.season);
 });
 
@@ -119,35 +123,67 @@ class EpisodeParams {
 /// Stream resolution for playback
 final resolveStreamProvider =
     FutureProvider.family<List<ResolvedStream>, StreamResolveParams>((ref, params) async {
-  final repo = await ref.watch(showsRepositoryProvider.future);
+  final repo = await ref.watch(vodRepositoryProvider.future);
   return repo.resolveStreams(
     imdbId: params.imdbId,
+    title: params.title,
+    year: params.year,
+    tmdbId: params.tmdbId,
+    mediaType: params.mediaType,
     season: params.season,
     episode: params.episode,
+    preferredLanguage: params.preferredLanguage,
   );
 });
 
 class StreamResolveParams {
   final String imdbId;
+  final String? title;
+  final int? year;
+  final int? tmdbId;
+  final VodTitleType mediaType;
   final int? season;
   final int? episode;
-  const StreamResolveParams(this.imdbId, {this.season, this.episode});
+  final String? preferredLanguage;
+  const StreamResolveParams(
+    this.imdbId, {
+    this.title,
+    this.year,
+    this.tmdbId,
+    this.mediaType = VodTitleType.movie,
+    this.season,
+    this.episode,
+    this.preferredLanguage,
+  });
 
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
       other is StreamResolveParams &&
           imdbId == other.imdbId &&
+          title == other.title &&
+          year == other.year &&
+          tmdbId == other.tmdbId &&
+          mediaType == other.mediaType &&
           season == other.season &&
-          episode == other.episode;
+          episode == other.episode &&
+          preferredLanguage == other.preferredLanguage;
 
   @override
-  int get hashCode => imdbId.hashCode ^ (season ?? 0).hashCode ^ (episode ?? 0).hashCode;
+  int get hashCode =>
+      imdbId.hashCode ^
+      (title?.hashCode ?? 0) ^
+      (year ?? 0).hashCode ^
+      (tmdbId ?? 0).hashCode ^
+      mediaType.hashCode ^
+      (season ?? 0).hashCode ^
+      (episode ?? 0).hashCode ^
+      (preferredLanguage?.hashCode ?? 0);
 }
 
 /// API keys configuration state
-class ShowsApiKeysNotifier extends StateNotifier<ShowsApiKeys> {
-  ShowsApiKeysNotifier() : super(const ShowsApiKeys());
+class VodApiKeysNotifier extends StateNotifier<VodApiKeys> {
+  VodApiKeysNotifier() : super(const VodApiKeys());
 
   Future<void> load() async {
     final prefs = await SharedPreferences.getInstance();
@@ -188,7 +224,7 @@ class ShowsApiKeysNotifier extends StateNotifier<ShowsApiKeys> {
       } catch (_) {}
     }
 
-    state = ShowsApiKeys(
+    state = VodApiKeys(
       traktClientId: prefs.getString(_kTraktClientId) ?? '',
       tmdbApiKey: prefs.getString(_kTmdbApiKey) ?? '',
       debridTokens: tokens,
@@ -206,7 +242,7 @@ class ShowsApiKeysNotifier extends StateNotifier<ShowsApiKeys> {
     await prefs.setString(_kDebridTokens, jsonEncode(
       debridTokens.map((k, v) => MapEntry(k.name, v)),
     ));
-    state = ShowsApiKeys(
+    state = VodApiKeys(
       traktClientId: traktClientId,
       tmdbApiKey: tmdbApiKey,
       debridTokens: debridTokens,
@@ -228,12 +264,12 @@ class ShowsApiKeysNotifier extends StateNotifier<ShowsApiKeys> {
   }
 }
 
-class ShowsApiKeys {
+class VodApiKeys {
   final String traktClientId;
   final String tmdbApiKey;
   final Map<DebridType, String> debridTokens;
 
-  const ShowsApiKeys({
+  const VodApiKeys({
     this.traktClientId = '',
     this.tmdbApiKey = '',
     this.debridTokens = const {},
@@ -248,9 +284,9 @@ class ShowsApiKeys {
       debridTokens.values.where((t) => t.isNotEmpty).length;
 }
 
-final showsApiKeysProvider =
-    StateNotifierProvider<ShowsApiKeysNotifier, ShowsApiKeys>((ref) {
-  final notifier = ShowsApiKeysNotifier();
+final vodApiKeysProvider =
+    StateNotifierProvider<VodApiKeysNotifier, VodApiKeys>((ref) {
+  final notifier = VodApiKeysNotifier();
   notifier.load();
   return notifier;
 });
@@ -260,7 +296,7 @@ final showsApiKeysProvider =
 const _kFavorites = 'shows_favorites';
 
 /// Manages a list of favorite shows persisted to SharedPreferences as JSON
-class FavoritesNotifier extends StateNotifier<List<Show>> {
+class FavoritesNotifier extends StateNotifier<List<VodTitle>> {
   FavoritesNotifier() : super(const []);
 
   Future<void> load() async {
@@ -269,18 +305,18 @@ class FavoritesNotifier extends StateNotifier<List<Show>> {
     if (raw == null || raw.isEmpty) return;
     try {
       final list = jsonDecode(raw) as List;
-      state = list.map((e) => _showFromJson(e as Map<String, dynamic>)).toList();
+      state = list.map((e) => _vodTitleFromJson(e as Map<String, dynamic>)).toList();
     } catch (_) {
       // Corrupted data — start fresh
     }
   }
 
-  Future<void> toggle(Show show) async {
-    final exists = state.any((s) => s.traktId == show.traktId);
+  Future<void> toggle(VodTitle vodTitle) async {
+    final exists = state.any((s) => s.traktId == vodTitle.traktId);
     if (exists) {
-      state = state.where((s) => s.traktId != show.traktId).toList();
+      state = state.where((s) => s.traktId != vodTitle.traktId).toList();
     } else {
-      state = [...state, show];
+      state = [...state, vodTitle];
     }
     await _persist();
   }
@@ -289,28 +325,28 @@ class FavoritesNotifier extends StateNotifier<List<Show>> {
 
   Future<void> _persist() async {
     final prefs = await SharedPreferences.getInstance();
-    final json = state.map(_showToJson).toList();
+    final json = state.map(_vodTitleToJson).toList();
     await prefs.setString(_kFavorites, jsonEncode(json));
   }
 
-  static Map<String, dynamic> _showToJson(Show s) => {
-        'traktId': s.traktId,
-        'imdbId': s.imdbId,
-        'tmdbId': s.tmdbId,
-        'title': s.title,
-        'year': s.year,
-        'overview': s.overview,
-        'rating': s.rating,
-        'posterUrl': s.posterUrl,
-        'backdropUrl': s.backdropUrl,
-        'type': s.type == ShowType.movie ? 'movie' : 'show',
-        'genres': s.genres,
-        'network': s.network,
-        'status': s.status,
-        'runtime': s.runtime,
+  static Map<String, dynamic> _vodTitleToJson(VodTitle v) => {
+        'traktId': v.traktId,
+        'imdbId': v.imdbId,
+        'tmdbId': v.tmdbId,
+        'title': v.title,
+        'year': v.year,
+        'overview': v.overview,
+        'rating': v.rating,
+        'posterUrl': v.posterUrl,
+        'backdropUrl': v.backdropUrl,
+        'type': v.type == VodTitleType.movie ? 'movie' : 'show',
+        'genres': v.genres,
+        'network': v.network,
+        'status': v.status,
+        'runtime': v.runtime,
       };
 
-  static Show _showFromJson(Map<String, dynamic> j) => Show(
+  static VodTitle _vodTitleFromJson(Map<String, dynamic> j) => VodTitle(
         traktId: j['traktId'] as int,
         imdbId: j['imdbId'] as String?,
         tmdbId: j['tmdbId'] as int?,
@@ -320,7 +356,7 @@ class FavoritesNotifier extends StateNotifier<List<Show>> {
         rating: (j['rating'] as num?)?.toDouble(),
         posterUrl: j['posterUrl'] as String?,
         backdropUrl: j['backdropUrl'] as String?,
-        type: j['type'] == 'movie' ? ShowType.movie : ShowType.show,
+        type: j['type'] == 'movie' ? VodTitleType.movie : VodTitleType.series,
         genres: (j['genres'] as List?)?.cast<String>() ?? const [],
         network: j['network'] as String?,
         status: j['status'] as String?,
@@ -329,7 +365,7 @@ class FavoritesNotifier extends StateNotifier<List<Show>> {
 }
 
 final favoritesProvider =
-    StateNotifierProvider<FavoritesNotifier, List<Show>>((ref) {
+    StateNotifierProvider<FavoritesNotifier, List<VodTitle>>((ref) {
   final notifier = FavoritesNotifier();
   notifier.load();
   return notifier;

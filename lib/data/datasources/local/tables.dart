@@ -181,3 +181,64 @@ class ScheduledRecordings extends Table {
   @override
   Set<Column> get primaryKey => {id};
 }
+
+/// Xtream VOD (movie) catalog stored locally at provider refresh.
+///
+/// Mirrors the Xtream `get_vod_streams` payload (see iptv-webapp
+/// `VodStream` type): stream identity, container extension for URL
+/// building, artwork, ratings, and TMDB-enrichment metadata.
+/// Live channels stay in [Channels]; VOD gets its own table so movie
+/// lookups never scan the live channel list.
+class XtreamVod extends Table {
+  TextColumn get id => text()(); // compound: providerId_streamId
+  TextColumn get providerId => text().references(Providers, #id)();
+  IntColumn get streamId => integer()();
+  TextColumn get name => text()();
+  TextColumn get categoryId => text().nullable()();
+  TextColumn get categoryName => text().nullable()();
+  TextColumn get icon => text().nullable()(); // stream_icon
+  TextColumn get containerExtension => text().withDefault(const Constant('mp4'))();
+  TextColumn get streamUrl => text()(); // prebuilt movie URL
+  RealColumn get rating => real().nullable()();
+  RealColumn get rating5based => real().nullable()();
+  TextColumn get tmdb => text().nullable()();
+  TextColumn get trailer => text().nullable()();
+  TextColumn get plot => text().nullable()();
+  TextColumn get cast => text().nullable()();
+  TextColumn get director => text().nullable()();
+  TextColumn get genre => text().nullable()();
+  TextColumn get releaseDate => text().nullable()();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
+/// Xtream series catalog stored locally at provider refresh.
+///
+/// Mirrors the Xtream `get_series` payload (see iptv-webapp
+/// `SeriesStream` type). Episode URLs are resolved on demand via
+/// `get_series_info` + `buildSeriesEpisodeUrl`; only series-level rows
+/// are stored here so refresh stays a single bulk fetch per provider.
+class XtreamSeries extends Table {
+  TextColumn get id => text()(); // compound: providerId_seriesId
+  TextColumn get providerId => text().references(Providers, #id)();
+  IntColumn get seriesId => integer()();
+  TextColumn get name => text()();
+  TextColumn get categoryId => text().nullable()();
+  TextColumn get categoryName => text().nullable()();
+  TextColumn get cover => text().nullable()();
+  TextColumn get plot => text().nullable()();
+  TextColumn get cast => text().nullable()();
+  TextColumn get director => text().nullable()();
+  TextColumn get genre => text().nullable()();
+  TextColumn get releaseDate => text().nullable()();
+  RealColumn get rating => real().nullable()();
+  RealColumn get rating5based => real().nullable()();
+  TextColumn get tmdb => text().nullable()();
+  TextColumn get youtubeTrailer => text().nullable()();
+  IntColumn get episodeRunTime => integer().nullable()();
+  TextColumn get lastModified => text().nullable()();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}

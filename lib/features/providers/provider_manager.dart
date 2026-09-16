@@ -6,9 +6,28 @@ import '../../data/datasources/local/database.dart' as db;
 import '../../data/datasources/parsers/m3u_parser.dart';
 import '../../data/datasources/remote/xtream_client.dart';
 import '../../data/models/channel.dart' hide Provider;
+import '../../data/models/vod_item.dart';
 import '../../data/services/logo_resolver_service.dart';
 import '../../core/feature_gate.dart';
 import 'package:dio/dio.dart';
+
+/// Deduplicate catalog items by (providerId, streamId), keeping the last
+/// occurrence — the same "last wins" semantics as the DB upsert.
+/// Only an exact key match counts: rows sharing just a name (different
+/// encodes or entries) or just a stream id (different providers) are kept.
+List<VodItem> dedupeVodItems(List<VodItem> items) {
+  final keyed = <String, VodItem>{};
+  final unkeyed = <VodItem>[];
+  for (final item in items) {
+    final streamId = item.streamId;
+    if (streamId == null) {
+      unkeyed.add(item);
+    } else {
+      keyed['${item.providerId}_$streamId'] = item;
+    }
+  }
+  return [...keyed.values, ...unkeyed];
+}
 
 /// Manages IPTV providers: adding, refreshing, channel loading.
 class ProviderManager {
@@ -32,12 +51,14 @@ class ProviderManager {
     required String url,
   }) async {
     await _checkProviderLimit();
-    await _db.upsertProvider(db.ProvidersCompanion.insert(
-      id: id,
-      name: name,
-      type: 'm3u',
-      url: Value(url),
-    ));
+    await _db.upsertProvider(
+      db.ProvidersCompanion.insert(
+        id: id,
+        name: name,
+        type: 'm3u',
+        url: Value(url),
+      ),
+    );
     await refreshProvider(id);
   }
 
@@ -50,49 +71,68 @@ class ProviderManager {
     required String password,
   }) async {
     await _checkProviderLimit();
-    await _db.upsertProvider(db.ProvidersCompanion.insert(
-      id: id,
-      name: name,
-      type: 'xtream',
-      url: Value(url),
-      username: Value(username),
-      password: Value(password),
-    ));
+    await _db.upsertProvider(
+      db.ProvidersCompanion.insert(
+        id: id,
+        name: name,
+        type: 'xtream',
+        url: Value(url),
+        username: Value(username),
+        password: Value(password),
+      ),
+    );
     await refreshProvider(id);
   }
 
   /// Refresh a provider's channels from its source.
+  ///
+  /// For Xtream providers this fetches all three catalogs (live + VOD +
+  /// series) and stores them locally: live rows go to `channels`, VOD rows
+  /// to `xtream_vod`, series rows to `xtream_series`. Playback lookups then
+  /// hit the DB with no live API calls until the next manual refresh.
   Future<int> refreshProvider(String providerId) async {
     final providers = await _db.getAllProviders();
     final provider = providers.firstWhere((p) => p.id == providerId);
 
-    List<Channel> channels;
+    int count;
     if (provider.type == 'm3u') {
-      channels = await _refreshM3u(provider);
+      final channels = await _refreshM3u(provider);
+      await _saveLiveChannels(channels);
+      count = channels.length;
     } else if (provider.type == 'xtream') {
-      channels = await _refreshXtream(provider);
+      count = await _refreshXtream(provider);
     } else {
       return 0;
     }
 
+    await _db.updateProviderRefreshTime(providerId);
+    return count;
+  }
+
+  /// Save live channels to the database and kick off logo resolution.
+  Future<void> _saveLiveChannels(List<Channel> channels) async {
     // Save channels to database
-    await _db.upsertChannels(channels.map((c) => db.ChannelsCompanion.insert(
-      id: c.id,
-      providerId: c.providerId,
-      name: c.name,
-      tvgId: Value(c.tvgId),
-      tvgName: Value(c.tvgName),
-      tvgLogo: Value(c.tvgLogo),
-      groupTitle: Value(c.groupTitle),
-      channelNumber: Value(c.channelNumber),
-      streamUrl: c.streamUrl,
-      streamType: Value(c.streamType.name),
-    )).toList());
+    await _db.upsertChannels(
+      channels
+          .map(
+            (c) => db.ChannelsCompanion.insert(
+              id: c.id,
+              providerId: c.providerId,
+              name: c.name,
+              tvgId: Value(c.tvgId),
+              tvgName: Value(c.tvgName),
+              tvgLogo: Value(c.tvgLogo),
+              groupTitle: Value(c.groupTitle),
+              channelNumber: Value(c.channelNumber),
+              streamUrl: c.streamUrl,
+              streamType: Value(c.streamType.name),
+            ),
+          )
+          .toList(),
+    );
 
     // Resolve missing logos in background
     _resolveChannelLogos(channels).catchError((_) {});
-
-    return channels.length;
   }
 
   Future<List<Channel>> _refreshM3u(db.Provider provider) async {
@@ -106,20 +146,123 @@ class ProviderManager {
     }
   }
 
-  Future<List<Channel>> _refreshXtream(db.Provider provider) async {
+  /// Refresh an Xtream provider: fetch live + VOD + series catalogs and
+  /// store each in its own table. Returns the total stored row count.
+  ///
+  /// Live is required; VOD/series are best-effort so a large or failing
+  /// catalog can't wipe out the live channels.
+  Future<int> _refreshXtream(db.Provider provider) async {
     final client = XtreamClient(
       baseUrl: provider.url!,
       username: provider.username!,
       password: provider.password!,
     );
     try {
-      return await client.getLiveStreams(providerId: provider.id);
+      final live = await client.getLiveStreams(providerId: provider.id);
+      await _saveLiveChannels(live);
+      final total = live.length;
+
+      try {
+        final vod = await client.getVodStreams(providerId: provider.id);
+        await _saveVodItems(provider.id, vod);
+      } catch (e) {
+        debugPrint('[Provider] VOD refresh failed for ${provider.name}: $e');
+      }
+
+      try {
+        final series = await client.getSeriesStreams(providerId: provider.id);
+        await _saveSeriesItems(provider.id, series);
+      } catch (e) {
+        debugPrint('[Provider] Series refresh failed for ${provider.name}: $e');
+      }
+
+      return total;
     } finally {
       client.dispose();
     }
   }
 
+  /// Upsert VOD items into `xtream_vod` in chunks. Returns rows stored.
+  Future<int> _saveVodItems(String providerId, List<VodItem> items) async {
+    final entries = <db.XtreamVodCompanion>[];
+    for (final item in dedupeVodItems(items)) {
+      final streamId = item.streamId;
+      final streamUrl = item.streamUrl;
+      if (streamId == null || streamUrl == null) continue;
+      entries.add(
+        db.XtreamVodCompanion.insert(
+          id: item.id,
+          providerId: providerId,
+          streamId: streamId,
+          name: item.name,
+          categoryId: Value(item.categoryId),
+          categoryName: Value(item.category),
+          icon: Value(item.posterUrl),
+          containerExtension: Value(item.containerExtension ?? 'mp4'),
+          streamUrl: streamUrl,
+          rating: Value(item.rating),
+          rating5based: Value(item.rating5based),
+          tmdb: Value(item.tmdb),
+          trailer: Value(item.trailer),
+          plot: Value(item.plot),
+          cast: Value(item.cast),
+          director: Value(item.director),
+          genre: Value(item.genre),
+          releaseDate: Value(item.releaseDate),
+        ),
+      );
+    }
+    await _upsertInChunks(entries, (chunk) => _db.upsertXtreamVod(chunk));
+    return entries.length;
+  }
+
+  /// Upsert series items into `xtream_series` in chunks. Returns rows stored.
+  Future<int> _saveSeriesItems(String providerId, List<VodItem> items) async {
+    final entries = <db.XtreamSeriesCompanion>[];
+    for (final item in dedupeVodItems(items)) {
+      final seriesId = item.streamId;
+      if (seriesId == null) continue;
+      entries.add(
+        db.XtreamSeriesCompanion.insert(
+          id: item.id,
+          providerId: providerId,
+          seriesId: seriesId,
+          name: item.name,
+          categoryId: Value(item.categoryId),
+          categoryName: Value(item.category),
+          cover: Value(item.posterUrl),
+          plot: Value(item.plot),
+          cast: Value(item.cast),
+          director: Value(item.director),
+          genre: Value(item.genre),
+          releaseDate: Value(item.releaseDate),
+          rating: Value(item.rating),
+          rating5based: Value(item.rating5based),
+          tmdb: Value(item.tmdb),
+          youtubeTrailer: Value(item.trailer),
+        ),
+      );
+    }
+    await _upsertInChunks(entries, (chunk) => _db.upsertXtreamSeries(chunk));
+    return entries.length;
+  }
+
+  /// Insert entries in bounded chunks to stay under SQLite variable limits.
+  static const _upsertChunkSize = 500;
+
+  Future<void> _upsertInChunks<T>(
+    List<T> entries,
+    Future<void> Function(List<T> chunk) upsert,
+  ) async {
+    for (var i = 0; i < entries.length; i += _upsertChunkSize) {
+      final end = (i + _upsertChunkSize).clamp(0, entries.length);
+      await upsert(entries.sublist(i, end));
+    }
+  }
+
   Future<void> deleteProvider(String id) async {
+    await _db.deleteXtreamVodForProvider(id);
+    await _db.deleteXtreamSeriesForProvider(id);
     await _db.deleteProvider(id);
   }
 
@@ -152,7 +295,8 @@ class ProviderManager {
         }
       }
       for (final ch in needsLogo.toList()) {
-        final stripped = ch.name.toLowerCase()
+        final stripped = ch.name
+            .toLowerCase()
             .replaceAll(RegExp(r'^[a-z]{2}[-]?[a-z]?\|\s*'), '')
             .replaceAll(RegExp(r'^[a-z]{2}:\s+'), '')
             .replaceAll(RegExp(r'^\[?[a-z]{2}\]?\s+'), '')
@@ -169,7 +313,9 @@ class ProviderManager {
     // Then resolve remaining from tv-logo/tv-logos GitHub repo
     if (needsLogo.isNotEmpty) {
       debugPrint('[Logo] Resolving ${needsLogo.length} via GitHub tv-logos...');
-      final ghResolved = await LogoResolverService.resolveLogosForChannels(needsLogo);
+      final ghResolved = await LogoResolverService.resolveLogosForChannels(
+        needsLogo,
+      );
       debugPrint('[Logo] GitHub resolved ${ghResolved.length} logos');
       resolved.addAll(ghResolved);
     }
@@ -207,7 +353,10 @@ class ProviderManager {
         .toList();
 
     if (needsLogo.isEmpty) {
-      await prefs.setInt(_logoResolvedKey, DateTime.now().millisecondsSinceEpoch);
+      await prefs.setInt(
+        _logoResolvedKey,
+        DateTime.now().millisecondsSinceEpoch,
+      );
       await prefs.setInt(_logoChannelCountKey, allChannels.length);
       return;
     }
@@ -221,7 +370,9 @@ class ProviderManager {
     final favorites = needsLogo.where((c) => favIds.contains(c.id)).toList();
     final rest = needsLogo.where((c) => !favIds.contains(c.id)).toList();
 
-    debugPrint('[Logo] ${needsLogo.length} missing (${favorites.length} favorites, ${rest.length} other)');
+    debugPrint(
+      '[Logo] ${needsLogo.length} missing (${favorites.length} favorites, ${rest.length} other)',
+    );
 
     // Resolve favorites immediately
     if (favorites.isNotEmpty) {
@@ -272,7 +423,8 @@ class ProviderManager {
     final remaining = <({String id, String name, String? tvgLogo})>[];
 
     for (final ch in channels) {
-      final stripped = ch.name.toLowerCase()
+      final stripped = ch.name
+          .toLowerCase()
           .replaceAll(RegExp(r'^[a-z]{2}[-]?[a-z]?\|\s*'), '')
           .replaceAll(RegExp(r'^[a-z]{2}:\s+'), '')
           .replaceAll(RegExp(r'^\[?[a-z]{2}\]?\s+'), '')
@@ -286,7 +438,9 @@ class ProviderManager {
     }
 
     if (remaining.isNotEmpty) {
-      final ghResolved = await LogoResolverService.resolveLogosForChannels(remaining);
+      final ghResolved = await LogoResolverService.resolveLogosForChannels(
+        remaining,
+      );
       resolved.addAll(ghResolved);
     }
 

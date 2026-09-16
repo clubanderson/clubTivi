@@ -103,14 +103,43 @@ class _SectionHeader extends StatelessWidget {
   }
 }
 
-class _ProviderCard extends ConsumerWidget {
+class _ProviderCard extends ConsumerStatefulWidget {
   final db.Provider provider;
   const _ProviderCard({required this.provider});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<_ProviderCard> createState() => _ProviderCardState();
+}
+
+class _ProviderCardState extends ConsumerState<_ProviderCard> {
+  bool _refreshing = false;
+
+  /// Refresh this provider's catalog, showing progress on the card itself.
+  /// Re-entrant calls (double-tap, D-pad repeat) are ignored while running.
+  Future<void> _refresh() async {
+    if (_refreshing) return;
+    setState(() => _refreshing = true);
+    final manager = ref.read(providerManagerProvider);
+    try {
+      final count = await manager.refreshProvider(widget.provider.id);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Loaded $count channels')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Refresh failed: $e')),
+      );
+    } finally {
+      if (mounted) setState(() => _refreshing = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
     const accent = Color(0xFF6C5CE7);
-    final isXtream = provider.type == 'xtream';
+    final isXtream = widget.provider.type == 'xtream';
 
     return Focus(
       onKeyEvent: (node, event) {
@@ -118,7 +147,7 @@ class _ProviderCard extends ConsumerWidget {
         if (event.logicalKey == LogicalKeyboardKey.select ||
             event.logicalKey == LogicalKeyboardKey.enter) {
           // SELECT on provider card → refresh
-          _refreshProvider(context, ref);
+          _refresh();
           return KeyEventResult.handled;
         }
         return KeyEventResult.ignored;
@@ -149,7 +178,7 @@ class _ProviderCard extends ConsumerWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    provider.name,
+                    widget.provider.name,
                     style: const TextStyle(
                         fontSize: 16, fontWeight: FontWeight.w600),
                   ),
@@ -171,39 +200,45 @@ class _ProviderCard extends ConsumerWidget {
                       ),
                       const SizedBox(width: 8),
                       Text(
-                        '— channels',
+                        _refreshing
+                            ? 'Refreshing…'
+                            : isXtream
+                                ? '— channels, movies & series'
+                                : '- channels',
                         style: TextStyle(
-                            fontSize: 12, color: Colors.white.withValues(alpha: 0.4)),
+                            fontSize: 12,
+                            color: _refreshing
+                                ? accent
+                                : Colors.white.withValues(alpha: 0.4)),
                       ),
                     ],
                   ),
                 ],
               ),
             ),
-            IconButton(
-              icon: const Icon(Icons.refresh_rounded, size: 20),
-              tooltip: 'Refresh',
-              onPressed: () async {
-                final manager = ref.read(providerManagerProvider);
-                try {
-                  final count = await manager.refreshProvider(provider.id);
-                  if (!context.mounted) return;
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('Loaded $count channels')),
-                  );
-                } catch (e) {
-                  if (!context.mounted) return;
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('Refresh failed: $e')),
-                  );
-                }
-              },
-            ),
+            if (_refreshing)
+              const Padding(
+                padding: EdgeInsets.all(14),
+                child: SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: accent,
+                  ),
+                ),
+              )
+            else
+              IconButton(
+                icon: const Icon(Icons.refresh_rounded, size: 20),
+                tooltip: 'Refresh',
+                onPressed: _refresh,
+              ),
             IconButton(
               icon: const Icon(Icons.delete_outline_rounded,
                   size: 20, color: Colors.redAccent),
               tooltip: 'Delete',
-              onPressed: () async {
+              onPressed: _refreshing ? null : () async {
                 final confirmed = await showDialog<bool>(
                   context: context,
                   builder: (_) => AlertDialog(
@@ -212,7 +247,7 @@ class _ProviderCard extends ConsumerWidget {
                       children: [
                         const Icon(Icons.delete_outline_rounded, color: Colors.redAccent),
                         const SizedBox(width: 8),
-                        Text(provider.name),
+                        Text(widget.provider.name),
                       ],
                     ),
                     actions: [
@@ -229,7 +264,7 @@ class _ProviderCard extends ConsumerWidget {
                 );
                 if (confirmed == true) {
                   final manager = ref.read(providerManagerProvider);
-                  await manager.deleteProvider(provider.id);
+                  await manager.deleteProvider(widget.provider.id);
                 }
               },
             ),
@@ -240,22 +275,6 @@ class _ProviderCard extends ConsumerWidget {
         },  // Builder builder
       ),  // Builder
     );  // Focus
-  }
-
-  void _refreshProvider(BuildContext context, WidgetRef ref) async {
-    final manager = ref.read(providerManagerProvider);
-    try {
-      final count = await manager.refreshProvider(provider.id);
-      if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Loaded $count channels')),
-      );
-    } catch (e) {
-      if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Refresh failed: $e')),
-      );
-    }
   }
 }
 
@@ -337,7 +356,7 @@ class FreeTvProvider {
   ];
 }
 
-class _FreeTvProviderTile extends ConsumerWidget {
+class _FreeTvProviderTile extends ConsumerStatefulWidget {
   final FreeTvProvider freeProvider;
   final bool isAdded;
 
@@ -347,8 +366,53 @@ class _FreeTvProviderTile extends ConsumerWidget {
   });
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<_FreeTvProviderTile> createState() =>
+      _FreeTvProviderTileState();
+}
+
+class _FreeTvProviderTileState extends ConsumerState<_FreeTvProviderTile> {
+  bool _refreshing = false;
+
+  /// Add (or re-sync) this free provider, showing progress on the tile.
+  /// Re-entrant calls are ignored while a sync is running.
+  Future<void> _addProvider() async {
+    if (_refreshing) return;
+    setState(() => _refreshing = true);
+    try {
+      final manager = ref.read(providerManagerProvider);
+      await manager.addM3uProvider(
+        id: widget.freeProvider.id,
+        name: widget.freeProvider.name,
+        url: widget.freeProvider.url,
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            '${widget.freeProvider.name} ${widget.isAdded ? "refreshed" : "added"}',
+          ),
+        ),
+      );
+    } on ProviderLimitException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.toString())),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to add: $e')),
+      );
+    } finally {
+      if (mounted) setState(() => _refreshing = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
     const accent = Color(0xFF6C5CE7);
+    final freeProvider = widget.freeProvider;
+    final isAdded = widget.isAdded;
     return Card(
       margin: const EdgeInsets.only(bottom: 8),
       child: Focus(
@@ -356,7 +420,7 @@ class _FreeTvProviderTile extends ConsumerWidget {
           if (event is! KeyDownEvent) return KeyEventResult.ignored;
           if (event.logicalKey == LogicalKeyboardKey.select ||
               event.logicalKey == LogicalKeyboardKey.enter) {
-            _addProvider(context, ref);
+            _addProvider();
             return KeyEventResult.handled;
           }
           return KeyEventResult.ignored;
@@ -366,7 +430,7 @@ class _FreeTvProviderTile extends ConsumerWidget {
             final hasFocus = Focus.of(context).hasFocus;
             return InkWell(
               borderRadius: BorderRadius.circular(12),
-              onTap: () => _addProvider(context, ref),
+              onTap: _refreshing ? null : _addProvider,
               child: Container(
                 decoration: hasFocus
                     ? BoxDecoration(
@@ -381,25 +445,44 @@ class _FreeTvProviderTile extends ConsumerWidget {
                     style: const TextStyle(fontWeight: FontWeight.w600),
                   ),
                   subtitle: Text(
-                    freeProvider.description,
-                    style: const TextStyle(fontSize: 12, color: Colors.white54),
+                    _refreshing
+                        ? (isAdded ? 'Refreshing…' : 'Adding…')
+                        : freeProvider.description,
+                    style: TextStyle(
+                        fontSize: 12,
+                        color: _refreshing ? accent : Colors.white54),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
-                  trailing: isAdded
-                      ? Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            const Icon(Icons.check_circle, color: Colors.greenAccent, size: 22),
-                            const SizedBox(width: 4),
-                            IconButton(
-                              icon: const Icon(Icons.refresh_rounded, color: Colors.white38, size: 20),
-                              tooltip: 'Re-sync',
-                              onPressed: () => _addProvider(context, ref),
+                  trailing: _refreshing
+                      ? const Padding(
+                          padding: EdgeInsets.all(12),
+                          child: SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: accent,
                             ),
-                          ],
+                          ),
                         )
-                      : const Icon(Icons.add_circle_outline, color: accent, size: 28),
+                      : isAdded
+                          ? Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const Icon(Icons.check_circle,
+                                    color: Colors.greenAccent, size: 22),
+                                const SizedBox(width: 4),
+                                IconButton(
+                                  icon: const Icon(Icons.refresh_rounded,
+                                      color: Colors.white38, size: 20),
+                                  tooltip: 'Re-sync',
+                                  onPressed: _addProvider,
+                                ),
+                              ],
+                            )
+                          : const Icon(Icons.add_circle_outline,
+                              color: accent, size: 28),
                 ),
               ),
             );
@@ -407,30 +490,5 @@ class _FreeTvProviderTile extends ConsumerWidget {
         ),
       ),
     );
-  }
-
-  Future<void> _addProvider(BuildContext context, WidgetRef ref) async {
-    try {
-      final manager = ref.read(providerManagerProvider);
-      await manager.addM3uProvider(
-        id: freeProvider.id,
-        name: freeProvider.name,
-        url: freeProvider.url,
-      );
-      if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('${freeProvider.name} ${isAdded ? "refreshed" : "added"} — loading channels...')),
-      );
-    } on ProviderLimitException catch (e) {
-      if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(e.toString())),
-      );
-    } catch (e) {
-      if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to add: $e')),
-      );
-    }
   }
 }

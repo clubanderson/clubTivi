@@ -8,11 +8,11 @@ import '../features/providers/providers_screen.dart';
 import '../features/epg_mapping/epg_mapping_screen.dart';
 import '../features/settings/settings_screen.dart';
 import '../features/settings/debrid_services_screen.dart';
-import '../features/shows/shows_screen.dart';
-import '../features/shows/show_detail_screen.dart';
+import '../features/vod/vod_screen.dart';
+import '../features/vod/vod_detail_screen.dart';
 import '../features/splash/splash_screen.dart';
 import '../platform/tv/tv_shell.dart';
-import '../data/models/show.dart';
+import '../data/models/vod_title.dart';
 
 GoRouter createRouter() {
   // Routes that live inside the TV sidebar shell
@@ -69,14 +69,14 @@ GoRouter createRouter() {
     ),
     GoRoute(
       path: '/shows',
-      builder: (context, state) => const ShowsScreen(),
+      builder: (context, state) => const VodScreen(),
     ),
     GoRoute(
       path: '/shows/:id',
       builder: (context, state) {
         final traktId = int.tryParse(state.pathParameters['id'] ?? '') ?? 0;
-        final show = state.extra as Show?;
-        return ShowDetailScreen(traktId: traktId, initialShow: show);
+        final vodTitle = state.extra as VodTitle?;
+        return VodDetailScreen(traktId: traktId, initialTitle: vodTitle);
       },
     ),
   ];

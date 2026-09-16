@@ -4,18 +4,18 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:go_router/go_router.dart';
-import '../../data/models/show.dart';
-import 'shows_providers.dart';
+import '../../data/models/vod_title.dart';
+import 'vod_providers.dart';
 
-/// Main shows screen with poster grid organized by category
-class ShowsScreen extends ConsumerStatefulWidget {
-  const ShowsScreen({super.key});
+/// Main VOD screen with poster grid organized by category
+class VodScreen extends ConsumerStatefulWidget {
+  const VodScreen({super.key});
 
   @override
-  ConsumerState<ShowsScreen> createState() => _ShowsScreenState();
+  ConsumerState<VodScreen> createState() => _VodScreenState();
 }
 
-class _ShowsScreenState extends ConsumerState<ShowsScreen> {
+class _VodScreenState extends ConsumerState<VodScreen> {
   final _searchController = TextEditingController();
   final _searchFocusNode = FocusNode();
   final _keyboardFocusNode = FocusNode();
@@ -40,7 +40,7 @@ class _ShowsScreenState extends ConsumerState<ShowsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final apiKeys = ref.watch(showsApiKeysProvider);
+    final apiKeys = ref.watch(vodApiKeysProvider);
 
     if (!apiKeys.hasTraktKey && !apiKeys.hasTmdbKey) {
       return _buildSetupPrompt(context);
@@ -154,7 +154,7 @@ class _ShowsScreenState extends ConsumerState<ShowsScreen> {
                 _isSearching = !_isSearching;
                 if (!_isSearching) {
                   _searchController.clear();
-                  ref.read(showSearchQueryProvider.notifier).state = '';
+                  ref.read(vodSearchQueryProvider.notifier).state = '';
                 }
               });
             },
@@ -184,7 +184,7 @@ class _ShowsScreenState extends ConsumerState<ShowsScreen> {
           ),
         ),
         onChanged: (query) {
-          ref.read(showSearchQueryProvider.notifier).state = query;
+          ref.read(vodSearchQueryProvider.notifier).state = query;
         },
       ),
     );
@@ -231,13 +231,13 @@ class _ShowsScreenState extends ConsumerState<ShowsScreen> {
       case 0:
         return _buildFavorites();
       case 1:
-        return _buildShowGrid(ref.watch(trendingShowsProvider));
+        return _buildVodGrid(ref.watch(trendingSeriesProvider));
       case 2:
-        return _buildShowGrid(ref.watch(popularShowsProvider));
+        return _buildVodGrid(ref.watch(popularSeriesProvider));
       case 3:
-        return _buildShowGrid(ref.watch(trendingMoviesProvider));
+        return _buildVodGrid(ref.watch(trendingMoviesProvider));
       case 4:
-        return _buildShowGrid(ref.watch(popularMoviesProvider));
+        return _buildVodGrid(ref.watch(popularMoviesProvider));
       default:
         return const SizedBox.shrink();
     }
@@ -265,11 +265,11 @@ class _ShowsScreenState extends ConsumerState<ShowsScreen> {
         ),
       );
     }
-    return _buildShowGrid(AsyncValue.data(favorites));
+    return _buildVodGrid(AsyncValue.data(favorites));
   }
 
   Widget _buildSearchResults() {
-    final query = ref.watch(showSearchQueryProvider);
+    final query = ref.watch(vodSearchQueryProvider);
     if (query.isEmpty) {
       return const Center(
         child: Text(
@@ -278,11 +278,11 @@ class _ShowsScreenState extends ConsumerState<ShowsScreen> {
         ),
       );
     }
-    return _buildShowGrid(ref.watch(showSearchResultsProvider));
+    return _buildVodGrid(ref.watch(vodSearchResultsProvider));
   }
 
-  Widget _buildShowGrid(AsyncValue<List<Show>> showsAsync) {
-    return showsAsync.when(
+  Widget _buildVodGrid(AsyncValue<List<VodTitle>> vodTitlesAsync) {
+    return vodTitlesAsync.when(
       loading: () => const Center(
         child: CircularProgressIndicator(color: Color(0xFF6C5CE7)),
       ),
@@ -300,8 +300,8 @@ class _ShowsScreenState extends ConsumerState<ShowsScreen> {
           ],
         ),
       ),
-      data: (shows) {
-        if (shows.isEmpty) {
+      data: (vodTitles) {
+        if (vodTitles.isEmpty) {
           return const Center(
             child: Text(
               'No results found',
@@ -317,18 +317,18 @@ class _ShowsScreenState extends ConsumerState<ShowsScreen> {
             crossAxisSpacing: 12,
             mainAxisSpacing: 12,
           ),
-          itemCount: shows.length,
-          itemBuilder: (context, index) => _ShowPosterCard(
-            show: shows[index],
-            onTap: () => _openShow(shows[index]),
+          itemCount: vodTitles.length,
+          itemBuilder: (context, index) => _VodPosterCard(
+            vodTitle: vodTitles[index],
+            onTap: () => _openVodTitle(vodTitles[index]),
           ),
         );
       },
     );
   }
 
-  void _openShow(Show show) {
-    context.push('/shows/${show.traktId}', extra: show);
+  void _openVodTitle(VodTitle vodTitle) {
+    context.push('/shows/${vodTitle.traktId}', extra: vodTitle);
   }
 
   void _handleKeyEvent(KeyEvent event) {
@@ -346,7 +346,7 @@ class _ShowsScreenState extends ConsumerState<ShowsScreen> {
           setState(() {
             _isSearching = false;
             _searchController.clear();
-            ref.read(showSearchQueryProvider.notifier).state = '';
+            ref.read(vodSearchQueryProvider.notifier).state = '';
           });
         } else {
           Future.microtask(() {
@@ -363,16 +363,16 @@ class _ShowsScreenState extends ConsumerState<ShowsScreen> {
   }
 }
 
-class _ShowPosterCard extends ConsumerWidget {
-  final Show show;
+class _VodPosterCard extends ConsumerWidget {
+  final VodTitle vodTitle;
   final VoidCallback onTap;
 
-  const _ShowPosterCard({required this.show, required this.onTap});
+  const _VodPosterCard({required this.vodTitle, required this.onTap});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final isFav = ref.watch(favoritesProvider.select(
-      (favs) => favs.any((s) => s.traktId == show.traktId),
+      (favs) => favs.any((s) => s.traktId == vodTitle.traktId),
     ));
 
     return Focus(
@@ -406,9 +406,9 @@ class _ShowPosterCard extends ConsumerWidget {
                       children: [
                         ClipRRect(
                           borderRadius: BorderRadius.circular(8),
-                          child: show.posterUrl != null && show.posterUrl!.isNotEmpty
+                          child: vodTitle.posterUrl != null && vodTitle.posterUrl!.isNotEmpty
                               ? CachedNetworkImage(
-                                  imageUrl: show.posterUrl!,
+                                  imageUrl: vodTitle.posterUrl!,
                                   fit: BoxFit.cover,
                                   width: double.infinity,
                                   height: double.infinity,
@@ -427,7 +427,7 @@ class _ShowPosterCard extends ConsumerWidget {
                           top: 4,
                           right: 4,
                           child: GestureDetector(
-                            onTap: () => ref.read(favoritesProvider.notifier).toggle(show),
+                            onTap: () => ref.read(favoritesProvider.notifier).toggle(vodTitle),
                             child: Container(
                               padding: const EdgeInsets.all(4),
                               decoration: BoxDecoration(
@@ -447,7 +447,7 @@ class _ShowPosterCard extends ConsumerWidget {
                   ),
                   const SizedBox(height: 6),
                   Text(
-                    show.title,
+                    vodTitle.title,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
@@ -456,9 +456,9 @@ class _ShowPosterCard extends ConsumerWidget {
                       fontWeight: FontWeight.w500,
                     ),
                   ),
-                  if (show.year != null)
+                  if (vodTitle.year != null)
                     Text(
-                      '${show.year}${show.rating != null ? ' • ★ ${show.rating!.toStringAsFixed(1)}' : ''}',
+                      '${vodTitle.year}${vodTitle.rating != null ? ' • ★ ${vodTitle.rating!.toStringAsFixed(1)}' : ''}',
                       style: const TextStyle(color: Colors.white38, fontSize: 11),
                     ),
                 ],
@@ -480,7 +480,7 @@ class _ShowPosterCard extends ConsumerWidget {
             const Icon(Icons.movie, color: Colors.white24, size: 40),
             const SizedBox(height: 4),
             Text(
-              show.title,
+              vodTitle.title,
               textAlign: TextAlign.center,
               maxLines: 2,
               overflow: TextOverflow.ellipsis,

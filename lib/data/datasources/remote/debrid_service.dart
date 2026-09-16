@@ -1,4 +1,4 @@
-import '../../models/show.dart';
+import '../../models/vod_title.dart';
 import 'debrid_client.dart';
 
 /// Supported debrid service types

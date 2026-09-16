@@ -25,6 +25,8 @@ const _uuid = Uuid();
   ScheduledRecordings,
   FailoverGroups,
   FailoverGroupChannels,
+  XtreamVod,
+  XtreamSeries,
 ])
 class AppDatabase extends _$AppDatabase {
   AppDatabase() : super(_openConnection());
@@ -32,7 +34,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.e);
 
   @override
-  int get schemaVersion => 5;
+  int get schemaVersion => 6;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -53,6 +55,10 @@ class AppDatabase extends _$AppDatabase {
           if (from < 5) {
             await m.createTable(failoverGroups);
             await m.createTable(failoverGroupChannels);
+          }
+          if (from < 6) {
+            await m.createTable(xtreamVod);
+            await m.createTable(xtreamSeries);
           }
         },
       );
@@ -376,6 +382,62 @@ class AppDatabase extends _$AppDatabase {
   Future<void> updateRecordingStatus(String id, String status) =>
       (update(scheduledRecordings)..where((t) => t.id.equals(id)))
           .write(ScheduledRecordingsCompanion(status: Value(status)));
+
+  // --- Xtream VOD / Series queries ---
+  // VOD + series catalogs are bulk-fetched at provider refresh and stored
+  // locally; playback lookups hit these tables with no live API calls.
+
+  Future<void> upsertXtreamVod(List<XtreamVodCompanion> entries) async {
+    await batch((b) {
+      b.insertAllOnConflictUpdate(xtreamVod, entries);
+    });
+  }
+
+  Future<void> upsertXtreamSeries(List<XtreamSeriesCompanion> entries) async {
+    await batch((b) {
+      b.insertAllOnConflictUpdate(xtreamSeries, entries);
+    });
+  }
+
+  Future<List<XtreamVodData>> getXtreamVodForProvider(String providerId) =>
+      (select(xtreamVod)..where((t) => t.providerId.equals(providerId))).get();
+
+  Future<List<XtreamSeriesData>> getXtreamSeriesForProvider(
+          String providerId) =>
+      (select(xtreamSeries)..where((t) => t.providerId.equals(providerId)))
+          .get();
+
+  Future<List<XtreamVodData>> getAllXtreamVod() => select(xtreamVod).get();
+
+  Future<List<XtreamSeriesData>> getAllXtreamSeries() =>
+      select(xtreamSeries).get();
+
+  /// Case-insensitive title search for VOD movies.
+  Future<List<XtreamVodData>> searchXtreamVod(String title) {
+    final pattern = '%${title.toLowerCase()}%';
+    return (select(xtreamVod)
+          ..where((t) => t.name.lower().like(pattern)))
+        .get();
+  }
+
+  /// Case-insensitive title search for series.
+  Future<List<XtreamSeriesData>> searchXtreamSeries(String title) {
+    final pattern = '%${title.toLowerCase()}%';
+    return (select(xtreamSeries)
+          ..where((t) => t.name.lower().like(pattern)))
+        .get();
+  }
+
+  Future<void> deleteXtreamVodForProvider(String providerId) =>
+      (delete(xtreamVod)..where((t) => t.providerId.equals(providerId))).go();
+
+  Future<void> deleteXtreamSeriesForProvider(String providerId) =>
+      (delete(xtreamSeries)..where((t) => t.providerId.equals(providerId)))
+          .go();
+
+  Future<void> updateProviderRefreshTime(String id) =>
+      (update(providers)..where((t) => t.id.equals(id)))
+          .write(ProvidersCompanion(lastRefresh: Value(DateTime.now())));
 
   // --- Failover Group queries ---
 

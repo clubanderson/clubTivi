@@ -1,5 +1,5 @@
 import 'package:dio/dio.dart';
-import '../../models/show.dart';
+import '../../models/vod_title.dart';
 import 'debrid_service.dart';
 
 /// Client for Real-Debrid API v1.0

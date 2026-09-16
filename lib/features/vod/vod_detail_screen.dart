@@ -6,25 +6,26 @@ import 'package:go_router/go_router.dart';
 import 'package:palette_generator/palette_generator.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
-import '../../data/models/show.dart';
-import 'shows_providers.dart';
+import '../../data/models/vod_title.dart';
+import 'vod_providers.dart';
 
-/// Detail screen for a show or movie — backdrop, info, seasons, episodes, play
-class ShowDetailScreen extends ConsumerStatefulWidget {
+/// Detail screen for VOD content — a show or movie with backdrop, info,
+/// seasons, episodes, and play
+class VodDetailScreen extends ConsumerStatefulWidget {
   final int traktId;
-  final Show? initialShow; // Passed via extra for instant display
+  final VodTitle? initialTitle; // Passed via extra for instant display
 
-  const ShowDetailScreen({
+  const VodDetailScreen({
     super.key,
     required this.traktId,
-    this.initialShow,
+    this.initialTitle,
   });
 
   @override
-  ConsumerState<ShowDetailScreen> createState() => _ShowDetailScreenState();
+  ConsumerState<VodDetailScreen> createState() => _VodDetailScreenState();
 }
 
-class _ShowDetailScreenState extends ConsumerState<ShowDetailScreen> {
+class _VodDetailScreenState extends ConsumerState<VodDetailScreen> {
   int? _selectedSeason; // null until initialized
   bool _resolving = false;
   int _lastSeasonCount = 0; // track when seasons change
@@ -35,7 +36,7 @@ class _ShowDetailScreenState extends ConsumerState<ShowDetailScreen> {
   static const _seasonPrefPrefix = 'show_last_season_';
 
   /// Initialize season: use persisted preference, or default to latest season
-  void _initSeason(ShowDetail detail) {
+  void _initSeason(VodTitleDetail detail) {
     // Skip if no seasons yet, or re-init if season count changed
     if (detail.seasons.isEmpty) return;
     if (_selectedSeason != null && detail.seasons.length == _lastSeasonCount) return;
@@ -43,7 +44,7 @@ class _ShowDetailScreenState extends ConsumerState<ShowDetailScreen> {
     _loadLastSeason(detail);
   }
 
-  Future<void> _loadLastSeason(ShowDetail detail) async {
+  Future<void> _loadLastSeason(VodTitleDetail detail) async {
     final prefs = await SharedPreferences.getInstance();
     final saved = prefs.getInt('$_seasonPrefPrefix${widget.traktId}');
     final latestSeason = detail.seasons.isNotEmpty
@@ -55,7 +56,7 @@ class _ShowDetailScreenState extends ConsumerState<ShowDetailScreen> {
     _scrollToSelectedSeason(detail);
   }
 
-  void _scrollToSelectedSeason(ShowDetail detail) {
+  void _scrollToSelectedSeason(VodTitleDetail detail) {
     if (_selectedSeason == null || detail.seasons.isEmpty) return;
     final index = detail.seasons.indexWhere((s) => s.number == _selectedSeason);
     if (index < 0) return;
@@ -107,9 +108,9 @@ class _ShowDetailScreenState extends ConsumerState<ShowDetailScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final type = widget.initialShow?.type ?? ShowType.show;
+    final type = widget.initialTitle?.type ?? VodTitleType.series;
     final detailAsync = ref.watch(
-      showDetailProvider(ShowDetailParams(widget.traktId, type: type)),
+      vodDetailProvider(VodDetailParams(widget.traktId, type: type)),
     );
 
     return CallbackShortcuts(
@@ -131,15 +132,15 @@ class _ShowDetailScreenState extends ConsumerState<ShowDetailScreen> {
           ? Color.lerp(const Color(0xFF0A0A1A), _dominantColor!, 0.15)!
           : const Color(0xFF0A0A1A),
       body: detailAsync.when(
-        loading: () => _buildWithShow(widget.initialShow, loading: true),
+        loading: () => _buildWithVodTitle(widget.initialTitle, loading: true),
         error: (err, _) => _buildError(err),
         data: (detail) {
           if (detail == null) {
-            // Fallback to initialShow if provider returned null
-            if (widget.initialShow != null) {
-              return _buildDetail(ShowDetail(show: widget.initialShow!));
+            // Fallback to initialTitle if provider returned null
+            if (widget.initialTitle != null) {
+              return _buildDetail(VodTitleDetail(vodTitle: widget.initialTitle!));
             }
-            return _buildError('Show not found');
+            return _buildError('VodTitle not found');
           }
           return _buildDetail(detail);
         },
@@ -149,13 +150,13 @@ class _ShowDetailScreenState extends ConsumerState<ShowDetailScreen> {
     );
   }
 
-  Widget _buildWithShow(Show? show, {bool loading = false}) {
-    if (show == null) {
+  Widget _buildWithVodTitle(VodTitle? vodTitle, {bool loading = false}) {
+    if (vodTitle == null) {
       return const Center(
         child: CircularProgressIndicator(color: Color(0xFF6C5CE7)),
       );
     }
-    return _buildDetail(ShowDetail(show: show), loading: loading);
+    return _buildDetail(VodTitleDetail(vodTitle: vodTitle), loading: loading);
   }
 
   Widget _buildError(Object error) {
@@ -176,15 +177,15 @@ class _ShowDetailScreenState extends ConsumerState<ShowDetailScreen> {
     );
   }
 
-  Widget _buildDetail(ShowDetail detail, {bool loading = false}) {
+  Widget _buildDetail(VodTitleDetail detail, {bool loading = false}) {
     // Initialize season selection (latest or last-viewed)
     _initSeason(detail);
     final effectiveSeason = _selectedSeason ?? (detail.seasons.isNotEmpty
         ? detail.seasons.map((s) => s.number).reduce((a, b) => a > b ? a : b)
         : 1);
-    final show = detail.show;
+    final vodTitle = detail.vodTitle;
     // Extract dominant color from backdrop for page tint
-    _extractDominantColor(show.backdropUrl);
+    _extractDominantColor(vodTitle.backdropUrl);
     final bgColor = _dominantColor != null
         ? Color.lerp(const Color(0xFF0A0A1A), _dominantColor!, 0.15)!
         : const Color(0xFF0A0A1A);
@@ -203,9 +204,9 @@ class _ShowDetailScreenState extends ConsumerState<ShowDetailScreen> {
             background: Stack(
               fit: StackFit.expand,
               children: [
-                if (show.backdropUrl != null && show.backdropUrl!.isNotEmpty)
+                if (vodTitle.backdropUrl != null && vodTitle.backdropUrl!.isNotEmpty)
                   CachedNetworkImage(
-                    imageUrl: show.backdropUrl!,
+                    imageUrl: vodTitle.backdropUrl!,
                     fit: BoxFit.cover,
                     errorWidget: (_, __, ___) => Container(color: const Color(0xFF1A1A2E)),
                   )
@@ -227,7 +228,7 @@ class _ShowDetailScreenState extends ConsumerState<ShowDetailScreen> {
           ),
         ),
 
-        // Show info
+        // VodTitle info
         SliverToBoxAdapter(
           child: Padding(
             padding: const EdgeInsets.fromLTRB(24, 0, 24, 16),
@@ -236,7 +237,7 @@ class _ShowDetailScreenState extends ConsumerState<ShowDetailScreen> {
               children: [
                 // Title + year
                 Text(
-                  show.title,
+                  vodTitle.title,
                   style: const TextStyle(
                     color: Colors.white,
                     fontSize: 28,
@@ -248,24 +249,24 @@ class _ShowDetailScreenState extends ConsumerState<ShowDetailScreen> {
                 Wrap(
                   spacing: 12,
                   children: [
-                    if (show.year != null)
-                      _chip('${show.year}'),
-                    if (show.rating != null)
-                      _chip('★ ${show.rating!.toStringAsFixed(1)}'),
-                    if (show.runtime != null)
-                      _chip('${show.runtime} min'),
-                    if (show.status != null)
-                      _chip(show.status!),
-                    if (show.network != null)
-                      _chip(show.network!),
+                    if (vodTitle.year != null)
+                      _chip('${vodTitle.year}'),
+                    if (vodTitle.rating != null)
+                      _chip('★ ${vodTitle.rating!.toStringAsFixed(1)}'),
+                    if (vodTitle.runtime != null)
+                      _chip('${vodTitle.runtime} min'),
+                    if (vodTitle.status != null)
+                      _chip(vodTitle.status!),
+                    if (vodTitle.network != null)
+                      _chip(vodTitle.network!),
                   ],
                 ),
                 const SizedBox(height: 8),
                 // Genres
-                if (show.genres.isNotEmpty)
+                if (vodTitle.genres.isNotEmpty)
                   Wrap(
                     spacing: 8,
-                    children: show.genres
+                    children: vodTitle.genres
                         .take(5)
                         .map((g) => Chip(
                               label: Text(g, style: const TextStyle(fontSize: 11)),
@@ -279,15 +280,15 @@ class _ShowDetailScreenState extends ConsumerState<ShowDetailScreen> {
                   ),
                 const SizedBox(height: 16),
                 // Overview
-                if (show.overview != null)
+                if (vodTitle.overview != null)
                   Text(
-                    show.overview!,
+                    vodTitle.overview!,
                     style: const TextStyle(color: Colors.white70, fontSize: 15, height: 1.5),
                   ),
                 const SizedBox(height: 20),
 
                 // Play button (for movies) or Season selector (for shows)
-                if (show.type == ShowType.movie) _buildPlayMovieButton(show),
+                if (vodTitle.type == VodTitleType.movie) _buildPlayMovieButton(vodTitle),
 
                 if (loading)
                   const Padding(
@@ -302,7 +303,7 @@ class _ShowDetailScreenState extends ConsumerState<ShowDetailScreen> {
         ),
 
         // Seasons tabs (for TV shows)
-        if (show.type == ShowType.show && detail.seasons.isNotEmpty) ...[
+        if (vodTitle.type == VodTitleType.series && detail.seasons.isNotEmpty) ...[
           SliverToBoxAdapter(
             child: SizedBox(
               height: 48,
@@ -333,17 +334,17 @@ class _ShowDetailScreenState extends ConsumerState<ShowDetailScreen> {
             ),
           ),
           // Episodes list
-          _buildEpisodesList(show, effectiveSeason),
+          _buildEpisodesList(vodTitle, effectiveSeason),
         ],
       ],
     );
   }
 
-  Widget _buildPlayMovieButton(Show show) {
+  Widget _buildPlayMovieButton(VodTitle vodTitle) {
     return SizedBox(
       width: double.infinity,
       child: ElevatedButton.icon(
-        onPressed: _resolving ? null : () => _playContent(show),
+        onPressed: _resolving ? null : () => _playContent(vodTitle),
         icon: _resolving
             ? const SizedBox(
                 width: 20,
@@ -362,7 +363,7 @@ class _ShowDetailScreenState extends ConsumerState<ShowDetailScreen> {
     );
   }
 
-  Widget _buildEpisodesList(Show show, int seasonNumber) {
+  Widget _buildEpisodesList(VodTitle vodTitle, int seasonNumber) {
     final episodesAsync = ref.watch(
       episodesProvider(EpisodeParams(widget.traktId, seasonNumber)),
     );
@@ -384,8 +385,8 @@ class _ShowDetailScreenState extends ConsumerState<ShowDetailScreen> {
         delegate: SliverChildBuilderDelegate(
           (context, index) => _EpisodeTile(
             episode: episodes[index],
-            show: show,
-            onPlay: () => _playEpisode(show, episodes[index]),
+            vodTitle: vodTitle,
+            onPlay: () => _playEpisode(vodTitle, episodes[index]),
           ),
           childCount: episodes.length,
         ),
@@ -393,22 +394,31 @@ class _ShowDetailScreenState extends ConsumerState<ShowDetailScreen> {
     );
   }
 
-  Future<void> _playContent(Show show) async {
-    if (show.imdbId == null) {
+  Future<void> _playContent(VodTitle vodTitle) async {
+    if (vodTitle.imdbId == null) {
       _showSnackbar('No IMDB ID available for this title');
       return;
     }
     setState(() => _resolving = true);
     try {
       final streams = await ref.read(
-        resolveStreamProvider(StreamResolveParams(show.imdbId!)).future,
+        resolveStreamProvider(
+          StreamResolveParams(
+            vodTitle.imdbId!,
+            title: vodTitle.title,
+            year: vodTitle.year,
+            tmdbId: vodTitle.tmdbId,
+            mediaType: vodTitle.type,
+            preferredLanguage: _deviceLanguage(context),
+          ),
+        ).future,
       );
       if (streams.isEmpty) {
         _showSnackbar('No streams found on Torrentio');
         return;
       }
       if (!mounted) return;
-      _showStreamPicker(streams, show.title);
+      _showStreamPicker(streams, vodTitle.title);
     } catch (e) {
       _showSnackbar('Stream error: $e');
     } finally {
@@ -416,32 +426,44 @@ class _ShowDetailScreenState extends ConsumerState<ShowDetailScreen> {
     }
   }
 
-  Future<void> _playEpisode(Show show, Episode episode) async {
-    if (show.imdbId == null) {
+  Future<void> _playEpisode(VodTitle vodTitle, Episode episode) async {
+    if (vodTitle.imdbId == null) {
       _showSnackbar('No IMDB ID available');
       return;
     }
     setState(() => _resolving = true);
     try {
       final streams = await ref.read(
-        resolveStreamProvider(StreamResolveParams(
-          show.imdbId!,
-          season: episode.season,
-          episode: episode.number,
-        )).future,
+        resolveStreamProvider(
+          StreamResolveParams(
+            vodTitle.imdbId!,
+            title: vodTitle.title,
+            year: vodTitle.year,
+            tmdbId: vodTitle.tmdbId,
+            mediaType: vodTitle.type,
+            season: episode.season,
+            episode: episode.number,
+            preferredLanguage: _deviceLanguage(context),
+          ),
+        ).future,
       );
       if (streams.isEmpty) {
         _showSnackbar('No streams found for ${episode.code}');
         return;
       }
       if (!mounted) return;
-      _showStreamPicker(streams, '${show.title} ${episode.code}');
+      _showStreamPicker(streams, '${vodTitle.title} ${episode.code}');
     } catch (e) {
       _showSnackbar('Stream error: $e');
     } finally {
       if (mounted) setState(() => _resolving = false);
     }
   }
+
+  /// Device UI language code ("en") used to prefer same-language sources.
+  /// Null when unavailable — ranking simply skips the locale tie-break.
+  String? _deviceLanguage(BuildContext context) =>
+      Localizations.maybeLocaleOf(context)?.languageCode;
 
   void _showStreamPicker(List<ResolvedStream> streams, String title) {
     showModalBottomSheet(
@@ -502,7 +524,9 @@ class _ShowDetailScreenState extends ConsumerState<ShowDetailScreen> {
                   itemBuilder: (ctx, index) {
                     final stream = streams[index];
                     return ListTile(
-                      leading: _streamQualityBadge(stream.quality),
+                      leading: stream.isXtream
+                          ? _xtreamSourceBadge(stream.language)
+                          : _streamQualityBadge(stream.quality),
                       title: Text(
                         stream.filename,
                         style: const TextStyle(color: Colors.white, fontSize: 13),
@@ -512,6 +536,8 @@ class _ShowDetailScreenState extends ConsumerState<ShowDetailScreen> {
                       subtitle: Text(
                         [
                           stream.source,
+                          if (stream.language != null) stream.language!,
+                          if (stream.isDirectPlay) 'direct',
                           if (stream.seeds != null) '👤 ${stream.seeds}',
                         ].join(' • '),
                         style: const TextStyle(color: Colors.white38, fontSize: 12),
@@ -524,18 +550,24 @@ class _ShowDetailScreenState extends ConsumerState<ShowDetailScreen> {
                             tooltip: 'Download via browser',
                             onPressed: () {
                               Navigator.pop(ctx);
-                              _resolveAndDownload(stream, title);
+                              if (stream.isDirectPlay) {
+                                _downloadDirect(stream);
+                              } else {
+                                _resolveAndDownload(stream, title);
+                              }
                             },
                           ),
                           IconButton(
                             icon: Icon(
                               Icons.play_circle_fill,
-                              color: stream.isCached
-                                  ? const Color(0xFF6C5CE7)
-                                  : const Color(0xFF6C5CE7).withValues(alpha: 0.6),
+                              color: stream.isXtream
+                                  ? Colors.tealAccent
+                                  : stream.isCached
+                                      ? const Color(0xFF6C5CE7)
+                                      : const Color(0xFF6C5CE7).withValues(alpha: 0.6),
                               size: 32,
                             ),
-                            tooltip: 'Play',
+                            tooltip: stream.isDirectPlay ? 'Play directly' : 'Play',
                             onPressed: () {
                               Navigator.pop(ctx);
                               _resolveAndPlay(stream, title);
@@ -559,14 +591,20 @@ class _ShowDetailScreenState extends ConsumerState<ShowDetailScreen> {
   }
 
   Future<void> _resolveAndPlay(ResolvedStream stream, String title) async {
+    // Direct-play Xtream sources already carry a playable URL — skip
+    // magnet/debrid resolution entirely.
+    if (stream.isDirectPlay) {
+      _launchPlayer(stream, title);
+      return;
+    }
     if (stream.magnetUrl == null) {
-      _showSnackbar('No magnet URL available');
+      _showSnackbar('No playable source available');
       return;
     }
     _showSnackbar(stream.isCached ? 'Preparing stream…' : 'Preparing stream — this may take a moment…');
     setState(() => _resolving = true);
     try {
-      final repo = await ref.read(showsRepositoryProvider.future);
+      final repo = await ref.read(vodRepositoryProvider.future);
       final resolved = await repo.resolveMagnet(
         stream.magnetUrl!,
         onProgress: (status, progress) {
@@ -597,7 +635,7 @@ class _ShowDetailScreenState extends ConsumerState<ShowDetailScreen> {
     _showSnackbar(stream.isCached ? 'Preparing download…' : 'Preparing download — this may take a moment…');
     setState(() => _resolving = true);
     try {
-      final repo = await ref.read(showsRepositoryProvider.future);
+      final repo = await ref.read(vodRepositoryProvider.future);
       final resolved = await repo.resolveMagnet(
         stream.magnetUrl!,
         onProgress: (status, progress) {
@@ -625,6 +663,49 @@ class _ShowDetailScreenState extends ConsumerState<ShowDetailScreen> {
     }
   }
 
+  /// Open a direct-play Xtream URL in the browser for download.
+  Future<void> _downloadDirect(ResolvedStream stream) async {
+    if (stream.url.isEmpty) {
+      _showSnackbar('No download URL available');
+      return;
+    }
+    final uri = Uri.parse(stream.url);
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+      if (mounted) _showSnackbar('Download started in browser');
+    } else {
+      _showSnackbar('Could not open download URL');
+    }
+  }
+
+  /// Language badge for Xtream rows ("EN", "AF-EN"); falls back to a
+  /// TV icon when the provider name carries no language prefix.
+  Widget _xtreamSourceBadge(String? language) {
+    const color = Colors.tealAccent;
+    return Container(
+      width: 52,
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.15),
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: color.withValues(alpha: 0.4)),
+      ),
+      child: language != null && language.isNotEmpty
+          ? Text(
+              language,
+              textAlign: TextAlign.center,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                color: color,
+                fontSize: 11,
+                fontWeight: FontWeight.bold,
+              ),
+            )
+          : const Icon(Icons.tv_rounded, color: color, size: 20),
+    );
+  }
+
   Widget _streamQualityBadge(String? quality) {
     final color = switch (quality) {
       '4K' => Colors.amber,
@@ -649,7 +730,7 @@ class _ShowDetailScreenState extends ConsumerState<ShowDetailScreen> {
   }
 
   void _launchPlayer(ResolvedStream stream, String title) {
-    debugPrint('[Shows] Launching player: url=${stream.url}, title=$title');
+    debugPrint('[VOD] Launching player: url=${stream.url}, title=$title');
     if (stream.url.isEmpty) {
       _showSnackbar('Stream URL is empty — try another source');
       return;
@@ -657,7 +738,7 @@ class _ShowDetailScreenState extends ConsumerState<ShowDetailScreen> {
     context.push('/player', extra: {
       'streamUrl': stream.url,
       'channelName': title,
-      'channelLogo': widget.initialShow?.posterUrl ?? '',
+      'channelLogo': widget.initialTitle?.posterUrl ?? '',
     });
   }
 
@@ -702,12 +783,12 @@ class _ShowDetailScreenState extends ConsumerState<ShowDetailScreen> {
 
 class _EpisodeTile extends StatelessWidget {
   final Episode episode;
-  final Show show;
+  final VodTitle vodTitle;
   final VoidCallback onPlay;
 
   const _EpisodeTile({
     required this.episode,
-    required this.show,
+    required this.vodTitle,
     required this.onPlay,
   });
 

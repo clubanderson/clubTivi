@@ -4,7 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../data/datasources/remote/debrid_service.dart';
-import '../shows/shows_providers.dart';
+import '../vod/vod_providers.dart';
 
 /// Sub-screen for managing debrid service API tokens.
 class DebridServicesScreen extends ConsumerStatefulWidget {
@@ -38,7 +38,7 @@ class _DebridServicesScreenState extends ConsumerState<DebridServicesScreen> {
 
   bool _loaded = false;
 
-  void _loadTokens(ShowsApiKeys keys) {
+  void _loadTokens(VodApiKeys keys) {
     if (_loaded) return;
     _loaded = true;
     for (final type in DebridType.values) {
@@ -48,7 +48,7 @@ class _DebridServicesScreenState extends ConsumerState<DebridServicesScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final keys = ref.watch(showsApiKeysProvider);
+    final keys = ref.watch(vodApiKeysProvider);
     _loadTokens(keys);
 
     return CallbackShortcuts(
@@ -106,8 +106,8 @@ class _DebridServicesScreenState extends ConsumerState<DebridServicesScreen> {
 
   Future<void> _saveToken(DebridType type) async {
     final token = _controllers[type]!.text.trim();
-    await ref.read(showsApiKeysProvider.notifier).saveDebridToken(type, token);
-    ref.invalidate(showsRepositoryProvider);
+    await ref.read(vodApiKeysProvider.notifier).saveDebridToken(type, token);
+    ref.invalidate(vodRepositoryProvider);
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('${type.displayName} token saved')),
@@ -136,8 +136,8 @@ class _DebridServicesScreenState extends ConsumerState<DebridServicesScreen> {
 
   Future<void> _clearToken(DebridType type) async {
     _controllers[type]!.clear();
-    await ref.read(showsApiKeysProvider.notifier).saveDebridToken(type, '');
-    ref.invalidate(showsRepositoryProvider);
+    await ref.read(vodApiKeysProvider.notifier).saveDebridToken(type, '');
+    ref.invalidate(vodRepositoryProvider);
     if (mounted) {
       setState(() => _verified[type] = null);
       ScaffoldMessenger.of(context).showSnackBar(

@@ -48,17 +48,17 @@ class TmdbClient {
   static String stillUrl(String? path) => imageUrl(path, size: 'w300');
 
   /// Get TV show details including images and external IDs
-  Future<TmdbShowDetail> getTvShow(int tmdbId) async {
+  Future<TmdbTitleDetail> getTvShow(int tmdbId) async {
     final response = await _dio.get('/tv/$tmdbId',
         queryParameters: {'append_to_response': 'external_ids'});
-    return TmdbShowDetail.fromJson(response.data as Map<String, dynamic>);
+    return TmdbTitleDetail.fromJson(response.data as Map<String, dynamic>);
   }
 
   /// Get movie details including images and external IDs
-  Future<TmdbShowDetail> getMovie(int tmdbId) async {
+  Future<TmdbTitleDetail> getMovie(int tmdbId) async {
     final response = await _dio.get('/movie/$tmdbId',
         queryParameters: {'append_to_response': 'external_ids'});
-    return TmdbShowDetail.fromJson(response.data as Map<String, dynamic>);
+    return TmdbTitleDetail.fromJson(response.data as Map<String, dynamic>);
   }
 
   /// Get TV season details with episode list
@@ -140,7 +140,7 @@ class TmdbClient {
   }
 
   /// Find by external ID (e.g., IMDB ID)
-  Future<TmdbShowDetail?> findByImdbId(String imdbId, {bool isMovie = false}) async {
+  Future<TmdbTitleDetail?> findByImdbId(String imdbId, {bool isMovie = false}) async {
     final response = await _dio.get(
       '/find/$imdbId',
       queryParameters: {'external_source': 'imdb_id'},
@@ -148,12 +148,12 @@ class TmdbClient {
     final key = isMovie ? 'movie_results' : 'tv_results';
     final results = response.data[key] as List;
     if (results.isEmpty) return null;
-    return TmdbShowDetail.fromJson(results.first as Map<String, dynamic>);
+    return TmdbTitleDetail.fromJson(results.first as Map<String, dynamic>);
   }
 }
 
 /// TMDB show/movie detail with image paths
-class TmdbShowDetail {
+class TmdbTitleDetail {
   final int id;
   final String title;
   final String? imdbId;
@@ -167,7 +167,7 @@ class TmdbShowDetail {
   final int? numberOfEpisodes;
   final int? year;
 
-  const TmdbShowDetail({
+  const TmdbTitleDetail({
     required this.id,
     this.title = '',
     this.imdbId,
@@ -185,12 +185,12 @@ class TmdbShowDetail {
   String get posterUrl => TmdbClient.posterUrl(posterPath);
   String get backdropUrl => TmdbClient.backdropUrl(backdropPath);
 
-  factory TmdbShowDetail.fromJson(Map<String, dynamic> json) {
+  factory TmdbTitleDetail.fromJson(Map<String, dynamic> json) {
     final releaseDate = json['release_date'] as String? ?? json['first_air_date'] as String? ?? '';
     // IMDB ID: movies have it at top level, TV shows have it in external_ids
     final externalIds = json['external_ids'] as Map<String, dynamic>?;
     final imdbId = json['imdb_id'] as String? ?? externalIds?['imdb_id'] as String?;
-    return TmdbShowDetail(
+    return TmdbTitleDetail(
       id: json['id'] as int,
       title: json['title'] as String? ?? json['name'] as String? ?? '',
       imdbId: imdbId,

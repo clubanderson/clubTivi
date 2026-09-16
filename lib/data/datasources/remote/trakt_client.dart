@@ -1,5 +1,5 @@
 import 'package:dio/dio.dart';
-import '../../models/show.dart';
+import '../../models/vod_title.dart';
 
 /// Client for the Trakt.tv API v2
 /// Docs: https://trakt.docs.apiary.io/
@@ -24,8 +24,8 @@ class TraktClient {
       };
   }
 
-  /// Get trending TV shows
-  Future<List<Show>> getTrendingShows({int page = 1, int limit = 20}) async {
+  /// Get trending TV series
+  Future<List<VodTitle>> getTrendingSeries({int page = 1, int limit = 20}) async {
     final response = await _dio.get(
       '/shows/trending',
       queryParameters: {
@@ -35,13 +35,13 @@ class TraktClient {
       },
     );
     return (response.data as List).map((e) {
-      final show = e['show'] as Map<String, dynamic>;
-      return _showFromTrakt(show);
+      final showJson = e['show'] as Map<String, dynamic>;
+      return _vodTitleFromTrakt(showJson);
     }).toList();
   }
 
-  /// Get popular TV shows
-  Future<List<Show>> getPopularShows({int page = 1, int limit = 20}) async {
+  /// Get popular TV series
+  Future<List<VodTitle>> getPopularSeries({int page = 1, int limit = 20}) async {
     final response = await _dio.get(
       '/shows/popular',
       queryParameters: {
@@ -51,12 +51,12 @@ class TraktClient {
       },
     );
     return (response.data as List).map((e) {
-      return _showFromTrakt(e as Map<String, dynamic>);
+      return _vodTitleFromTrakt(e as Map<String, dynamic>);
     }).toList();
   }
 
   /// Get trending movies
-  Future<List<Show>> getTrendingMovies({int page = 1, int limit = 20}) async {
+  Future<List<VodTitle>> getTrendingMovies({int page = 1, int limit = 20}) async {
     final response = await _dio.get(
       '/movies/trending',
       queryParameters: {
@@ -67,12 +67,12 @@ class TraktClient {
     );
     return (response.data as List).map((e) {
       final movie = e['movie'] as Map<String, dynamic>;
-      return _showFromTrakt(movie, type: ShowType.movie);
+      return _vodTitleFromTrakt(movie, type: VodTitleType.movie);
     }).toList();
   }
 
   /// Get popular movies
-  Future<List<Show>> getPopularMovies({int page = 1, int limit = 20}) async {
+  Future<List<VodTitle>> getPopularMovies({int page = 1, int limit = 20}) async {
     final response = await _dio.get(
       '/movies/popular',
       queryParameters: {
@@ -82,12 +82,12 @@ class TraktClient {
       },
     );
     return (response.data as List).map((e) {
-      return _showFromTrakt(e as Map<String, dynamic>, type: ShowType.movie);
+      return _vodTitleFromTrakt(e as Map<String, dynamic>, type: VodTitleType.movie);
     }).toList();
   }
 
   /// Search for shows and movies
-  Future<List<Show>> search(String query, {String type = 'show,movie'}) async {
+  Future<List<VodTitle>> search(String query, {String type = 'show,movie'}) async {
     final response = await _dio.get(
       '/search/$type',
       queryParameters: {
@@ -99,14 +99,14 @@ class TraktClient {
     return (response.data as List).map((e) {
       final itemType = e['type'] as String;
       final item = e[itemType] as Map<String, dynamic>;
-      return _showFromTrakt(
+      return _vodTitleFromTrakt(
         item,
-        type: itemType == 'movie' ? ShowType.movie : ShowType.show,
+        type: itemType == 'movie' ? VodTitleType.movie : VodTitleType.series,
       );
     }).toList();
   }
 
-  /// Get seasons for a show
+  /// Get seasons for a series
   Future<List<Season>> getSeasons(int traktId) async {
     final response = await _dio.get(
       '/shows/$traktId/seasons',
@@ -155,30 +155,30 @@ class TraktClient {
     }).toList();
   }
 
-  /// Get show details by Trakt ID
-  Future<Show> getShow(int traktId) async {
+  /// Get series details by Trakt ID
+  Future<VodTitle> getSeries(int traktId) async {
     final response = await _dio.get(
       '/shows/$traktId',
       queryParameters: {'extended': 'full'},
     );
-    return _showFromTrakt(response.data as Map<String, dynamic>);
+    return _vodTitleFromTrakt(response.data as Map<String, dynamic>);
   }
 
   /// Get movie details by Trakt ID
-  Future<Show> getMovie(int traktId) async {
+  Future<VodTitle> getMovie(int traktId) async {
     final response = await _dio.get(
       '/movies/$traktId',
       queryParameters: {'extended': 'full'},
     );
-    return _showFromTrakt(
+    return _vodTitleFromTrakt(
       response.data as Map<String, dynamic>,
-      type: ShowType.movie,
+      type: VodTitleType.movie,
     );
   }
 
-  Show _showFromTrakt(Map<String, dynamic> json, {ShowType type = ShowType.show}) {
+  VodTitle _vodTitleFromTrakt(Map<String, dynamic> json, {VodTitleType type = VodTitleType.series}) {
     final ids = json['ids'] as Map<String, dynamic>? ?? {};
-    return Show(
+    return VodTitle(
       traktId: ids['trakt'] as int? ?? 0,
       imdbId: ids['imdb'] as String?,
       tmdbId: ids['tmdb'] as int?,

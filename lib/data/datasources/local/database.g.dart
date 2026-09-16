@@ -6008,6 +6008,2080 @@ class FailoverGroupChannelsCompanion
   }
 }
 
+class $XtreamVodTable extends XtreamVod
+    with TableInfo<$XtreamVodTable, XtreamVodData> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $XtreamVodTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<String> id = GeneratedColumn<String>(
+    'id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _providerIdMeta = const VerificationMeta(
+    'providerId',
+  );
+  @override
+  late final GeneratedColumn<String> providerId = GeneratedColumn<String>(
+    'provider_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES providers (id)',
+    ),
+  );
+  static const VerificationMeta _streamIdMeta = const VerificationMeta(
+    'streamId',
+  );
+  @override
+  late final GeneratedColumn<int> streamId = GeneratedColumn<int>(
+    'stream_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _nameMeta = const VerificationMeta('name');
+  @override
+  late final GeneratedColumn<String> name = GeneratedColumn<String>(
+    'name',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _categoryIdMeta = const VerificationMeta(
+    'categoryId',
+  );
+  @override
+  late final GeneratedColumn<String> categoryId = GeneratedColumn<String>(
+    'category_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _categoryNameMeta = const VerificationMeta(
+    'categoryName',
+  );
+  @override
+  late final GeneratedColumn<String> categoryName = GeneratedColumn<String>(
+    'category_name',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _iconMeta = const VerificationMeta('icon');
+  @override
+  late final GeneratedColumn<String> icon = GeneratedColumn<String>(
+    'icon',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _containerExtensionMeta =
+      const VerificationMeta('containerExtension');
+  @override
+  late final GeneratedColumn<String> containerExtension =
+      GeneratedColumn<String>(
+        'container_extension',
+        aliasedName,
+        false,
+        type: DriftSqlType.string,
+        requiredDuringInsert: false,
+        defaultValue: const Constant('mp4'),
+      );
+  static const VerificationMeta _streamUrlMeta = const VerificationMeta(
+    'streamUrl',
+  );
+  @override
+  late final GeneratedColumn<String> streamUrl = GeneratedColumn<String>(
+    'stream_url',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _ratingMeta = const VerificationMeta('rating');
+  @override
+  late final GeneratedColumn<double> rating = GeneratedColumn<double>(
+    'rating',
+    aliasedName,
+    true,
+    type: DriftSqlType.double,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _rating5basedMeta = const VerificationMeta(
+    'rating5based',
+  );
+  @override
+  late final GeneratedColumn<double> rating5based = GeneratedColumn<double>(
+    'rating_5based',
+    aliasedName,
+    true,
+    type: DriftSqlType.double,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _tmdbMeta = const VerificationMeta('tmdb');
+  @override
+  late final GeneratedColumn<String> tmdb = GeneratedColumn<String>(
+    'tmdb',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _trailerMeta = const VerificationMeta(
+    'trailer',
+  );
+  @override
+  late final GeneratedColumn<String> trailer = GeneratedColumn<String>(
+    'trailer',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _plotMeta = const VerificationMeta('plot');
+  @override
+  late final GeneratedColumn<String> plot = GeneratedColumn<String>(
+    'plot',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _castMeta = const VerificationMeta('cast');
+  @override
+  late final GeneratedColumn<String> cast = GeneratedColumn<String>(
+    'cast',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _directorMeta = const VerificationMeta(
+    'director',
+  );
+  @override
+  late final GeneratedColumn<String> director = GeneratedColumn<String>(
+    'director',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _genreMeta = const VerificationMeta('genre');
+  @override
+  late final GeneratedColumn<String> genre = GeneratedColumn<String>(
+    'genre',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _releaseDateMeta = const VerificationMeta(
+    'releaseDate',
+  );
+  @override
+  late final GeneratedColumn<String> releaseDate = GeneratedColumn<String>(
+    'release_date',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    providerId,
+    streamId,
+    name,
+    categoryId,
+    categoryName,
+    icon,
+    containerExtension,
+    streamUrl,
+    rating,
+    rating5based,
+    tmdb,
+    trailer,
+    plot,
+    cast,
+    director,
+    genre,
+    releaseDate,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'xtream_vod';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<XtreamVodData> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    } else if (isInserting) {
+      context.missing(_idMeta);
+    }
+    if (data.containsKey('provider_id')) {
+      context.handle(
+        _providerIdMeta,
+        providerId.isAcceptableOrUnknown(
+          data['provider_id']!,
+          _providerIdMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_providerIdMeta);
+    }
+    if (data.containsKey('stream_id')) {
+      context.handle(
+        _streamIdMeta,
+        streamId.isAcceptableOrUnknown(data['stream_id']!, _streamIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_streamIdMeta);
+    }
+    if (data.containsKey('name')) {
+      context.handle(
+        _nameMeta,
+        name.isAcceptableOrUnknown(data['name']!, _nameMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_nameMeta);
+    }
+    if (data.containsKey('category_id')) {
+      context.handle(
+        _categoryIdMeta,
+        categoryId.isAcceptableOrUnknown(
+          data['category_id']!,
+          _categoryIdMeta,
+        ),
+      );
+    }
+    if (data.containsKey('category_name')) {
+      context.handle(
+        _categoryNameMeta,
+        categoryName.isAcceptableOrUnknown(
+          data['category_name']!,
+          _categoryNameMeta,
+        ),
+      );
+    }
+    if (data.containsKey('icon')) {
+      context.handle(
+        _iconMeta,
+        icon.isAcceptableOrUnknown(data['icon']!, _iconMeta),
+      );
+    }
+    if (data.containsKey('container_extension')) {
+      context.handle(
+        _containerExtensionMeta,
+        containerExtension.isAcceptableOrUnknown(
+          data['container_extension']!,
+          _containerExtensionMeta,
+        ),
+      );
+    }
+    if (data.containsKey('stream_url')) {
+      context.handle(
+        _streamUrlMeta,
+        streamUrl.isAcceptableOrUnknown(data['stream_url']!, _streamUrlMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_streamUrlMeta);
+    }
+    if (data.containsKey('rating')) {
+      context.handle(
+        _ratingMeta,
+        rating.isAcceptableOrUnknown(data['rating']!, _ratingMeta),
+      );
+    }
+    if (data.containsKey('rating_5based')) {
+      context.handle(
+        _rating5basedMeta,
+        rating5based.isAcceptableOrUnknown(
+          data['rating_5based']!,
+          _rating5basedMeta,
+        ),
+      );
+    }
+    if (data.containsKey('tmdb')) {
+      context.handle(
+        _tmdbMeta,
+        tmdb.isAcceptableOrUnknown(data['tmdb']!, _tmdbMeta),
+      );
+    }
+    if (data.containsKey('trailer')) {
+      context.handle(
+        _trailerMeta,
+        trailer.isAcceptableOrUnknown(data['trailer']!, _trailerMeta),
+      );
+    }
+    if (data.containsKey('plot')) {
+      context.handle(
+        _plotMeta,
+        plot.isAcceptableOrUnknown(data['plot']!, _plotMeta),
+      );
+    }
+    if (data.containsKey('cast')) {
+      context.handle(
+        _castMeta,
+        cast.isAcceptableOrUnknown(data['cast']!, _castMeta),
+      );
+    }
+    if (data.containsKey('director')) {
+      context.handle(
+        _directorMeta,
+        director.isAcceptableOrUnknown(data['director']!, _directorMeta),
+      );
+    }
+    if (data.containsKey('genre')) {
+      context.handle(
+        _genreMeta,
+        genre.isAcceptableOrUnknown(data['genre']!, _genreMeta),
+      );
+    }
+    if (data.containsKey('release_date')) {
+      context.handle(
+        _releaseDateMeta,
+        releaseDate.isAcceptableOrUnknown(
+          data['release_date']!,
+          _releaseDateMeta,
+        ),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  XtreamVodData map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return XtreamVodData(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}id'],
+      )!,
+      providerId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}provider_id'],
+      )!,
+      streamId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}stream_id'],
+      )!,
+      name: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}name'],
+      )!,
+      categoryId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}category_id'],
+      ),
+      categoryName: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}category_name'],
+      ),
+      icon: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}icon'],
+      ),
+      containerExtension: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}container_extension'],
+      )!,
+      streamUrl: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}stream_url'],
+      )!,
+      rating: attachedDatabase.typeMapping.read(
+        DriftSqlType.double,
+        data['${effectivePrefix}rating'],
+      ),
+      rating5based: attachedDatabase.typeMapping.read(
+        DriftSqlType.double,
+        data['${effectivePrefix}rating_5based'],
+      ),
+      tmdb: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}tmdb'],
+      ),
+      trailer: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}trailer'],
+      ),
+      plot: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}plot'],
+      ),
+      cast: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}cast'],
+      ),
+      director: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}director'],
+      ),
+      genre: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}genre'],
+      ),
+      releaseDate: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}release_date'],
+      ),
+    );
+  }
+
+  @override
+  $XtreamVodTable createAlias(String alias) {
+    return $XtreamVodTable(attachedDatabase, alias);
+  }
+}
+
+class XtreamVodData extends DataClass implements Insertable<XtreamVodData> {
+  final String id;
+  final String providerId;
+  final int streamId;
+  final String name;
+  final String? categoryId;
+  final String? categoryName;
+  final String? icon;
+  final String containerExtension;
+  final String streamUrl;
+  final double? rating;
+  final double? rating5based;
+  final String? tmdb;
+  final String? trailer;
+  final String? plot;
+  final String? cast;
+  final String? director;
+  final String? genre;
+  final String? releaseDate;
+  const XtreamVodData({
+    required this.id,
+    required this.providerId,
+    required this.streamId,
+    required this.name,
+    this.categoryId,
+    this.categoryName,
+    this.icon,
+    required this.containerExtension,
+    required this.streamUrl,
+    this.rating,
+    this.rating5based,
+    this.tmdb,
+    this.trailer,
+    this.plot,
+    this.cast,
+    this.director,
+    this.genre,
+    this.releaseDate,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<String>(id);
+    map['provider_id'] = Variable<String>(providerId);
+    map['stream_id'] = Variable<int>(streamId);
+    map['name'] = Variable<String>(name);
+    if (!nullToAbsent || categoryId != null) {
+      map['category_id'] = Variable<String>(categoryId);
+    }
+    if (!nullToAbsent || categoryName != null) {
+      map['category_name'] = Variable<String>(categoryName);
+    }
+    if (!nullToAbsent || icon != null) {
+      map['icon'] = Variable<String>(icon);
+    }
+    map['container_extension'] = Variable<String>(containerExtension);
+    map['stream_url'] = Variable<String>(streamUrl);
+    if (!nullToAbsent || rating != null) {
+      map['rating'] = Variable<double>(rating);
+    }
+    if (!nullToAbsent || rating5based != null) {
+      map['rating_5based'] = Variable<double>(rating5based);
+    }
+    if (!nullToAbsent || tmdb != null) {
+      map['tmdb'] = Variable<String>(tmdb);
+    }
+    if (!nullToAbsent || trailer != null) {
+      map['trailer'] = Variable<String>(trailer);
+    }
+    if (!nullToAbsent || plot != null) {
+      map['plot'] = Variable<String>(plot);
+    }
+    if (!nullToAbsent || cast != null) {
+      map['cast'] = Variable<String>(cast);
+    }
+    if (!nullToAbsent || director != null) {
+      map['director'] = Variable<String>(director);
+    }
+    if (!nullToAbsent || genre != null) {
+      map['genre'] = Variable<String>(genre);
+    }
+    if (!nullToAbsent || releaseDate != null) {
+      map['release_date'] = Variable<String>(releaseDate);
+    }
+    return map;
+  }
+
+  XtreamVodCompanion toCompanion(bool nullToAbsent) {
+    return XtreamVodCompanion(
+      id: Value(id),
+      providerId: Value(providerId),
+      streamId: Value(streamId),
+      name: Value(name),
+      categoryId: categoryId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(categoryId),
+      categoryName: categoryName == null && nullToAbsent
+          ? const Value.absent()
+          : Value(categoryName),
+      icon: icon == null && nullToAbsent
+          ? const Value.absent()
+          : Value(icon),
+      containerExtension: Value(containerExtension),
+      streamUrl: Value(streamUrl),
+      rating: rating == null && nullToAbsent
+          ? const Value.absent()
+          : Value(rating),
+      rating5based: rating5based == null && nullToAbsent
+          ? const Value.absent()
+          : Value(rating5based),
+      tmdb: tmdb == null && nullToAbsent
+          ? const Value.absent()
+          : Value(tmdb),
+      trailer: trailer == null && nullToAbsent
+          ? const Value.absent()
+          : Value(trailer),
+      plot: plot == null && nullToAbsent
+          ? const Value.absent()
+          : Value(plot),
+      cast: cast == null && nullToAbsent
+          ? const Value.absent()
+          : Value(cast),
+      director: director == null && nullToAbsent
+          ? const Value.absent()
+          : Value(director),
+      genre: genre == null && nullToAbsent
+          ? const Value.absent()
+          : Value(genre),
+      releaseDate: releaseDate == null && nullToAbsent
+          ? const Value.absent()
+          : Value(releaseDate),
+    );
+  }
+
+  factory XtreamVodData.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return XtreamVodData(
+      id: serializer.fromJson<String>(json['id']),
+      providerId: serializer.fromJson<String>(json['providerId']),
+      streamId: serializer.fromJson<int>(json['streamId']),
+      name: serializer.fromJson<String>(json['name']),
+      categoryId: serializer.fromJson<String?>(json['categoryId']),
+      categoryName: serializer.fromJson<String?>(json['categoryName']),
+      icon: serializer.fromJson<String?>(json['icon']),
+      containerExtension: serializer.fromJson<String>(
+        json['containerExtension'],
+      ),
+      streamUrl: serializer.fromJson<String>(json['streamUrl']),
+      rating: serializer.fromJson<double?>(json['rating']),
+      rating5based: serializer.fromJson<double?>(json['rating5based']),
+      tmdb: serializer.fromJson<String?>(json['tmdb']),
+      trailer: serializer.fromJson<String?>(json['trailer']),
+      plot: serializer.fromJson<String?>(json['plot']),
+      cast: serializer.fromJson<String?>(json['cast']),
+      director: serializer.fromJson<String?>(json['director']),
+      genre: serializer.fromJson<String?>(json['genre']),
+      releaseDate: serializer.fromJson<String?>(json['releaseDate']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<String>(id),
+      'providerId': serializer.toJson<String>(providerId),
+      'streamId': serializer.toJson<int>(streamId),
+      'name': serializer.toJson<String>(name),
+      'categoryId': serializer.toJson<String?>(categoryId),
+      'categoryName': serializer.toJson<String?>(categoryName),
+      'icon': serializer.toJson<String?>(icon),
+      'containerExtension': serializer.toJson<String>(containerExtension),
+      'streamUrl': serializer.toJson<String>(streamUrl),
+      'rating': serializer.toJson<double?>(rating),
+      'rating5based': serializer.toJson<double?>(rating5based),
+      'tmdb': serializer.toJson<String?>(tmdb),
+      'trailer': serializer.toJson<String?>(trailer),
+      'plot': serializer.toJson<String?>(plot),
+      'cast': serializer.toJson<String?>(cast),
+      'director': serializer.toJson<String?>(director),
+      'genre': serializer.toJson<String?>(genre),
+      'releaseDate': serializer.toJson<String?>(releaseDate),
+    };
+  }
+
+  XtreamVodData copyWith({
+    String? id,
+    String? providerId,
+    int? streamId,
+    String? name,
+    Value<String?> categoryId = const Value.absent(),
+    Value<String?> categoryName = const Value.absent(),
+    Value<String?> icon = const Value.absent(),
+    String? containerExtension,
+    String? streamUrl,
+    Value<double?> rating = const Value.absent(),
+    Value<double?> rating5based = const Value.absent(),
+    Value<String?> tmdb = const Value.absent(),
+    Value<String?> trailer = const Value.absent(),
+    Value<String?> plot = const Value.absent(),
+    Value<String?> cast = const Value.absent(),
+    Value<String?> director = const Value.absent(),
+    Value<String?> genre = const Value.absent(),
+    Value<String?> releaseDate = const Value.absent(),
+  }) => XtreamVodData(
+    id: id ?? this.id,
+    providerId: providerId ?? this.providerId,
+    streamId: streamId ?? this.streamId,
+    name: name ?? this.name,
+    categoryId: categoryId.present ? categoryId.value : this.categoryId,
+    categoryName: categoryName.present
+        ? categoryName.value
+        : this.categoryName,
+    icon: icon.present ? icon.value : this.icon,
+    containerExtension: containerExtension ?? this.containerExtension,
+    streamUrl: streamUrl ?? this.streamUrl,
+    rating: rating.present ? rating.value : this.rating,
+    rating5based: rating5based.present
+        ? rating5based.value
+        : this.rating5based,
+    tmdb: tmdb.present ? tmdb.value : this.tmdb,
+    trailer: trailer.present ? trailer.value : this.trailer,
+    plot: plot.present ? plot.value : this.plot,
+    cast: cast.present ? cast.value : this.cast,
+    director: director.present ? director.value : this.director,
+    genre: genre.present ? genre.value : this.genre,
+    releaseDate: releaseDate.present ? releaseDate.value : this.releaseDate,
+  );
+  XtreamVodData copyWithCompanion(XtreamVodCompanion data) {
+    return XtreamVodData(
+      id: data.id.present ? data.id.value : this.id,
+      providerId: data.providerId.present
+          ? data.providerId.value
+          : this.providerId,
+      streamId: data.streamId.present ? data.streamId.value : this.streamId,
+      name: data.name.present ? data.name.value : this.name,
+      categoryId: data.categoryId.present
+          ? data.categoryId.value
+          : this.categoryId,
+      categoryName: data.categoryName.present
+          ? data.categoryName.value
+          : this.categoryName,
+      icon: data.icon.present ? data.icon.value : this.icon,
+      containerExtension: data.containerExtension.present
+          ? data.containerExtension.value
+          : this.containerExtension,
+      streamUrl: data.streamUrl.present ? data.streamUrl.value : this.streamUrl,
+      rating: data.rating.present ? data.rating.value : this.rating,
+      rating5based: data.rating5based.present
+          ? data.rating5based.value
+          : this.rating5based,
+      tmdb: data.tmdb.present ? data.tmdb.value : this.tmdb,
+      trailer: data.trailer.present ? data.trailer.value : this.trailer,
+      plot: data.plot.present ? data.plot.value : this.plot,
+      cast: data.cast.present ? data.cast.value : this.cast,
+      director: data.director.present ? data.director.value : this.director,
+      genre: data.genre.present ? data.genre.value : this.genre,
+      releaseDate: data.releaseDate.present
+          ? data.releaseDate.value
+          : this.releaseDate,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('XtreamVodData(')
+          ..write('id: $id, ')
+          ..write('providerId: $providerId, ')
+          ..write('streamId: $streamId, ')
+          ..write('name: $name, ')
+          ..write('categoryId: $categoryId, ')
+          ..write('categoryName: $categoryName, ')
+          ..write('icon: $icon, ')
+          ..write('containerExtension: $containerExtension, ')
+          ..write('streamUrl: $streamUrl, ')
+          ..write('rating: $rating, ')
+          ..write('rating5based: $rating5based, ')
+          ..write('tmdb: $tmdb, ')
+          ..write('trailer: $trailer, ')
+          ..write('plot: $plot, ')
+          ..write('cast: $cast, ')
+          ..write('director: $director, ')
+          ..write('genre: $genre, ')
+          ..write('releaseDate: $releaseDate')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    id,
+    providerId,
+    streamId,
+    name,
+    categoryId,
+    categoryName,
+    icon,
+    containerExtension,
+    streamUrl,
+    rating,
+    rating5based,
+    tmdb,
+    trailer,
+    plot,
+    cast,
+    director,
+    genre,
+    releaseDate,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is XtreamVodData &&
+          other.id == this.id &&
+          other.providerId == this.providerId &&
+          other.streamId == this.streamId &&
+          other.name == this.name &&
+          other.categoryId == this.categoryId &&
+          other.categoryName == this.categoryName &&
+          other.icon == this.icon &&
+          other.containerExtension == this.containerExtension &&
+          other.streamUrl == this.streamUrl &&
+          other.rating == this.rating &&
+          other.rating5based == this.rating5based &&
+          other.tmdb == this.tmdb &&
+          other.trailer == this.trailer &&
+          other.plot == this.plot &&
+          other.cast == this.cast &&
+          other.director == this.director &&
+          other.genre == this.genre &&
+          other.releaseDate == this.releaseDate);
+}
+
+class XtreamVodCompanion extends UpdateCompanion<XtreamVodData> {
+  final Value<String> id;
+  final Value<String> providerId;
+  final Value<int> streamId;
+  final Value<String> name;
+  final Value<String?> categoryId;
+  final Value<String?> categoryName;
+  final Value<String?> icon;
+  final Value<String> containerExtension;
+  final Value<String> streamUrl;
+  final Value<double?> rating;
+  final Value<double?> rating5based;
+  final Value<String?> tmdb;
+  final Value<String?> trailer;
+  final Value<String?> plot;
+  final Value<String?> cast;
+  final Value<String?> director;
+  final Value<String?> genre;
+  final Value<String?> releaseDate;
+  final Value<int> rowid;
+  const XtreamVodCompanion({
+    this.id = const Value.absent(),
+    this.providerId = const Value.absent(),
+    this.streamId = const Value.absent(),
+    this.name = const Value.absent(),
+    this.categoryId = const Value.absent(),
+    this.categoryName = const Value.absent(),
+    this.icon = const Value.absent(),
+    this.containerExtension = const Value.absent(),
+    this.streamUrl = const Value.absent(),
+    this.rating = const Value.absent(),
+    this.rating5based = const Value.absent(),
+    this.tmdb = const Value.absent(),
+    this.trailer = const Value.absent(),
+    this.plot = const Value.absent(),
+    this.cast = const Value.absent(),
+    this.director = const Value.absent(),
+    this.genre = const Value.absent(),
+    this.releaseDate = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  XtreamVodCompanion.insert({
+    required String id,
+    required String providerId,
+    required int streamId,
+    required String name,
+    this.categoryId = const Value.absent(),
+    this.categoryName = const Value.absent(),
+    this.icon = const Value.absent(),
+    this.containerExtension = const Value.absent(),
+    required String streamUrl,
+    this.rating = const Value.absent(),
+    this.rating5based = const Value.absent(),
+    this.tmdb = const Value.absent(),
+    this.trailer = const Value.absent(),
+    this.plot = const Value.absent(),
+    this.cast = const Value.absent(),
+    this.director = const Value.absent(),
+    this.genre = const Value.absent(),
+    this.releaseDate = const Value.absent(),
+    this.rowid = const Value.absent(),
+  }) : id = Value(id),
+       providerId = Value(providerId),
+       streamId = Value(streamId),
+       name = Value(name),
+       streamUrl = Value(streamUrl);
+  static Insertable<XtreamVodData> custom({
+    Expression<String>? id,
+    Expression<String>? providerId,
+    Expression<int>? streamId,
+    Expression<String>? name,
+    Expression<String>? categoryId,
+    Expression<String>? categoryName,
+    Expression<String>? icon,
+    Expression<String>? containerExtension,
+    Expression<String>? streamUrl,
+    Expression<double>? rating,
+    Expression<double>? rating5based,
+    Expression<String>? tmdb,
+    Expression<String>? trailer,
+    Expression<String>? plot,
+    Expression<String>? cast,
+    Expression<String>? director,
+    Expression<String>? genre,
+    Expression<String>? releaseDate,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (providerId != null) 'provider_id': providerId,
+      if (streamId != null) 'stream_id': streamId,
+      if (name != null) 'name': name,
+      if (categoryId != null) 'category_id': categoryId,
+      if (categoryName != null) 'category_name': categoryName,
+      if (icon != null) 'icon': icon,
+      if (containerExtension != null)
+        'container_extension': containerExtension,
+      if (streamUrl != null) 'stream_url': streamUrl,
+      if (rating != null) 'rating': rating,
+      if (rating5based != null) 'rating_5based': rating5based,
+      if (tmdb != null) 'tmdb': tmdb,
+      if (trailer != null) 'trailer': trailer,
+      if (plot != null) 'plot': plot,
+      if (cast != null) 'cast': cast,
+      if (director != null) 'director': director,
+      if (genre != null) 'genre': genre,
+      if (releaseDate != null) 'release_date': releaseDate,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  XtreamVodCompanion copyWith({
+    Value<String>? id,
+    Value<String>? providerId,
+    Value<int>? streamId,
+    Value<String>? name,
+    Value<String?>? categoryId,
+    Value<String?>? categoryName,
+    Value<String?>? icon,
+    Value<String>? containerExtension,
+    Value<String>? streamUrl,
+    Value<double?>? rating,
+    Value<double?>? rating5based,
+    Value<String?>? tmdb,
+    Value<String?>? trailer,
+    Value<String?>? plot,
+    Value<String?>? cast,
+    Value<String?>? director,
+    Value<String?>? genre,
+    Value<String?>? releaseDate,
+    Value<int>? rowid,
+  }) {
+    return XtreamVodCompanion(
+      id: id ?? this.id,
+      providerId: providerId ?? this.providerId,
+      streamId: streamId ?? this.streamId,
+      name: name ?? this.name,
+      categoryId: categoryId ?? this.categoryId,
+      categoryName: categoryName ?? this.categoryName,
+      icon: icon ?? this.icon,
+      containerExtension: containerExtension ?? this.containerExtension,
+      streamUrl: streamUrl ?? this.streamUrl,
+      rating: rating ?? this.rating,
+      rating5based: rating5based ?? this.rating5based,
+      tmdb: tmdb ?? this.tmdb,
+      trailer: trailer ?? this.trailer,
+      plot: plot ?? this.plot,
+      cast: cast ?? this.cast,
+      director: director ?? this.director,
+      genre: genre ?? this.genre,
+      releaseDate: releaseDate ?? this.releaseDate,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<String>(id.value);
+    }
+    if (providerId.present) {
+      map['provider_id'] = Variable<String>(providerId.value);
+    }
+    if (streamId.present) {
+      map['stream_id'] = Variable<int>(streamId.value);
+    }
+    if (name.present) {
+      map['name'] = Variable<String>(name.value);
+    }
+    if (categoryId.present) {
+      map['category_id'] = Variable<String>(categoryId.value);
+    }
+    if (categoryName.present) {
+      map['category_name'] = Variable<String>(categoryName.value);
+    }
+    if (icon.present) {
+      map['icon'] = Variable<String>(icon.value);
+    }
+    if (containerExtension.present) {
+      map['container_extension'] = Variable<String>(containerExtension.value);
+    }
+    if (streamUrl.present) {
+      map['stream_url'] = Variable<String>(streamUrl.value);
+    }
+    if (rating.present) {
+      map['rating'] = Variable<double>(rating.value);
+    }
+    if (rating5based.present) {
+      map['rating_5based'] = Variable<double>(rating5based.value);
+    }
+    if (tmdb.present) {
+      map['tmdb'] = Variable<String>(tmdb.value);
+    }
+    if (trailer.present) {
+      map['trailer'] = Variable<String>(trailer.value);
+    }
+    if (plot.present) {
+      map['plot'] = Variable<String>(plot.value);
+    }
+    if (cast.present) {
+      map['cast'] = Variable<String>(cast.value);
+    }
+    if (director.present) {
+      map['director'] = Variable<String>(director.value);
+    }
+    if (genre.present) {
+      map['genre'] = Variable<String>(genre.value);
+    }
+    if (releaseDate.present) {
+      map['release_date'] = Variable<String>(releaseDate.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('XtreamVodCompanion(')
+          ..write('id: $id, ')
+          ..write('providerId: $providerId, ')
+          ..write('streamId: $streamId, ')
+          ..write('name: $name, ')
+          ..write('categoryId: $categoryId, ')
+          ..write('categoryName: $categoryName, ')
+          ..write('icon: $icon, ')
+          ..write('containerExtension: $containerExtension, ')
+          ..write('streamUrl: $streamUrl, ')
+          ..write('rating: $rating, ')
+          ..write('rating5based: $rating5based, ')
+          ..write('tmdb: $tmdb, ')
+          ..write('trailer: $trailer, ')
+          ..write('plot: $plot, ')
+          ..write('cast: $cast, ')
+          ..write('director: $director, ')
+          ..write('genre: $genre, ')
+          ..write('releaseDate: $releaseDate, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $XtreamSeriesTable extends XtreamSeries
+    with TableInfo<$XtreamSeriesTable, XtreamSeriesData> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $XtreamSeriesTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<String> id = GeneratedColumn<String>(
+    'id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _providerIdMeta = const VerificationMeta(
+    'providerId',
+  );
+  @override
+  late final GeneratedColumn<String> providerId = GeneratedColumn<String>(
+    'provider_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES providers (id)',
+    ),
+  );
+  static const VerificationMeta _seriesIdMeta = const VerificationMeta(
+    'seriesId',
+  );
+  @override
+  late final GeneratedColumn<int> seriesId = GeneratedColumn<int>(
+    'series_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _nameMeta = const VerificationMeta('name');
+  @override
+  late final GeneratedColumn<String> name = GeneratedColumn<String>(
+    'name',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _categoryIdMeta = const VerificationMeta(
+    'categoryId',
+  );
+  @override
+  late final GeneratedColumn<String> categoryId = GeneratedColumn<String>(
+    'category_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _categoryNameMeta = const VerificationMeta(
+    'categoryName',
+  );
+  @override
+  late final GeneratedColumn<String> categoryName = GeneratedColumn<String>(
+    'category_name',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _coverMeta = const VerificationMeta('cover');
+  @override
+  late final GeneratedColumn<String> cover = GeneratedColumn<String>(
+    'cover',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _plotMeta = const VerificationMeta('plot');
+  @override
+  late final GeneratedColumn<String> plot = GeneratedColumn<String>(
+    'plot',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _castMeta = const VerificationMeta('cast');
+  @override
+  late final GeneratedColumn<String> cast = GeneratedColumn<String>(
+    'cast',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _directorMeta = const VerificationMeta(
+    'director',
+  );
+  @override
+  late final GeneratedColumn<String> director = GeneratedColumn<String>(
+    'director',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _genreMeta = const VerificationMeta('genre');
+  @override
+  late final GeneratedColumn<String> genre = GeneratedColumn<String>(
+    'genre',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _releaseDateMeta = const VerificationMeta(
+    'releaseDate',
+  );
+  @override
+  late final GeneratedColumn<String> releaseDate = GeneratedColumn<String>(
+    'release_date',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _ratingMeta = const VerificationMeta('rating');
+  @override
+  late final GeneratedColumn<double> rating = GeneratedColumn<double>(
+    'rating',
+    aliasedName,
+    true,
+    type: DriftSqlType.double,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _rating5basedMeta = const VerificationMeta(
+    'rating5based',
+  );
+  @override
+  late final GeneratedColumn<double> rating5based = GeneratedColumn<double>(
+    'rating_5based',
+    aliasedName,
+    true,
+    type: DriftSqlType.double,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _tmdbMeta = const VerificationMeta('tmdb');
+  @override
+  late final GeneratedColumn<String> tmdb = GeneratedColumn<String>(
+    'tmdb',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _youtubeTrailerMeta = const VerificationMeta(
+    'youtubeTrailer',
+  );
+  @override
+  late final GeneratedColumn<String> youtubeTrailer = GeneratedColumn<String>(
+    'youtube_trailer',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _episodeRunTimeMeta = const VerificationMeta(
+    'episodeRunTime',
+  );
+  @override
+  late final GeneratedColumn<int> episodeRunTime = GeneratedColumn<int>(
+    'episode_run_time',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _lastModifiedMeta = const VerificationMeta(
+    'lastModified',
+  );
+  @override
+  late final GeneratedColumn<String> lastModified = GeneratedColumn<String>(
+    'last_modified',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    providerId,
+    seriesId,
+    name,
+    categoryId,
+    categoryName,
+    cover,
+    plot,
+    cast,
+    director,
+    genre,
+    releaseDate,
+    rating,
+    rating5based,
+    tmdb,
+    youtubeTrailer,
+    episodeRunTime,
+    lastModified,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'xtream_series';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<XtreamSeriesData> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    } else if (isInserting) {
+      context.missing(_idMeta);
+    }
+    if (data.containsKey('provider_id')) {
+      context.handle(
+        _providerIdMeta,
+        providerId.isAcceptableOrUnknown(
+          data['provider_id']!,
+          _providerIdMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_providerIdMeta);
+    }
+    if (data.containsKey('series_id')) {
+      context.handle(
+        _seriesIdMeta,
+        seriesId.isAcceptableOrUnknown(data['series_id']!, _seriesIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_seriesIdMeta);
+    }
+    if (data.containsKey('name')) {
+      context.handle(
+        _nameMeta,
+        name.isAcceptableOrUnknown(data['name']!, _nameMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_nameMeta);
+    }
+    if (data.containsKey('category_id')) {
+      context.handle(
+        _categoryIdMeta,
+        categoryId.isAcceptableOrUnknown(
+          data['category_id']!,
+          _categoryIdMeta,
+        ),
+      );
+    }
+    if (data.containsKey('category_name')) {
+      context.handle(
+        _categoryNameMeta,
+        categoryName.isAcceptableOrUnknown(
+          data['category_name']!,
+          _categoryNameMeta,
+        ),
+      );
+    }
+    if (data.containsKey('cover')) {
+      context.handle(
+        _coverMeta,
+        cover.isAcceptableOrUnknown(data['cover']!, _coverMeta),
+      );
+    }
+    if (data.containsKey('plot')) {
+      context.handle(
+        _plotMeta,
+        plot.isAcceptableOrUnknown(data['plot']!, _plotMeta),
+      );
+    }
+    if (data.containsKey('cast')) {
+      context.handle(
+        _castMeta,
+        cast.isAcceptableOrUnknown(data['cast']!, _castMeta),
+      );
+    }
+    if (data.containsKey('director')) {
+      context.handle(
+        _directorMeta,
+        director.isAcceptableOrUnknown(data['director']!, _directorMeta),
+      );
+    }
+    if (data.containsKey('genre')) {
+      context.handle(
+        _genreMeta,
+        genre.isAcceptableOrUnknown(data['genre']!, _genreMeta),
+      );
+    }
+    if (data.containsKey('release_date')) {
+      context.handle(
+        _releaseDateMeta,
+        releaseDate.isAcceptableOrUnknown(
+          data['release_date']!,
+          _releaseDateMeta,
+        ),
+      );
+    }
+    if (data.containsKey('rating')) {
+      context.handle(
+        _ratingMeta,
+        rating.isAcceptableOrUnknown(data['rating']!, _ratingMeta),
+      );
+    }
+    if (data.containsKey('rating_5based')) {
+      context.handle(
+        _rating5basedMeta,
+        rating5based.isAcceptableOrUnknown(
+          data['rating_5based']!,
+          _rating5basedMeta,
+        ),
+      );
+    }
+    if (data.containsKey('tmdb')) {
+      context.handle(
+        _tmdbMeta,
+        tmdb.isAcceptableOrUnknown(data['tmdb']!, _tmdbMeta),
+      );
+    }
+    if (data.containsKey('youtube_trailer')) {
+      context.handle(
+        _youtubeTrailerMeta,
+        youtubeTrailer.isAcceptableOrUnknown(
+          data['youtube_trailer']!,
+          _youtubeTrailerMeta,
+        ),
+      );
+    }
+    if (data.containsKey('episode_run_time')) {
+      context.handle(
+        _episodeRunTimeMeta,
+        episodeRunTime.isAcceptableOrUnknown(
+          data['episode_run_time']!,
+          _episodeRunTimeMeta,
+        ),
+      );
+    }
+    if (data.containsKey('last_modified')) {
+      context.handle(
+        _lastModifiedMeta,
+        lastModified.isAcceptableOrUnknown(
+          data['last_modified']!,
+          _lastModifiedMeta,
+        ),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  XtreamSeriesData map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return XtreamSeriesData(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}id'],
+      )!,
+      providerId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}provider_id'],
+      )!,
+      seriesId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}series_id'],
+      )!,
+      name: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}name'],
+      )!,
+      categoryId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}category_id'],
+      ),
+      categoryName: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}category_name'],
+      ),
+      cover: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}cover'],
+      ),
+      plot: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}plot'],
+      ),
+      cast: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}cast'],
+      ),
+      director: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}director'],
+      ),
+      genre: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}genre'],
+      ),
+      releaseDate: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}release_date'],
+      ),
+      rating: attachedDatabase.typeMapping.read(
+        DriftSqlType.double,
+        data['${effectivePrefix}rating'],
+      ),
+      rating5based: attachedDatabase.typeMapping.read(
+        DriftSqlType.double,
+        data['${effectivePrefix}rating_5based'],
+      ),
+      tmdb: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}tmdb'],
+      ),
+      youtubeTrailer: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}youtube_trailer'],
+      ),
+      episodeRunTime: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}episode_run_time'],
+      ),
+      lastModified: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}last_modified'],
+      ),
+    );
+  }
+
+  @override
+  $XtreamSeriesTable createAlias(String alias) {
+    return $XtreamSeriesTable(attachedDatabase, alias);
+  }
+}
+
+class XtreamSeriesData extends DataClass
+    implements Insertable<XtreamSeriesData> {
+  final String id;
+  final String providerId;
+  final int seriesId;
+  final String name;
+  final String? categoryId;
+  final String? categoryName;
+  final String? cover;
+  final String? plot;
+  final String? cast;
+  final String? director;
+  final String? genre;
+  final String? releaseDate;
+  final double? rating;
+  final double? rating5based;
+  final String? tmdb;
+  final String? youtubeTrailer;
+  final int? episodeRunTime;
+  final String? lastModified;
+  const XtreamSeriesData({
+    required this.id,
+    required this.providerId,
+    required this.seriesId,
+    required this.name,
+    this.categoryId,
+    this.categoryName,
+    this.cover,
+    this.plot,
+    this.cast,
+    this.director,
+    this.genre,
+    this.releaseDate,
+    this.rating,
+    this.rating5based,
+    this.tmdb,
+    this.youtubeTrailer,
+    this.episodeRunTime,
+    this.lastModified,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<String>(id);
+    map['provider_id'] = Variable<String>(providerId);
+    map['series_id'] = Variable<int>(seriesId);
+    map['name'] = Variable<String>(name);
+    if (!nullToAbsent || categoryId != null) {
+      map['category_id'] = Variable<String>(categoryId);
+    }
+    if (!nullToAbsent || categoryName != null) {
+      map['category_name'] = Variable<String>(categoryName);
+    }
+    if (!nullToAbsent || cover != null) {
+      map['cover'] = Variable<String>(cover);
+    }
+    if (!nullToAbsent || plot != null) {
+      map['plot'] = Variable<String>(plot);
+    }
+    if (!nullToAbsent || cast != null) {
+      map['cast'] = Variable<String>(cast);
+    }
+    if (!nullToAbsent || director != null) {
+      map['director'] = Variable<String>(director);
+    }
+    if (!nullToAbsent || genre != null) {
+      map['genre'] = Variable<String>(genre);
+    }
+    if (!nullToAbsent || releaseDate != null) {
+      map['release_date'] = Variable<String>(releaseDate);
+    }
+    if (!nullToAbsent || rating != null) {
+      map['rating'] = Variable<double>(rating);
+    }
+    if (!nullToAbsent || rating5based != null) {
+      map['rating_5based'] = Variable<double>(rating5based);
+    }
+    if (!nullToAbsent || tmdb != null) {
+      map['tmdb'] = Variable<String>(tmdb);
+    }
+    if (!nullToAbsent || youtubeTrailer != null) {
+      map['youtube_trailer'] = Variable<String>(youtubeTrailer);
+    }
+    if (!nullToAbsent || episodeRunTime != null) {
+      map['episode_run_time'] = Variable<int>(episodeRunTime);
+    }
+    if (!nullToAbsent || lastModified != null) {
+      map['last_modified'] = Variable<String>(lastModified);
+    }
+    return map;
+  }
+
+  XtreamSeriesCompanion toCompanion(bool nullToAbsent) {
+    return XtreamSeriesCompanion(
+      id: Value(id),
+      providerId: Value(providerId),
+      seriesId: Value(seriesId),
+      name: Value(name),
+      categoryId: categoryId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(categoryId),
+      categoryName: categoryName == null && nullToAbsent
+          ? const Value.absent()
+          : Value(categoryName),
+      cover: cover == null && nullToAbsent
+          ? const Value.absent()
+          : Value(cover),
+      plot: plot == null && nullToAbsent
+          ? const Value.absent()
+          : Value(plot),
+      cast: cast == null && nullToAbsent
+          ? const Value.absent()
+          : Value(cast),
+      director: director == null && nullToAbsent
+          ? const Value.absent()
+          : Value(director),
+      genre: genre == null && nullToAbsent
+          ? const Value.absent()
+          : Value(genre),
+      releaseDate: releaseDate == null && nullToAbsent
+          ? const Value.absent()
+          : Value(releaseDate),
+      rating: rating == null && nullToAbsent
+          ? const Value.absent()
+          : Value(rating),
+      rating5based: rating5based == null && nullToAbsent
+          ? const Value.absent()
+          : Value(rating5based),
+      tmdb: tmdb == null && nullToAbsent
+          ? const Value.absent()
+          : Value(tmdb),
+      youtubeTrailer: youtubeTrailer == null && nullToAbsent
+          ? const Value.absent()
+          : Value(youtubeTrailer),
+      episodeRunTime: episodeRunTime == null && nullToAbsent
+          ? const Value.absent()
+          : Value(episodeRunTime),
+      lastModified: lastModified == null && nullToAbsent
+          ? const Value.absent()
+          : Value(lastModified),
+    );
+  }
+
+  factory XtreamSeriesData.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return XtreamSeriesData(
+      id: serializer.fromJson<String>(json['id']),
+      providerId: serializer.fromJson<String>(json['providerId']),
+      seriesId: serializer.fromJson<int>(json['seriesId']),
+      name: serializer.fromJson<String>(json['name']),
+      categoryId: serializer.fromJson<String?>(json['categoryId']),
+      categoryName: serializer.fromJson<String?>(json['categoryName']),
+      cover: serializer.fromJson<String?>(json['cover']),
+      plot: serializer.fromJson<String?>(json['plot']),
+      cast: serializer.fromJson<String?>(json['cast']),
+      director: serializer.fromJson<String?>(json['director']),
+      genre: serializer.fromJson<String?>(json['genre']),
+      releaseDate: serializer.fromJson<String?>(json['releaseDate']),
+      rating: serializer.fromJson<double?>(json['rating']),
+      rating5based: serializer.fromJson<double?>(json['rating5based']),
+      tmdb: serializer.fromJson<String?>(json['tmdb']),
+      youtubeTrailer: serializer.fromJson<String?>(json['youtubeTrailer']),
+      episodeRunTime: serializer.fromJson<int?>(json['episodeRunTime']),
+      lastModified: serializer.fromJson<String?>(json['lastModified']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<String>(id),
+      'providerId': serializer.toJson<String>(providerId),
+      'seriesId': serializer.toJson<int>(seriesId),
+      'name': serializer.toJson<String>(name),
+      'categoryId': serializer.toJson<String?>(categoryId),
+      'categoryName': serializer.toJson<String?>(categoryName),
+      'cover': serializer.toJson<String?>(cover),
+      'plot': serializer.toJson<String?>(plot),
+      'cast': serializer.toJson<String?>(cast),
+      'director': serializer.toJson<String?>(director),
+      'genre': serializer.toJson<String?>(genre),
+      'releaseDate': serializer.toJson<String?>(releaseDate),
+      'rating': serializer.toJson<double?>(rating),
+      'rating5based': serializer.toJson<double?>(rating5based),
+      'tmdb': serializer.toJson<String?>(tmdb),
+      'youtubeTrailer': serializer.toJson<String?>(youtubeTrailer),
+      'episodeRunTime': serializer.toJson<int?>(episodeRunTime),
+      'lastModified': serializer.toJson<String?>(lastModified),
+    };
+  }
+
+  XtreamSeriesData copyWith({
+    String? id,
+    String? providerId,
+    int? seriesId,
+    String? name,
+    Value<String?> categoryId = const Value.absent(),
+    Value<String?> categoryName = const Value.absent(),
+    Value<String?> cover = const Value.absent(),
+    Value<String?> plot = const Value.absent(),
+    Value<String?> cast = const Value.absent(),
+    Value<String?> director = const Value.absent(),
+    Value<String?> genre = const Value.absent(),
+    Value<String?> releaseDate = const Value.absent(),
+    Value<double?> rating = const Value.absent(),
+    Value<double?> rating5based = const Value.absent(),
+    Value<String?> tmdb = const Value.absent(),
+    Value<String?> youtubeTrailer = const Value.absent(),
+    Value<int?> episodeRunTime = const Value.absent(),
+    Value<String?> lastModified = const Value.absent(),
+  }) => XtreamSeriesData(
+    id: id ?? this.id,
+    providerId: providerId ?? this.providerId,
+    seriesId: seriesId ?? this.seriesId,
+    name: name ?? this.name,
+    categoryId: categoryId.present ? categoryId.value : this.categoryId,
+    categoryName: categoryName.present
+        ? categoryName.value
+        : this.categoryName,
+    cover: cover.present ? cover.value : this.cover,
+    plot: plot.present ? plot.value : this.plot,
+    cast: cast.present ? cast.value : this.cast,
+    director: director.present ? director.value : this.director,
+    genre: genre.present ? genre.value : this.genre,
+    releaseDate: releaseDate.present ? releaseDate.value : this.releaseDate,
+    rating: rating.present ? rating.value : this.rating,
+    rating5based: rating5based.present
+        ? rating5based.value
+        : this.rating5based,
+    tmdb: tmdb.present ? tmdb.value : this.tmdb,
+    youtubeTrailer: youtubeTrailer.present
+        ? youtubeTrailer.value
+        : this.youtubeTrailer,
+    episodeRunTime: episodeRunTime.present
+        ? episodeRunTime.value
+        : this.episodeRunTime,
+    lastModified: lastModified.present
+        ? lastModified.value
+        : this.lastModified,
+  );
+  XtreamSeriesData copyWithCompanion(XtreamSeriesCompanion data) {
+    return XtreamSeriesData(
+      id: data.id.present ? data.id.value : this.id,
+      providerId: data.providerId.present
+          ? data.providerId.value
+          : this.providerId,
+      seriesId: data.seriesId.present ? data.seriesId.value : this.seriesId,
+      name: data.name.present ? data.name.value : this.name,
+      categoryId: data.categoryId.present
+          ? data.categoryId.value
+          : this.categoryId,
+      categoryName: data.categoryName.present
+          ? data.categoryName.value
+          : this.categoryName,
+      cover: data.cover.present ? data.cover.value : this.cover,
+      plot: data.plot.present ? data.plot.value : this.plot,
+      cast: data.cast.present ? data.cast.value : this.cast,
+      director: data.director.present ? data.director.value : this.director,
+      genre: data.genre.present ? data.genre.value : this.genre,
+      releaseDate: data.releaseDate.present
+          ? data.releaseDate.value
+          : this.releaseDate,
+      rating: data.rating.present ? data.rating.value : this.rating,
+      rating5based: data.rating5based.present
+          ? data.rating5based.value
+          : this.rating5based,
+      tmdb: data.tmdb.present ? data.tmdb.value : this.tmdb,
+      youtubeTrailer: data.youtubeTrailer.present
+          ? data.youtubeTrailer.value
+          : this.youtubeTrailer,
+      episodeRunTime: data.episodeRunTime.present
+          ? data.episodeRunTime.value
+          : this.episodeRunTime,
+      lastModified: data.lastModified.present
+          ? data.lastModified.value
+          : this.lastModified,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('XtreamSeriesData(')
+          ..write('id: $id, ')
+          ..write('providerId: $providerId, ')
+          ..write('seriesId: $seriesId, ')
+          ..write('name: $name, ')
+          ..write('categoryId: $categoryId, ')
+          ..write('categoryName: $categoryName, ')
+          ..write('cover: $cover, ')
+          ..write('plot: $plot, ')
+          ..write('cast: $cast, ')
+          ..write('director: $director, ')
+          ..write('genre: $genre, ')
+          ..write('releaseDate: $releaseDate, ')
+          ..write('rating: $rating, ')
+          ..write('rating5based: $rating5based, ')
+          ..write('tmdb: $tmdb, ')
+          ..write('youtubeTrailer: $youtubeTrailer, ')
+          ..write('episodeRunTime: $episodeRunTime, ')
+          ..write('lastModified: $lastModified')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    id,
+    providerId,
+    seriesId,
+    name,
+    categoryId,
+    categoryName,
+    cover,
+    plot,
+    cast,
+    director,
+    genre,
+    releaseDate,
+    rating,
+    rating5based,
+    tmdb,
+    youtubeTrailer,
+    episodeRunTime,
+    lastModified,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is XtreamSeriesData &&
+          other.id == this.id &&
+          other.providerId == this.providerId &&
+          other.seriesId == this.seriesId &&
+          other.name == this.name &&
+          other.categoryId == this.categoryId &&
+          other.categoryName == this.categoryName &&
+          other.cover == this.cover &&
+          other.plot == this.plot &&
+          other.cast == this.cast &&
+          other.director == this.director &&
+          other.genre == this.genre &&
+          other.releaseDate == this.releaseDate &&
+          other.rating == this.rating &&
+          other.rating5based == this.rating5based &&
+          other.tmdb == this.tmdb &&
+          other.youtubeTrailer == this.youtubeTrailer &&
+          other.episodeRunTime == this.episodeRunTime &&
+          other.lastModified == this.lastModified);
+}
+
+class XtreamSeriesCompanion extends UpdateCompanion<XtreamSeriesData> {
+  final Value<String> id;
+  final Value<String> providerId;
+  final Value<int> seriesId;
+  final Value<String> name;
+  final Value<String?> categoryId;
+  final Value<String?> categoryName;
+  final Value<String?> cover;
+  final Value<String?> plot;
+  final Value<String?> cast;
+  final Value<String?> director;
+  final Value<String?> genre;
+  final Value<String?> releaseDate;
+  final Value<double?> rating;
+  final Value<double?> rating5based;
+  final Value<String?> tmdb;
+  final Value<String?> youtubeTrailer;
+  final Value<int?> episodeRunTime;
+  final Value<String?> lastModified;
+  final Value<int> rowid;
+  const XtreamSeriesCompanion({
+    this.id = const Value.absent(),
+    this.providerId = const Value.absent(),
+    this.seriesId = const Value.absent(),
+    this.name = const Value.absent(),
+    this.categoryId = const Value.absent(),
+    this.categoryName = const Value.absent(),
+    this.cover = const Value.absent(),
+    this.plot = const Value.absent(),
+    this.cast = const Value.absent(),
+    this.director = const Value.absent(),
+    this.genre = const Value.absent(),
+    this.releaseDate = const Value.absent(),
+    this.rating = const Value.absent(),
+    this.rating5based = const Value.absent(),
+    this.tmdb = const Value.absent(),
+    this.youtubeTrailer = const Value.absent(),
+    this.episodeRunTime = const Value.absent(),
+    this.lastModified = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  XtreamSeriesCompanion.insert({
+    required String id,
+    required String providerId,
+    required int seriesId,
+    required String name,
+    this.categoryId = const Value.absent(),
+    this.categoryName = const Value.absent(),
+    this.cover = const Value.absent(),
+    this.plot = const Value.absent(),
+    this.cast = const Value.absent(),
+    this.director = const Value.absent(),
+    this.genre = const Value.absent(),
+    this.releaseDate = const Value.absent(),
+    this.rating = const Value.absent(),
+    this.rating5based = const Value.absent(),
+    this.tmdb = const Value.absent(),
+    this.youtubeTrailer = const Value.absent(),
+    this.episodeRunTime = const Value.absent(),
+    this.lastModified = const Value.absent(),
+    this.rowid = const Value.absent(),
+  }) : id = Value(id),
+       providerId = Value(providerId),
+       seriesId = Value(seriesId),
+       name = Value(name);
+  static Insertable<XtreamSeriesData> custom({
+    Expression<String>? id,
+    Expression<String>? providerId,
+    Expression<int>? seriesId,
+    Expression<String>? name,
+    Expression<String>? categoryId,
+    Expression<String>? categoryName,
+    Expression<String>? cover,
+    Expression<String>? plot,
+    Expression<String>? cast,
+    Expression<String>? director,
+    Expression<String>? genre,
+    Expression<String>? releaseDate,
+    Expression<double>? rating,
+    Expression<double>? rating5based,
+    Expression<String>? tmdb,
+    Expression<String>? youtubeTrailer,
+    Expression<int>? episodeRunTime,
+    Expression<String>? lastModified,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (providerId != null) 'provider_id': providerId,
+      if (seriesId != null) 'series_id': seriesId,
+      if (name != null) 'name': name,
+      if (categoryId != null) 'category_id': categoryId,
+      if (categoryName != null) 'category_name': categoryName,
+      if (cover != null) 'cover': cover,
+      if (plot != null) 'plot': plot,
+      if (cast != null) 'cast': cast,
+      if (director != null) 'director': director,
+      if (genre != null) 'genre': genre,
+      if (releaseDate != null) 'release_date': releaseDate,
+      if (rating != null) 'rating': rating,
+      if (rating5based != null) 'rating_5based': rating5based,
+      if (tmdb != null) 'tmdb': tmdb,
+      if (youtubeTrailer != null) 'youtube_trailer': youtubeTrailer,
+      if (episodeRunTime != null) 'episode_run_time': episodeRunTime,
+      if (lastModified != null) 'last_modified': lastModified,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  XtreamSeriesCompanion copyWith({
+    Value<String>? id,
+    Value<String>? providerId,
+    Value<int>? seriesId,
+    Value<String>? name,
+    Value<String?>? categoryId,
+    Value<String?>? categoryName,
+    Value<String?>? cover,
+    Value<String?>? plot,
+    Value<String?>? cast,
+    Value<String?>? director,
+    Value<String?>? genre,
+    Value<String?>? releaseDate,
+    Value<double?>? rating,
+    Value<double?>? rating5based,
+    Value<String?>? tmdb,
+    Value<String?>? youtubeTrailer,
+    Value<int?>? episodeRunTime,
+    Value<String?>? lastModified,
+    Value<int>? rowid,
+  }) {
+    return XtreamSeriesCompanion(
+      id: id ?? this.id,
+      providerId: providerId ?? this.providerId,
+      seriesId: seriesId ?? this.seriesId,
+      name: name ?? this.name,
+      categoryId: categoryId ?? this.categoryId,
+      categoryName: categoryName ?? this.categoryName,
+      cover: cover ?? this.cover,
+      plot: plot ?? this.plot,
+      cast: cast ?? this.cast,
+      director: director ?? this.director,
+      genre: genre ?? this.genre,
+      releaseDate: releaseDate ?? this.releaseDate,
+      rating: rating ?? this.rating,
+      rating5based: rating5based ?? this.rating5based,
+      tmdb: tmdb ?? this.tmdb,
+      youtubeTrailer: youtubeTrailer ?? this.youtubeTrailer,
+      episodeRunTime: episodeRunTime ?? this.episodeRunTime,
+      lastModified: lastModified ?? this.lastModified,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<String>(id.value);
+    }
+    if (providerId.present) {
+      map['provider_id'] = Variable<String>(providerId.value);
+    }
+    if (seriesId.present) {
+      map['series_id'] = Variable<int>(seriesId.value);
+    }
+    if (name.present) {
+      map['name'] = Variable<String>(name.value);
+    }
+    if (categoryId.present) {
+      map['category_id'] = Variable<String>(categoryId.value);
+    }
+    if (categoryName.present) {
+      map['category_name'] = Variable<String>(categoryName.value);
+    }
+    if (cover.present) {
+      map['cover'] = Variable<String>(cover.value);
+    }
+    if (plot.present) {
+      map['plot'] = Variable<String>(plot.value);
+    }
+    if (cast.present) {
+      map['cast'] = Variable<String>(cast.value);
+    }
+    if (director.present) {
+      map['director'] = Variable<String>(director.value);
+    }
+    if (genre.present) {
+      map['genre'] = Variable<String>(genre.value);
+    }
+    if (releaseDate.present) {
+      map['release_date'] = Variable<String>(releaseDate.value);
+    }
+    if (rating.present) {
+      map['rating'] = Variable<double>(rating.value);
+    }
+    if (rating5based.present) {
+      map['rating_5based'] = Variable<double>(rating5based.value);
+    }
+    if (tmdb.present) {
+      map['tmdb'] = Variable<String>(tmdb.value);
+    }
+    if (youtubeTrailer.present) {
+      map['youtube_trailer'] = Variable<String>(youtubeTrailer.value);
+    }
+    if (episodeRunTime.present) {
+      map['episode_run_time'] = Variable<int>(episodeRunTime.value);
+    }
+    if (lastModified.present) {
+      map['last_modified'] = Variable<String>(lastModified.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('XtreamSeriesCompanion(')
+          ..write('id: $id, ')
+          ..write('providerId: $providerId, ')
+          ..write('seriesId: $seriesId, ')
+          ..write('name: $name, ')
+          ..write('categoryId: $categoryId, ')
+          ..write('categoryName: $categoryName, ')
+          ..write('cover: $cover, ')
+          ..write('plot: $plot, ')
+          ..write('cast: $cast, ')
+          ..write('director: $director, ')
+          ..write('genre: $genre, ')
+          ..write('releaseDate: $releaseDate, ')
+          ..write('rating: $rating, ')
+          ..write('rating5based: $rating5based, ')
+          ..write('tmdb: $tmdb, ')
+          ..write('youtubeTrailer: $youtubeTrailer, ')
+          ..write('episodeRunTime: $episodeRunTime, ')
+          ..write('lastModified: $lastModified, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$AppDatabase extends GeneratedDatabase {
   _$AppDatabase(QueryExecutor e) : super(e);
   $AppDatabaseManager get managers => $AppDatabaseManager(this);
@@ -6027,6 +8101,8 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   late final $FailoverGroupsTable failoverGroups = $FailoverGroupsTable(this);
   late final $FailoverGroupChannelsTable failoverGroupChannels =
       $FailoverGroupChannelsTable(this);
+  late final $XtreamVodTable xtreamVod = $XtreamVodTable(this);
+  late final $XtreamSeriesTable xtreamSeries = $XtreamSeriesTable(this);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -6045,6 +8121,8 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     scheduledRecordings,
     failoverGroups,
     failoverGroupChannels,
+    xtreamVod,
+    xtreamSeries,
   ];
 }
 

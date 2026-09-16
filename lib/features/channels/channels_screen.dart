@@ -25,7 +25,7 @@ import '../../data/services/stream_alternatives_service.dart';
 import '../player/player_service.dart';
 import '../player/stream_info_badges.dart';
 import '../providers/provider_manager.dart';
-import '../shows/shows_providers.dart';
+import '../vod/vod_providers.dart';
 import 'channel_debug_dialog.dart';
 
 class ChannelsScreen extends ConsumerStatefulWidget {
@@ -1211,7 +1211,7 @@ class _ChannelsScreenState extends ConsumerState<ChannelsScreen> {
     if (_imdbIdCache.containsKey(key)) return;
     _imdbIdCache[key] = null; // mark in-progress
     try {
-      final keys = ref.read(showsApiKeysProvider);
+      final keys = ref.read(vodApiKeysProvider);
       if (!keys.hasTmdbKey) return;
       final tmdb = TmdbClient(apiKey: keys.tmdbApiKey);
       final results = await tmdb.searchTv(title);

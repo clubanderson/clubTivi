@@ -19,7 +19,7 @@ import '../../data/services/epg_refresh_service.dart';
 import '../providers/provider_manager.dart';
 import '../remote/web_remote_server.dart';
 import 'add_epg_source_dialog.dart';
-import '../shows/shows_providers.dart';
+import '../vod/vod_providers.dart';
 import '../../data/datasources/remote/trakt_client.dart';
 import '../../data/datasources/remote/tmdb_client.dart';
 
@@ -460,7 +460,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               ),
             ],
           ),
-          _ShowsApiKeysSection(),
+          _VodApiKeysSection(),
         ],
         ),
       ),
@@ -822,12 +822,12 @@ class _EpgSourcesScreenState extends ConsumerState<_EpgSourcesScreen> {
   }
 }
 
-class _ShowsApiKeysSection extends ConsumerStatefulWidget {
+class _VodApiKeysSection extends ConsumerStatefulWidget {
   @override
-  ConsumerState<_ShowsApiKeysSection> createState() => _ShowsApiKeysSectionState();
+  ConsumerState<_VodApiKeysSection> createState() => _VodApiKeysSectionState();
 }
 
-class _ShowsApiKeysSectionState extends ConsumerState<_ShowsApiKeysSection> {
+class _VodApiKeysSectionState extends ConsumerState<_VodApiKeysSection> {
   final _traktCtrl = TextEditingController();
   final _tmdbCtrl = TextEditingController();
   bool _loaded = false;
@@ -845,7 +845,7 @@ class _ShowsApiKeysSectionState extends ConsumerState<_ShowsApiKeysSection> {
 
   @override
   Widget build(BuildContext context) {
-    final keys = ref.watch(showsApiKeysProvider);
+    final keys = ref.watch(vodApiKeysProvider);
     if (!_loaded && (keys.traktClientId.isNotEmpty || keys.tmdbApiKey.isNotEmpty)) {
       _traktCtrl.text = keys.traktClientId;
       _tmdbCtrl.text = keys.tmdbApiKey;
@@ -913,13 +913,13 @@ class _ShowsApiKeysSectionState extends ConsumerState<_ShowsApiKeysSection> {
   }
 
   Future<void> _saveTrakt() async {
-    final keys = ref.read(showsApiKeysProvider);
-    await ref.read(showsApiKeysProvider.notifier).save(
+    final keys = ref.read(vodApiKeysProvider);
+    await ref.read(vodApiKeysProvider.notifier).save(
       traktClientId: _traktCtrl.text.trim(),
       tmdbApiKey: keys.tmdbApiKey,
       debridTokens: keys.debridTokens,
     );
-    ref.invalidate(showsRepositoryProvider);
+    ref.invalidate(vodRepositoryProvider);
     if (mounted) {
       setState(() => _traktVerified = null);
       ScaffoldMessenger.of(context).showSnackBar(
@@ -929,13 +929,13 @@ class _ShowsApiKeysSectionState extends ConsumerState<_ShowsApiKeysSection> {
   }
 
   Future<void> _saveTmdb() async {
-    final keys = ref.read(showsApiKeysProvider);
-    await ref.read(showsApiKeysProvider.notifier).save(
+    final keys = ref.read(vodApiKeysProvider);
+    await ref.read(vodApiKeysProvider.notifier).save(
       traktClientId: keys.traktClientId,
       tmdbApiKey: _tmdbCtrl.text.trim(),
       debridTokens: keys.debridTokens,
     );
-    ref.invalidate(showsRepositoryProvider);
+    ref.invalidate(vodRepositoryProvider);
     if (mounted) {
       setState(() => _tmdbVerified = null);
       ScaffoldMessenger.of(context).showSnackBar(
@@ -950,7 +950,7 @@ class _ShowsApiKeysSectionState extends ConsumerState<_ShowsApiKeysSection> {
     setState(() { _traktVerifying = true; _traktVerified = null; });
     try {
       final client = TraktClient(clientId: token);
-      final results = await client.getTrendingShows(limit: 1);
+      final results = await client.getTrendingSeries(limit: 1);
       if (mounted) setState(() => _traktVerified = results.isNotEmpty);
     } catch (_) {
       if (mounted) setState(() => _traktVerified = false);
